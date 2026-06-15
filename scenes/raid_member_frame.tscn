@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://850fmmf7d8ae"]
 
-[ext_resource type="Script" uid="uid://cxj8htwuicyos" path="res://scripts/raid_member_frame.gd" id="1_v4eng"]
+[ext_resource type="Script" uid="uid://cxj8htwuicyos" path="res://scripts/ui/raid_member_frame.gd" id="1_v4eng"]
 
 [node name="RaidMemberFrame" type="PanelContainer" unique_id=518309728]
 custom_minimum_size = Vector2(220, 72)
