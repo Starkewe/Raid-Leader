@@ -10,10 +10,10 @@ var fight_active: bool = false
 var encounter_state: String = "idle"
 
 var party_members: Array = []
+var command_controller: RaidCommandController = null
 var event_queue: Array = []
 var processing_events: bool = false
 
-var priest_follow_boss_target: bool = false
 var spawn_positions: Dictionary = {}
 
 var status_refresh_timer: float = 0.0
@@ -21,15 +21,29 @@ var status_refresh_interval: float = 0.15
 
 var temporary_statuses: Dictionary = {}
 
-var hovered_unit: Node = null
-
 func _ready():
 	print("CombatManager loaded")
-	call_deferred("initialize_combat")
 
+	command_controller = RaidCommandController.new()
+	connect_command_controller_signals()
+
+	call_deferred("initialize_combat")
+func connect_command_controller_signals() -> void:
+	if command_controller == null:
+		return
+
+	if not command_controller.refresh_requested.is_connected(Callable(self, "refresh_all_statuses")):
+		command_controller.refresh_requested.connect(Callable(self, "refresh_all_statuses"))
+
+	if not command_controller.temporary_status_requested.is_connected(Callable(self, "set_temporary_status")):
+		command_controller.temporary_status_requested.connect(Callable(self, "set_temporary_status"))
 func initialize_combat():
 	build_party_member_list()
 	store_spawn_positions()
+
+	if command_controller != null:
+		command_controller.setup(party_members, boss, player)
+
 	connect_unit_signals()
 	connect_boss_signals()
 
@@ -233,197 +247,52 @@ func _on_unit_defeated(unit: Node):
 func _on_boss_defeated():
 	queue_combat_event("boss_defeated")
 
-func command_party_attack():
-	if not boss_alive:
-		print("Boss is already dead.")
-		return
-
-	if boss == null or not is_instance_valid(boss):
-		print("Boss is invalid.")
-		return
-
-	print("Command: Party attack")
-
-	fight_active = true
-	encounter_state = "active"
-
-	for unit in party_members:
-		if not is_unit_alive(unit):
-			continue
-
-		if unit.has_method("command_attack"):
-			unit.command_attack(boss)
-
-	var target = get_current_or_first_living_target()
-	assign_boss_target(target)
-
-	refresh_all_statuses()
-
-func command_healers_to_heal_boss_target():
-	print("Command: Healers heal boss target")
-
-	priest_follow_boss_target = true
-
-	var heal_target = get_boss_target()
-
-	if heal_target == null or not is_unit_alive(heal_target):
-		heal_target = get_first_living_party_member()
-
-	assign_healers_to_target(heal_target)
-	refresh_all_statuses()
-
-func command_interrupt():
-	print("Command: Interrupt")
-
-	if not boss_alive:
-		print("Boss is defeated. Cannot interrupt.")
-		refresh_all_statuses()
-		return
-
-	if boss == null or not is_instance_valid(boss):
-		print("Boss is invalid. Cannot interrupt.")
-		refresh_all_statuses()
-		return
-
-	var interrupter = get_first_living_interrupt_unit()
-
-	if interrupter == null:
-		print("No living interrupter available.")
-		return
-
-	interrupter.command_interrupt(boss)
-	set_temporary_status(interrupter, "Interrupt Command", 0.5)
-
-func assign_boss_target(new_target: Node2D):
-	if boss == null or not is_instance_valid(boss):
-		return
-
-	if new_target == null or not is_unit_alive(new_target):
-		if boss.has_method("clear_target"):
-			boss.clear_target()
-
-		if priest_follow_boss_target:
-			assign_healers_to_target(null)
-
-		refresh_all_statuses()
-		return
-
-	if boss.has_method("set_target"):
-		boss.set_target(new_target)
-
-	if priest_follow_boss_target:
-		assign_healers_to_target(new_target)
-
-	refresh_all_statuses()
-
-func assign_healers_to_target(new_target: Node2D):
-	for unit in party_members:
-		if not is_unit_alive(unit):
-			continue
-
-		if not unit.has_method("command_heal"):
-			continue
-
-		if new_target == null or not is_unit_alive(new_target):
-			if unit.has_method("stop_action"):
-				unit.stop_action()
-		else:
-			unit.command_heal(new_target)
-
-func get_current_or_first_living_target() -> Node2D:
-	var current_target = get_boss_target()
-
-	if current_target != null and is_unit_alive(current_target):
-		return current_target
-
-	return get_first_living_party_member()
-
-func get_boss_target() -> Node2D:
-	if boss == null or not is_instance_valid(boss):
-		return null
-
-	if boss.has_method("get_current_target"):
-		return boss.get_current_target()
-
-	return null
-
-func get_first_living_party_member() -> Node2D:
-	for unit in party_members:
-		if is_unit_alive(unit):
-			return unit
-
-	return null
-
-func get_living_party_members() -> Array:
-	var living_members: Array = []
-
-	for unit in party_members:
-		if is_unit_alive(unit):
-			living_members.append(unit)
-
-	return living_members
-
-func get_first_living_interrupt_unit() -> Node:
-	for unit in party_members:
-		if not is_unit_alive(unit):
-			continue
-
-		if unit.has_method("command_interrupt"):
-			return unit
-
-	return null
-
-func is_unit_alive(unit: Node) -> bool:
-	if unit == null:
-		return false
-
-	if not is_instance_valid(unit):
-		return false
-
-	if unit.has_method("is_alive"):
-		return unit.is_alive()
-
-	return true
-
-func handle_unit_defeated(unit: Node):
+func handle_unit_defeated(unit: Node) -> void:
 	if unit == null:
 		return
-	if hovered_unit == unit:
-		hovered_unit = null
-	
+
+	if command_controller != null:
+		command_controller.clear_hovered_unit_if_matches(unit)
+
 	print("CombatManager handling death:", unit.name)
 
 	temporary_statuses.erase(unit)
 
-	var living_members = get_living_party_members()
+	var living_members: Array = []
+
+	if command_controller != null:
+		living_members = command_controller.get_living_party_members()
 
 	if living_members.size() == 0:
 		handle_party_wipe()
 		return
 
-	var current_boss_target = get_boss_target()
+	if command_controller == null:
+		refresh_all_statuses()
+		return
 
-	if current_boss_target == null or not is_unit_alive(current_boss_target):
-		var new_target = get_first_living_party_member()
-		assign_boss_target(new_target)
+	var current_boss_target := command_controller.get_boss_target()
+
+	if current_boss_target == null or not command_controller.is_unit_alive(current_boss_target):
+		var new_target := command_controller.get_first_living_party_member()
+		command_controller.assign_boss_target(new_target)
 	else:
-		if priest_follow_boss_target:
-			assign_healers_to_target(current_boss_target)
+		if command_controller.is_following_boss_target():
+			command_controller.assign_healers_to_target(current_boss_target)
 
 	refresh_all_statuses()
-
 func handle_boss_defeated():
 	print("CombatManager handling boss defeated")
 
 	boss_alive = false
 	fight_active = false
 	encounter_state = "victory"
-	priest_follow_boss_target = false
+	
 	temporary_statuses.clear()
 
-	for unit in party_members:
-		if is_unit_alive(unit) and unit.has_method("stop_action"):
-			unit.stop_action()
+	if command_controller != null:
+		command_controller.reset_commands()
+		command_controller.stop_all_party_actions()
 
 	refresh_all_statuses()
 
@@ -432,23 +301,25 @@ func handle_party_wipe():
 
 	fight_active = false
 	encounter_state = "wipe"
-	priest_follow_boss_target = false
+
 	temporary_statuses.clear()
 
-	if boss != null and is_instance_valid(boss):
-		if boss.has_method("clear_target"):
-			boss.clear_target()
+	if command_controller != null:
+		command_controller.reset_commands()
+		command_controller.clear_boss_target()
 
 	refresh_all_statuses()
 
 func reset_encounter():
 	print("Resetting encounter")
-	
-	hovered_unit = null
+
+	if command_controller != null:
+		command_controller.reset_commands()
+
 	boss_alive = true
 	fight_active = false
 	encounter_state = "idle"
-	priest_follow_boss_target = false
+
 
 	event_queue.clear()
 	processing_events = false
@@ -483,50 +354,71 @@ func connect_ui_signals():
 
 		if not ui.is_connected("raid_frame_unhovered", unhovered_callback):
 			ui.connect("raid_frame_unhovered", unhovered_callback)
-func _on_raid_frame_hovered(unit: Node):
-	if unit == null or not is_instance_valid(unit):
+func _on_raid_frame_hovered(unit: Node) -> void:
+	if command_controller == null:
 		return
 
-	if not is_unit_alive(unit):
+	if not command_controller.is_valid_node(unit):
 		return
 
-	hovered_unit = unit
-	print("Hovered unit:", get_unit_debug_name(unit))
+	if not command_controller.is_unit_alive(unit):
+		return
 
-func _on_raid_frame_unhovered(unit: Node):
+	command_controller.set_hovered_unit(unit)
+
+	print("Hovered unit:", command_controller.get_unit_debug_name(unit))
+func _on_raid_frame_unhovered(unit: Node) -> void:
+	if command_controller == null:
+		return
+
 	if unit == null:
 		return
 
-	if hovered_unit == unit:
-		print("Stopped hovering unit:", get_unit_debug_name(unit))
-		hovered_unit = null
+	if command_controller.is_hovered_unit(unit):
+		print("Stopped hovering unit:", command_controller.get_unit_debug_name(unit))
+		command_controller.clear_hovered_unit_if_matches(unit)
+func command_party_attack() -> void:
+	if command_controller == null:
+		return
+
+	var command_started := command_controller.command_party_attack(boss_alive)
+
+	if command_started:
+		fight_active = true
+		encounter_state = "active"
+		refresh_all_statuses()
+
+
+func command_healers_to_heal_boss_target() -> void:
+	if command_controller == null:
+		return
+
+	command_controller.command_healers_to_heal_boss_target()
+
+
+func command_interrupt() -> void:
+	if command_controller == null:
+		return
+
+	command_controller.command_interrupt(boss_alive)
+
+
+func command_hovered_unit_to_player() -> void:
+	if command_controller == null:
+		return
+
+	command_controller.command_hovered_unit_to_player()
+
+
+func is_unit_alive(unit: Node) -> bool:
+	if command_controller == null:
+		return false
+
+	return command_controller.is_unit_alive(unit)
+
+
 func get_unit_debug_name(unit: Node) -> String:
-	if unit == null or not is_instance_valid(unit):
+	if command_controller == null:
 		return "None"
 
-	if unit.has_method("get_display_name"):
-		return unit.get_display_name()
-
-	return unit.name
-func command_hovered_unit_to_player():
-	if hovered_unit == null or not is_instance_valid(hovered_unit):
-		print("No raid member selected by mouseover.")
-		return
-
-	if not is_unit_alive(hovered_unit):
-		print("Hovered unit is not alive.")
-		hovered_unit = null
-		return
-
-	if player == null or not is_instance_valid(player):
-		print("Player node is missing.")
-		return
-
-	if not hovered_unit.has_method("command_move_to_position"):
-		print(get_unit_debug_name(hovered_unit), "cannot receive movement commands.")
-		return
-
-	print("Command:", get_unit_debug_name(hovered_unit), "move to player position.")
-
-	hovered_unit.command_move_to_position(player.global_position)
-	set_temporary_status(hovered_unit, "Moving to Player", 0.75)
+	return command_controller.get_unit_debug_name(unit)
