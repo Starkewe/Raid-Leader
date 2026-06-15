@@ -1,5 +1,8 @@
 extends Node
 
+const CombatEventQueueScript := preload("res://scripts/combat/combat_event_queue.gd")
+const CombatStatusPresenterScript := preload("res://scripts/combat/combat_status_presenter.gd")
+
 @onready var raid_spawner: RaidSpawner = get_node_or_null("../RaidSpawner")
 @onready var boss = get_node_or_null("../Boss")
 @onready var ui = get_node_or_null("../UI")
@@ -10,15 +13,15 @@ var fight_active: bool = false
 var encounter_state: String = "idle"
 
 var party_members: Array = []
+
 var command_controller: RaidCommandController = null
 var combat_event_queue: CombatEventQueue = null
+var status_presenter = null
 
 var spawn_positions: Dictionary = {}
 
 var status_refresh_timer: float = 0.0
 var status_refresh_interval: float = 0.15
-
-var temporary_statuses: Dictionary = {}
 
 func _ready():
 	print("CombatManager loaded")
@@ -28,6 +31,8 @@ func _ready():
 	
 	combat_event_queue = CombatEventQueue.new()
 	combat_event_queue.setup(Callable(self, "handle_combat_event"))
+	
+	status_presenter = CombatStatusPresenterScript.new()
 
 	call_deferred("initialize_combat")
 func connect_command_controller_signals() -> void:
@@ -168,53 +173,27 @@ func refresh_all_statuses():
 	else:
 		ui.set_boss_status("Idle")
 
-func set_temporary_status(unit: Node, text: String, duration: float):
-	if unit == null or not is_instance_valid(unit):
+func set_temporary_status(unit: Node, text: String, duration: float) -> void:
+	if status_presenter == null:
 		return
 
-	temporary_statuses[unit] = {
-		"text": text,
-		"timer": duration
-	}
-
+	status_presenter.set_temporary_status(unit, text, duration)
 	refresh_all_statuses()
 
-func update_temporary_statuses(delta):
-	if temporary_statuses.is_empty():
+func update_temporary_statuses(delta: float) -> void:
+	if status_presenter == null:
 		return
 
-	var expired_units: Array = []
+	var changed: bool = status_presenter.update_temporary_statuses(delta)
 
-	for unit in temporary_statuses.keys():
-		if unit == null or not is_instance_valid(unit):
-			expired_units.append(unit)
-			continue
-
-		var data: Dictionary = temporary_statuses[unit]
-		data["timer"] = float(data["timer"]) - delta
-
-		if float(data["timer"]) <= 0:
-			expired_units.append(unit)
-		else:
-			temporary_statuses[unit] = data
-
-	for unit in expired_units:
-		temporary_statuses.erase(unit)
+	if changed:
+		refresh_all_statuses()
 
 func get_status_override_texts() -> Dictionary:
-	var overrides: Dictionary = {}
+	if status_presenter == null:
+		return {}
 
-	for unit in temporary_statuses.keys():
-		if unit == null or not is_instance_valid(unit):
-			continue
-
-		if not is_unit_alive(unit):
-			continue
-
-		var data: Dictionary = temporary_statuses[unit]
-		overrides[unit] = String(data["text"])
-
-	return overrides
+	return status_presenter.get_status_override_texts(Callable(self, "is_unit_alive"))
 
 func queue_combat_event(event_type: String, data: Dictionary = {}) -> void:
 	if combat_event_queue == null:
@@ -258,7 +237,8 @@ func handle_unit_defeated(unit: Node) -> void:
 
 	print("CombatManager handling death:", unit.name)
 
-	temporary_statuses.erase(unit)
+	if status_presenter != null:
+		status_presenter.clear_temporary_status(unit)
 
 	var living_members: Array = []
 
@@ -290,7 +270,8 @@ func handle_boss_defeated():
 	fight_active = false
 	encounter_state = "victory"
 	
-	temporary_statuses.clear()
+	if status_presenter != null:
+		status_presenter.clear_all_temporary_statuses()
 
 	if command_controller != null:
 		command_controller.reset_commands()
@@ -304,7 +285,8 @@ func handle_party_wipe():
 	fight_active = false
 	encounter_state = "wipe"
 
-	temporary_statuses.clear()
+	if status_presenter != null:
+		status_presenter.clear_all_temporary_statuses()
 
 	if command_controller != null:
 		command_controller.reset_commands()
@@ -324,7 +306,8 @@ func reset_encounter():
 	fight_active = false
 	encounter_state = "idle"
 
-	temporary_statuses.clear()
+	if status_presenter != null:
+		status_presenter.clear_all_temporary_statuses()
 	status_refresh_timer = 0.0
 
 	for unit in party_members:
