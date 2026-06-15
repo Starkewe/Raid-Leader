@@ -38,7 +38,6 @@ layout_mode = 2
 text = "Quit"
 
 [node name="TeamPanel" type="PanelContainer" parent="." unique_id=1933801227]
-visible = false
 layout_mode = 0
 offset_right = 40.0
 offset_bottom = 40.0

@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://cxj8htwuicyos" path="res://scripts/raid_member_frame.gd" id="1_v4eng"]
 
 [node name="RaidMemberFrame" type="PanelContainer" unique_id=518309728]
-custom_minimum_size = Vector2(220, 70)
+custom_minimum_size = Vector2(220, 72)
 offset_right = 220.0
 offset_bottom = 124.0
 script = ExtResource("1_v4eng")
@@ -13,22 +13,25 @@ metadata/_custom_type_script = "uid://cxj8htwuicyos"
 layout_mode = 2
 
 [node name="NameLabel" type="Label" parent="VBoxContainer" unique_id=2119147301]
+custom_minimum_size = Vector2(0, 16)
 layout_mode = 2
 text = "Name
 "
 
 [node name="HealthBar" type="ProgressBar" parent="VBoxContainer" unique_id=1119252722]
-layout_mode = 2
-value = 100.0
-show_percentage = false
-
-[node name="CastBar" type="ProgressBar" parent="VBoxContainer" unique_id=1223621546]
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 value = 100.0
 show_percentage = false
 
+[node name="CastBar" type="ProgressBar" parent="VBoxContainer" unique_id=1223621546]
+custom_minimum_size = Vector2(0, 8)
+layout_mode = 2
+value = 100.0
+show_percentage = false
+
 [node name="StatusLabel" type="Label" parent="VBoxContainer" unique_id=417519208]
+custom_minimum_size = Vector2(0, 16)
 layout_mode = 2
 text = "Idle
 "

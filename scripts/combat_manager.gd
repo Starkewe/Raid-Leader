@@ -34,6 +34,9 @@ func initialize_combat():
 		if ui.has_method("setup_raid_frames"):
 			ui.setup_raid_frames(party_members)
 
+		if ui.has_method("setup_boss_frame"):
+			ui.setup_boss_frame(boss)
+
 	initialize_ui()
 	refresh_all_statuses()
 
@@ -126,6 +129,9 @@ func refresh_all_statuses():
 
 	if ui.has_method("refresh_raid_frames"):
 		ui.refresh_raid_frames(get_status_override_texts())
+
+	if ui.has_method("refresh_boss_frame"):
+		ui.refresh_boss_frame(false)
 
 	if not ui.has_method("set_boss_status"):
 		return

@@ -1,5 +1,8 @@
-extends BaseCombatUnit
+extends CharacterBody2D
 
+signal defeated(unit)
+
+@export var max_health: int = 70
 @export var speed: float = 150.0
 
 @export var cast_range: float = 280.0
@@ -8,17 +11,26 @@ extends BaseCombatUnit
 @export var spell_cooldown: float = 1.0
 @export var spell_cast_time: float = 1.5
 
+@export var show_world_cast_bar: bool = false
+
+@onready var health_bar = get_node_or_null("HealthBar")
 @onready var cast_bar = get_node_or_null("CastBar")
 
+var health: int
 var target: Node2D = null
 
 var cooldown_timer: float = 0.0
 var cast_timer: float = 0.0
 var is_casting: bool = false
+var is_dead: bool = false
+
+var unit_class: String = ""
+var unit_number: int = 0
+var display_name: String = ""
 
 func _ready():
-	max_health = 70
-	super._ready()
+	health = max_health
+	update_health_bar()
 	update_cast_bar()
 	print("Mage ready. HP:", health)
 
@@ -67,7 +79,7 @@ func command_attack(new_target: Node2D):
 		return
 
 	target = new_target
-	print("Mage ordered to cast at:", new_target.name)
+	print(get_display_name(), "ordered to cast at:", new_target.name)
 
 func try_start_cast():
 	if cooldown_timer > 0:
@@ -76,10 +88,13 @@ func try_start_cast():
 	if target == null or not is_instance_valid(target):
 		return
 
+	if target.has_method("is_alive") and not target.is_alive():
+		return
+
 	is_casting = true
 	cast_timer = spell_cast_time
 	update_cast_bar()
-	print("Mage begins casting Fireball")
+	print(get_display_name(), "begins casting Fireball")
 
 func update_cast(delta):
 	cast_timer -= delta
@@ -93,7 +108,7 @@ func finish_cast():
 	cooldown_timer = spell_cooldown
 	update_cast_bar()
 
-	print("Mage finishes Fireball and deals damage")
+	print(get_display_name(), "finishes Fireball and deals damage")
 
 	if target != null and is_instance_valid(target):
 		if target.has_method("is_alive") and not target.is_alive():
@@ -117,14 +132,71 @@ func stop_action():
 	velocity = Vector2.ZERO
 	update_cast_bar()
 
-func on_reset_unit():
+func take_damage(amount: int):
+	if is_dead:
+		return
+
+	health -= amount
+	health = max(health, 0)
+	update_health_bar()
+
+	print(get_display_name(), "took", amount, "damage. HP:", health)
+
+	if health <= 0:
+		die()
+
+func receive_heal(amount: int):
+	if is_dead:
+		return
+
+	health += amount
+	health = min(health, max_health)
+	update_health_bar()
+
+	print(get_display_name(), "healed for", amount, ". HP:", health)
+
+func die():
+	if is_dead:
+		return
+
+	is_dead = true
+	health = 0
+	update_health_bar()
+	stop_action()
+
+	print(get_display_name(), "defeated!")
+	defeated.emit(self)
+
+func reset_unit(new_position: Vector2):
+	is_dead = false
+	health = max_health
+
+	target = null
+	is_casting = false
 	cooldown_timer = 0.0
 	cast_timer = 0.0
-	is_casting = false
+
+	velocity = Vector2.ZERO
+	global_position = new_position
+	visible = true
+
+	update_health_bar()
 	update_cast_bar()
+
+func update_health_bar():
+	if health_bar == null:
+		return
+
+	health_bar.max_value = max_health
+	health_bar.value = health
 
 func update_cast_bar():
 	if cast_bar == null:
+		return
+
+	if not show_world_cast_bar:
+		cast_bar.visible = false
+		cast_bar.value = 0
 		return
 
 	cast_bar.max_value = spell_cast_time
@@ -135,6 +207,36 @@ func update_cast_bar():
 	else:
 		cast_bar.visible = false
 		cast_bar.value = 0
+
+func is_alive() -> bool:
+	return not is_dead
+
+func is_full_health() -> bool:
+	return health >= max_health
+
+func get_current_health() -> int:
+	return health
+
+func get_max_health() -> int:
+	return max_health
+
+func is_casting_ability() -> bool:
+	return is_casting
+
+func get_cast_progress_percent() -> float:
+	if not is_casting:
+		return 0.0
+
+	if spell_cast_time <= 0:
+		return 0.0
+
+	return clamp(((spell_cast_time - cast_timer) / spell_cast_time) * 100.0, 0.0, 100.0)
+
+func get_cast_name() -> String:
+	if is_casting:
+		return "Fireball"
+
+	return ""
 
 func get_status_text() -> String:
 	if is_dead:
@@ -153,3 +255,14 @@ func get_status_text() -> String:
 			return "Ready to Cast"
 
 	return "Idle"
+
+func setup_unit_identity(new_unit_class: String, new_unit_number: int):
+	unit_class = new_unit_class
+	unit_number = new_unit_number
+	display_name = new_unit_class + " " + str(new_unit_number)
+
+func get_display_name() -> String:
+	if display_name != "":
+		return display_name
+
+	return name

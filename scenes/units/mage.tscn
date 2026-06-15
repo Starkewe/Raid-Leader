@@ -17,6 +17,7 @@ shape = SubResource("CircleShape2D_0xm2m")
 disabled = true
 
 [node name="HealthBar" type="ProgressBar" parent="." unique_id=1207149423]
+visible = false
 offset_left = -50.0
 offset_top = -75.0
 offset_right = 50.0
@@ -25,6 +26,7 @@ value = 100.0
 show_percentage = false
 
 [node name="CastBar" type="ProgressBar" parent="." unique_id=1901733867]
+visible = false
 offset_left = -50.0
 offset_top = -95.0
 offset_right = 50.0

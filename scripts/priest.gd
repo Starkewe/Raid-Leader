@@ -1,5 +1,8 @@
-extends BaseCombatUnit
+extends CharacterBody2D
 
+signal defeated(unit)
+
+@export var max_health: int = 80
 @export var speed: float = 160.0
 
 @export var cast_range: float = 280.0
@@ -8,17 +11,26 @@ extends BaseCombatUnit
 @export var heal_cooldown: float = 1.0
 @export var heal_cast_time: float = 1.5
 
+@export var show_world_cast_bar: bool = false
+
+@onready var health_bar = get_node_or_null("HealthBar")
 @onready var cast_bar = get_node_or_null("CastBar")
 
+var health: int
 var heal_target: Node2D = null
 
 var cooldown_timer: float = 0.0
 var cast_timer: float = 0.0
 var is_casting: bool = false
+var is_dead: bool = false
+
+var unit_class: String = ""
+var unit_number: int = 0
+var display_name: String = ""
 
 func _ready():
-	max_health = 80
-	super._ready()
+	health = max_health
+	update_health_bar()
 	update_cast_bar()
 	print("Priest ready. HP:", health)
 
@@ -75,7 +87,7 @@ func command_heal(new_target: Node2D):
 
 	if new_target == null or not is_instance_valid(new_target):
 		stop_action()
-		print("Priest received invalid heal target")
+		print(get_display_name(), "received invalid heal target")
 		return
 
 	if heal_target != new_target:
@@ -84,13 +96,16 @@ func command_heal(new_target: Node2D):
 		update_cast_bar()
 
 	heal_target = new_target
-	print("Priest ordered to cast heals on:", new_target.name)
+	print(get_display_name(), "ordered to cast heals on:", new_target.name)
 
 func try_start_cast():
 	if cooldown_timer > 0:
 		return
 
 	if heal_target == null or not is_instance_valid(heal_target):
+		return
+
+	if heal_target.has_method("is_alive") and not heal_target.is_alive():
 		return
 
 	if heal_target.has_method("is_full_health"):
@@ -100,7 +115,7 @@ func try_start_cast():
 	is_casting = true
 	cast_timer = heal_cast_time
 	update_cast_bar()
-	print("Priest begins casting Heal")
+	print(get_display_name(), "begins casting Heal")
 
 func update_cast(delta):
 	cast_timer -= delta
@@ -114,7 +129,7 @@ func finish_cast():
 	cooldown_timer = heal_cooldown
 	update_cast_bar()
 
-	print("Priest finishes Heal")
+	print(get_display_name(), "finishes Heal")
 
 	if heal_target != null and is_instance_valid(heal_target):
 		if heal_target.has_method("is_alive") and not heal_target.is_alive():
@@ -140,14 +155,71 @@ func stop_action():
 	velocity = Vector2.ZERO
 	update_cast_bar()
 
-func on_reset_unit():
+func take_damage(amount: int):
+	if is_dead:
+		return
+
+	health -= amount
+	health = max(health, 0)
+	update_health_bar()
+
+	print(get_display_name(), "took", amount, "damage. HP:", health)
+
+	if health <= 0:
+		die()
+
+func receive_heal(amount: int):
+	if is_dead:
+		return
+
+	health += amount
+	health = min(health, max_health)
+	update_health_bar()
+
+	print(get_display_name(), "healed for", amount, ". HP:", health)
+
+func die():
+	if is_dead:
+		return
+
+	is_dead = true
+	health = 0
+	update_health_bar()
+	stop_action()
+
+	print(get_display_name(), "defeated!")
+	defeated.emit(self)
+
+func reset_unit(new_position: Vector2):
+	is_dead = false
+	health = max_health
+
+	heal_target = null
+	is_casting = false
 	cooldown_timer = 0.0
 	cast_timer = 0.0
-	is_casting = false
+
+	velocity = Vector2.ZERO
+	global_position = new_position
+	visible = true
+
+	update_health_bar()
 	update_cast_bar()
+
+func update_health_bar():
+	if health_bar == null:
+		return
+
+	health_bar.max_value = max_health
+	health_bar.value = health
 
 func update_cast_bar():
 	if cast_bar == null:
+		return
+
+	if not show_world_cast_bar:
+		cast_bar.visible = false
+		cast_bar.value = 0
 		return
 
 	cast_bar.max_value = heal_cast_time
@@ -158,6 +230,36 @@ func update_cast_bar():
 	else:
 		cast_bar.visible = false
 		cast_bar.value = 0
+
+func is_alive() -> bool:
+	return not is_dead
+
+func is_full_health() -> bool:
+	return health >= max_health
+
+func get_current_health() -> int:
+	return health
+
+func get_max_health() -> int:
+	return max_health
+
+func is_casting_ability() -> bool:
+	return is_casting
+
+func get_cast_progress_percent() -> float:
+	if not is_casting:
+		return 0.0
+
+	if heal_cast_time <= 0:
+		return 0.0
+
+	return clamp(((heal_cast_time - cast_timer) / heal_cast_time) * 100.0, 0.0, 100.0)
+
+func get_cast_name() -> String:
+	if is_casting:
+		return "Heal"
+
+	return ""
 
 func get_status_text() -> String:
 	if is_dead:
@@ -177,3 +279,14 @@ func get_status_text() -> String:
 			return "Healing " + heal_target.name
 
 	return "Idle"
+
+func setup_unit_identity(new_unit_class: String, new_unit_number: int):
+	unit_class = new_unit_class
+	unit_number = new_unit_number
+	display_name = new_unit_class + " " + str(new_unit_number)
+
+func get_display_name() -> String:
+	if display_name != "":
+		return display_name
+
+	return name

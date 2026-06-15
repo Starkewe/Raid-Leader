@@ -12,6 +12,8 @@
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_6ovae"]
+
 [node name="Main" type="Node2D" unique_id=592902322]
 position = Vector2(-106, -214)
 script = ExtResource("1_blj0x")
@@ -31,6 +33,7 @@ disabled = true
 [node name="Camera2D" type="Camera2D" parent="Player" unique_id=873384442]
 
 [node name="HealthBar" type="ProgressBar" parent="Player" unique_id=77846992]
+visible = false
 offset_left = -50.0
 offset_top = -75.0
 offset_right = 50.0
@@ -50,6 +53,7 @@ shape = SubResource("CircleShape2D_0xm2m")
 disabled = true
 
 [node name="HealthBar" type="ProgressBar" parent="Boss" unique_id=947052358]
+visible = false
 offset_left = -50.0
 offset_top = -75.0
 offset_right = 50.0
@@ -58,6 +62,7 @@ value = 100.0
 show_percentage = false
 
 [node name="CastBar" type="ProgressBar" parent="Boss" unique_id=1411566492]
+visible = false
 offset_left = -50.0
 offset_top = -95.0
 offset_right = 50.0
@@ -68,12 +73,47 @@ show_percentage = false
 script = ExtResource("14_62tjo")
 raid_member_frame_scene = ExtResource("15_ygsf8")
 
-[node name="RaidFramesPanel" type="PanelContainer" parent="UI" unique_id=27997468]
+[node name="BossFramePanel" type="PanelContainer" parent="UI" unique_id=746933485]
+custom_minimum_size = Vector2(520, 90)
 offset_right = 40.0
 offset_bottom = 40.0
 
-[node name="RaidFrameList" type="VBoxContainer" parent="UI/RaidFramesPanel" unique_id=951809458]
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/BossFramePanel" unique_id=1326856175]
 layout_mode = 2
+
+[node name="BossNameLabel" type="Label" parent="UI/BossFramePanel/VBoxContainer" unique_id=2032121931]
+layout_mode = 2
+text = "Boss"
+
+[node name="BossHealthBar" type="ProgressBar" parent="UI/BossFramePanel/VBoxContainer" unique_id=1193399835]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+value = 100.0
+show_percentage = false
+
+[node name="BossCastBar" type="ProgressBar" parent="UI/BossFramePanel/VBoxContainer" unique_id=2095933114]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+value = 100.0
+show_percentage = false
+
+[node name="BossStatusLabel" type="Label" parent="UI/BossFramePanel/VBoxContainer" unique_id=1848315968]
+layout_mode = 2
+text = "Idle"
+
+[node name="RaidFramesPanel" type="PanelContainer" parent="UI" unique_id=27997468]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -1080.0
+offset_right = 1200.0
+offset_bottom = -820.0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxEmpty_6ovae")
+
+[node name="RaidFrameGrid" type="GridContainer" parent="UI/RaidFramesPanel" unique_id=1437070350]
+layout_mode = 2
+columns = 5
 
 [node name="CombatManager" type="Node" parent="." unique_id=1660831030]
 script = ExtResource("16_1f740")

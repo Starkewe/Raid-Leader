@@ -50,20 +50,22 @@ func set_status_text(text: String):
 	status_label.text = text
 
 func update_cast_bar():
+	if cast_bar == null:
+		return
+
+	cast_bar.visible = true
+	cast_bar.max_value = 100
+
 	if unit == null or not is_instance_valid(unit):
-		cast_bar.visible = false
+		cast_bar.value = 0
 		return
 
 	if unit.has_method("is_casting_ability") and unit.is_casting_ability():
-		cast_bar.visible = true
-		cast_bar.max_value = 100
-
 		if unit.has_method("get_cast_progress_percent"):
 			cast_bar.value = unit.get_cast_progress_percent()
 		else:
 			cast_bar.value = 0
 	else:
-		cast_bar.visible = false
 		cast_bar.value = 0
 
 func get_unit_current_health() -> int:

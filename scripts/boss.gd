@@ -15,6 +15,7 @@ signal defeated
 
 @onready var health_bar = get_node_or_null("HealthBar")
 @onready var cast_bar = get_node_or_null("CastBar")
+@export var show_world_cast_bar: bool = false
 
 var health: int
 var target: Node2D = null
@@ -196,6 +197,11 @@ func update_cast_bar():
 	if cast_bar == null:
 		return
 
+	if not show_world_cast_bar:
+		cast_bar.visible = false
+		cast_bar.value = 0
+		return
+
 	cast_bar.max_value = special_cast_time
 
 	if is_casting:
@@ -231,3 +237,29 @@ func get_status_text() -> String:
 			return "Attacking " + target.name
 
 	return "Idle"
+func get_current_health() -> int:
+	return health
+
+func get_max_health() -> int:
+	return max_health
+
+func is_casting_ability() -> bool:
+	return is_casting
+
+func get_cast_progress_percent() -> float:
+	if not is_casting:
+		return 0.0
+
+	if special_cast_time <= 0:
+		return 0.0
+
+	return clamp(((special_cast_time - cast_timer) / special_cast_time) * 100.0, 0.0, 100.0)
+
+func get_cast_name() -> String:
+	if is_casting:
+		return "Big Slam"
+
+	return ""
+
+func get_display_name() -> String:
+	return "Boss"
