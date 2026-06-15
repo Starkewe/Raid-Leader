@@ -53,9 +53,16 @@ layout_mode = 2
 layout_mode = 2
 text = "Manage Team"
 
-[node name="TeamInfoLabel" type="Label" parent="TeamPanel/CenterContainer/VBoxContainer" unique_id=747323762]
+[node name="TotalLabel" type="Label" parent="TeamPanel/CenterContainer/VBoxContainer" unique_id=83183576]
 layout_mode = 2
-text = "Team Management will go here."
+
+[node name="RosterRows" type="VBoxContainer" parent="TeamPanel/CenterContainer/VBoxContainer" unique_id=1433550768]
+layout_mode = 2
+
+[node name="StartFightFromTeamButton" type="Button" parent="TeamPanel/CenterContainer/VBoxContainer" unique_id=992481956]
+layout_mode = 2
+text = "Start Fight
+"
 
 [node name="BackButton" type="Button" parent="TeamPanel/CenterContainer/VBoxContainer" unique_id=1655549643]
 layout_mode = 2

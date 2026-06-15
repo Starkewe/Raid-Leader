@@ -14,6 +14,10 @@ config/name="Raid Leader"
 run/main_scene="uid://d4bdnpijqc7g2"
 config/features=PackedStringArray("4.6", "Forward Plus")
 
+[autoload]
+
+GameState="*uid://u8fvu8ai35tc"
+
 [editor]
 
 version_control/plugin_name="GitPlugin"
