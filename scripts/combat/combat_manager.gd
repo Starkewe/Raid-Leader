@@ -11,8 +11,7 @@ var encounter_state: String = "idle"
 
 var party_members: Array = []
 var command_controller: RaidCommandController = null
-var event_queue: Array = []
-var processing_events: bool = false
+var combat_event_queue: CombatEventQueue = null
 
 var spawn_positions: Dictionary = {}
 
@@ -26,6 +25,9 @@ func _ready():
 
 	command_controller = RaidCommandController.new()
 	connect_command_controller_signals()
+	
+	combat_event_queue = CombatEventQueue.new()
+	combat_event_queue.setup(Callable(self, "handle_combat_event"))
 
 	call_deferred("initialize_combat")
 func connect_command_controller_signals() -> void:
@@ -214,31 +216,31 @@ func get_status_override_texts() -> Dictionary:
 
 	return overrides
 
-func queue_combat_event(event_type: String, data: Dictionary = {}):
-	event_queue.append({
-		"type": event_type,
-		"data": data
-	})
+func queue_combat_event(event_type: String, data: Dictionary = {}) -> void:
+	if combat_event_queue == null:
+		print("Combat event queue is missing.")
+		return
 
-	if not processing_events:
-		call_deferred("process_combat_events")
+	combat_event_queue.queue_event(event_type, data)
 
-func process_combat_events():
-	processing_events = true
 
-	while event_queue.size() > 0:
-		var event = event_queue.pop_front()
-		handle_combat_event(event)
+func handle_combat_event(event: Dictionary) -> void:
+	if event.is_empty():
+		return
 
-	processing_events = false
+	var event_type: String = String(event.get("type", ""))
+	var event_data: Dictionary = event.get("data", {})
 
-func handle_combat_event(event: Dictionary):
-	match event["type"]:
+	match event_type:
 		"unit_defeated":
-			handle_unit_defeated(event["data"]["unit"])
+			if event_data.has("unit"):
+				handle_unit_defeated(event_data["unit"])
+
 		"boss_defeated":
 			handle_boss_defeated()
 
+		_:
+			print("Unknown combat event type:", event_type)
 func _on_unit_defeated(unit: Node):
 	queue_combat_event("unit_defeated", {
 		"unit": unit
@@ -315,14 +317,13 @@ func reset_encounter():
 
 	if command_controller != null:
 		command_controller.reset_commands()
-
+	if combat_event_queue != null:
+		combat_event_queue.clear()
+		
 	boss_alive = true
 	fight_active = false
 	encounter_state = "idle"
 
-
-	event_queue.clear()
-	processing_events = false
 	temporary_statuses.clear()
 	status_refresh_timer = 0.0
 
