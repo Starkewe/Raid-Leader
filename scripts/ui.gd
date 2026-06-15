@@ -1,4 +1,6 @@
 extends CanvasLayer
+signal raid_frame_hovered(unit)
+signal raid_frame_unhovered(unit)
 
 @export var raid_member_frame_scene: PackedScene
 
@@ -89,6 +91,12 @@ func setup_raid_frames(units: Array):
 			frame.setup(unit, display_name)
 		else:
 			print("ERROR: Raid frame scene root is missing setup(). Check raid_member_frame.gd.")
+
+		if frame.has_signal("hovered"):
+			frame.hovered.connect(_on_raid_member_frame_hovered)
+
+		if frame.has_signal("unhovered"):
+			frame.unhovered.connect(_on_raid_member_frame_unhovered)
 
 		frame_by_unit[unit] = frame
 
@@ -242,3 +250,8 @@ func get_unit_display_name(unit: Node) -> String:
 		return unit.get_display_name()
 
 	return unit.name
+func _on_raid_member_frame_hovered(unit: Node):
+	raid_frame_hovered.emit(unit)
+
+func _on_raid_member_frame_unhovered(unit: Node):
+	raid_frame_unhovered.emit(unit)

@@ -1,6 +1,9 @@
 extends PanelContainer
 class_name RaidMemberFrame
 
+signal hovered(unit)
+signal unhovered(unit)
+
 @onready var name_label: Label = $VBoxContainer/NameLabel
 @onready var health_bar: ProgressBar = $VBoxContainer/HealthBar
 @onready var cast_bar: ProgressBar = $VBoxContainer/CastBar
@@ -8,11 +11,25 @@ class_name RaidMemberFrame
 
 var unit: Node = null
 var display_name: String = ""
+var normal_modulate: Color
 
 func _ready():
+	normal_modulate = modulate
+
+	mouse_filter = Control.MOUSE_FILTER_STOP
+
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	health_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cast_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
 	health_bar.show_percentage = false
 	cast_bar.show_percentage = false
-	cast_bar.visible = false
+	cast_bar.visible = true
+	cast_bar.value = 0
+
+	mouse_entered.connect(_on_mouse_entered)
+	mouse_exited.connect(_on_mouse_exited)
 
 func setup(new_unit: Node, new_display_name: String):
 	unit = new_unit
@@ -23,13 +40,20 @@ func update_from_unit(update_status: bool = true):
 	if unit == null or not is_instance_valid(unit):
 		name_label.text = display_name
 		health_bar.value = 0
-		cast_bar.visible = false
+		cast_bar.value = 0
 
 		if update_status:
 			status_label.text = "Missing"
 
 		return
 
+	update_health_bar()
+	update_cast_bar()
+
+	if update_status:
+		update_status_label()
+
+func update_health_bar():
 	var current_health := get_unit_current_health()
 	var max_health := get_unit_max_health()
 
@@ -38,21 +62,7 @@ func update_from_unit(update_status: bool = true):
 
 	name_label.text = display_name + "  " + str(current_health) + "/" + str(max_health)
 
-	update_cast_bar()
-
-	if update_status:
-		if unit.has_method("get_status_text"):
-			status_label.text = unit.get_status_text()
-		else:
-			status_label.text = "Idle"
-
-func set_status_text(text: String):
-	status_label.text = text
-
 func update_cast_bar():
-	if cast_bar == null:
-		return
-
 	cast_bar.visible = true
 	cast_bar.max_value = 100
 
@@ -67,6 +77,15 @@ func update_cast_bar():
 			cast_bar.value = 0
 	else:
 		cast_bar.value = 0
+
+func update_status_label():
+	if unit.has_method("get_status_text"):
+		status_label.text = unit.get_status_text()
+	else:
+		status_label.text = "Idle"
+
+func set_status_text(text: String):
+	status_label.text = text
 
 func get_unit_current_health() -> int:
 	if unit.has_method("get_current_health"):
@@ -89,3 +108,15 @@ func get_unit_max_health() -> int:
 		return 1
 
 	return int(value)
+
+func _on_mouse_entered():
+	modulate = Color(1.25, 1.25, 1.25, 1.0)
+
+	if unit != null and is_instance_valid(unit):
+		hovered.emit(unit)
+
+func _on_mouse_exited():
+	modulate = normal_modulate
+
+	if unit != null and is_instance_valid(unit):
+		unhovered.emit(unit)

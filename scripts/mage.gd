@@ -16,6 +16,11 @@ signal defeated(unit)
 @onready var health_bar = get_node_or_null("HealthBar")
 @onready var cast_bar = get_node_or_null("CastBar")
 
+@export var manual_move_stop_distance: float = 12.0
+
+var has_manual_move_order: bool = false
+var manual_move_destination: Vector2 = Vector2.ZERO
+
 var health: int
 var target: Node2D = null
 
@@ -39,7 +44,9 @@ func _physics_process(delta):
 		velocity = Vector2.ZERO
 		move_and_slide()
 		return
-
+	if update_manual_move_order():
+		move_and_slide()
+		return
 	cooldown_timer = max(cooldown_timer - delta, 0)
 
 	if target == null or not is_instance_valid(target):
@@ -126,6 +133,7 @@ func move_away_from_target(target_node: Node2D):
 	velocity = direction * speed
 
 func stop_action():
+	has_manual_move_order = false
 	target = null
 	is_casting = false
 	cast_timer = 0.0
@@ -241,7 +249,8 @@ func get_cast_name() -> String:
 func get_status_text() -> String:
 	if is_dead:
 		return "Dead"
-
+	if has_manual_move_order:
+		return "Moving"
 	if is_casting:
 		return "Casting Fireball"
 
@@ -266,3 +275,30 @@ func get_display_name() -> String:
 		return display_name
 
 	return name
+func command_move_to_position(destination: Vector2):
+	if is_dead:
+		return
+
+	has_manual_move_order = true
+	manual_move_destination = destination
+
+	if is_casting:
+		is_casting = false
+		cast_timer = 0.0
+		update_cast_bar()
+
+	print(get_display_name(), "moving to position:", destination)
+func update_manual_move_order() -> bool:
+	if not has_manual_move_order:
+		return false
+
+	var distance := global_position.distance_to(manual_move_destination)
+
+	if distance <= manual_move_stop_distance:
+		has_manual_move_order = false
+		velocity = Vector2.ZERO
+		return false
+
+	var direction := global_position.direction_to(manual_move_destination)
+	velocity = direction * speed
+	return true

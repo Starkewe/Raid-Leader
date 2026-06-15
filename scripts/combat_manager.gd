@@ -3,6 +3,7 @@ extends Node
 @onready var raid_spawner: RaidSpawner = get_node_or_null("../RaidSpawner")
 @onready var boss = get_node_or_null("../Boss")
 @onready var ui = get_node_or_null("../UI")
+@onready var player = get_node_or_null("../Player")
 
 var boss_alive: bool = true
 var fight_active: bool = false
@@ -20,6 +21,8 @@ var status_refresh_interval: float = 0.15
 
 var temporary_statuses: Dictionary = {}
 
+var hovered_unit: Node = null
+
 func _ready():
 	print("CombatManager loaded")
 	call_deferred("initialize_combat")
@@ -36,7 +39,8 @@ func initialize_combat():
 
 		if ui.has_method("setup_boss_frame"):
 			ui.setup_boss_frame(boss)
-
+		connect_ui_signals()
+	
 	initialize_ui()
 	refresh_all_statuses()
 
@@ -47,6 +51,9 @@ func _process(delta):
 
 	update_temporary_statuses(delta)
 	update_status_refresh(delta)
+
+	if Input.is_action_just_pressed("position_to_player"):
+		command_hovered_unit_to_player()
 
 	if Input.is_action_just_pressed("command_attack"):
 		command_party_attack()
@@ -381,7 +388,9 @@ func is_unit_alive(unit: Node) -> bool:
 func handle_unit_defeated(unit: Node):
 	if unit == null:
 		return
-
+	if hovered_unit == unit:
+		hovered_unit = null
+	
 	print("CombatManager handling death:", unit.name)
 
 	temporary_statuses.erase(unit)
@@ -434,7 +443,8 @@ func handle_party_wipe():
 
 func reset_encounter():
 	print("Resetting encounter")
-
+	
+	hovered_unit = null
 	boss_alive = true
 	fight_active = false
 	encounter_state = "idle"
@@ -458,3 +468,65 @@ func reset_encounter():
 
 	initialize_ui()
 	refresh_all_statuses()
+func connect_ui_signals():
+	if ui == null or not is_instance_valid(ui):
+		return
+
+	if ui.has_signal("raid_frame_hovered"):
+		var hovered_callback := Callable(self, "_on_raid_frame_hovered")
+
+		if not ui.is_connected("raid_frame_hovered", hovered_callback):
+			ui.connect("raid_frame_hovered", hovered_callback)
+
+	if ui.has_signal("raid_frame_unhovered"):
+		var unhovered_callback := Callable(self, "_on_raid_frame_unhovered")
+
+		if not ui.is_connected("raid_frame_unhovered", unhovered_callback):
+			ui.connect("raid_frame_unhovered", unhovered_callback)
+func _on_raid_frame_hovered(unit: Node):
+	if unit == null or not is_instance_valid(unit):
+		return
+
+	if not is_unit_alive(unit):
+		return
+
+	hovered_unit = unit
+	print("Hovered unit:", get_unit_debug_name(unit))
+
+func _on_raid_frame_unhovered(unit: Node):
+	if unit == null:
+		return
+
+	if hovered_unit == unit:
+		print("Stopped hovering unit:", get_unit_debug_name(unit))
+		hovered_unit = null
+func get_unit_debug_name(unit: Node) -> String:
+	if unit == null or not is_instance_valid(unit):
+		return "None"
+
+	if unit.has_method("get_display_name"):
+		return unit.get_display_name()
+
+	return unit.name
+func command_hovered_unit_to_player():
+	if hovered_unit == null or not is_instance_valid(hovered_unit):
+		print("No raid member selected by mouseover.")
+		return
+
+	if not is_unit_alive(hovered_unit):
+		print("Hovered unit is not alive.")
+		hovered_unit = null
+		return
+
+	if player == null or not is_instance_valid(player):
+		print("Player node is missing.")
+		return
+
+	if not hovered_unit.has_method("command_move_to_position"):
+		print(get_unit_debug_name(hovered_unit), "cannot receive movement commands.")
+		return
+
+	print("Command:", get_unit_debug_name(hovered_unit), "move to player position.")
+
+	hovered_unit.command_move_to_position(player.global_position)
+	set_temporary_status(hovered_unit, "Moving to Player", 0.75)
