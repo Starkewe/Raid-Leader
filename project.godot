@@ -11,9 +11,8 @@ config_version=5
 [application]
 
 config/name="Raid Leader"
-run/main_scene="uid://6bvbwg83doc2"
+run/main_scene="uid://d4bdnpijqc7g2"
 config/features=PackedStringArray("4.6", "Forward Plus")
-config/icon="res://icon.svg"
 
 [editor]
 

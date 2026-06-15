@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bn04xwh66os6m"
-path="res://.godot/imported/Rogue.png-38c96ac61e035c8cc8a57d0d2d810feb.ctex"
+uid="uid://bcxi8k4ajdthm"
+path="res://.godot/imported/Mage.png-7e26be45aa4760dd20736f7b3f671156.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Rogue.png"
-dest_files=["res://.godot/imported/Rogue.png-38c96ac61e035c8cc8a57d0d2d810feb.ctex"]
+source_file="res://icons/Mage.png"
+dest_files=["res://.godot/imported/Mage.png-7e26be45aa4760dd20736f7b3f671156.ctex"]
 
 [params]
 

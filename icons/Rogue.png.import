@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://i73sp1hun4lk"
-path="res://.godot/imported/Priest.png-6de7911a6e91017b7ba8a9b5dceb539d.ctex"
+uid="uid://bn04xwh66os6m"
+path="res://.godot/imported/Rogue.png-de9b4237c1c837968cdc174a45b57fb4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Priest.png"
-dest_files=["res://.godot/imported/Priest.png-6de7911a6e91017b7ba8a9b5dceb539d.ctex"]
+source_file="res://icons/Rogue.png"
+dest_files=["res://.godot/imported/Rogue.png-de9b4237c1c837968cdc174a45b57fb4.ctex"]
 
 [params]
 
