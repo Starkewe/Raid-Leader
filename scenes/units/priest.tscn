@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://c384rumex7yu3"]
+
+[ext_resource type="Script" uid="uid://sb0u462ha6dn" path="res://scripts/priest.gd" id="1_qoljh"]
+[ext_resource type="Texture2D" uid="uid://i73sp1hun4lk" path="res://icons/Priest.png" id="2_o4ce8"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
+
+[node name="Priest" type="CharacterBody2D" unique_id=2039238404]
+script = ExtResource("1_qoljh")
+speed = 180.0
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1850325140]
+texture = ExtResource("2_o4ce8")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=2123307781]
+shape = SubResource("CircleShape2D_0xm2m")
+disabled = true
+
+[node name="HealthBar" type="ProgressBar" parent="." unique_id=1611724530]
+offset_left = -50.0
+offset_top = -75.0
+offset_right = 50.0
+offset_bottom = -65.0
+value = 100.0
+show_percentage = false
+
+[node name="CastBar" type="ProgressBar" parent="." unique_id=500682661]
+offset_left = -50.0
+offset_top = -95.0
+offset_right = 50.0
+offset_bottom = -85.0
+show_percentage = false

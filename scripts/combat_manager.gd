@@ -1,9 +1,6 @@
 extends Node
 
-@onready var warrior = get_node_or_null("../Warrior")
-@onready var priest = get_node_or_null("../Priest")
-@onready var rogue = get_node_or_null("../Rogue")
-@onready var mage = get_node_or_null("../Mage")
+@onready var raid_spawner: RaidSpawner = get_node_or_null("../RaidSpawner")
 @onready var boss = get_node_or_null("../Boss")
 @onready var ui = get_node_or_null("../UI")
 
@@ -16,21 +13,18 @@ var event_queue: Array = []
 var processing_events: bool = false
 
 var priest_follow_boss_target: bool = false
-
 var spawn_positions: Dictionary = {}
 
 var status_refresh_timer: float = 0.0
 var status_refresh_interval: float = 0.15
 
-# Temporary status messages, such as:
-# Rogue: Interrupt Command
-# These expire and then the raid frame returns to the unit's real status.
 var temporary_statuses: Dictionary = {}
-
 
 func _ready():
 	print("CombatManager loaded")
+	call_deferred("initialize_combat")
 
+func initialize_combat():
 	build_party_member_list()
 	store_spawn_positions()
 	connect_unit_signals()
@@ -39,11 +33,9 @@ func _ready():
 	if ui != null and is_instance_valid(ui):
 		if ui.has_method("setup_raid_frames"):
 			ui.setup_raid_frames(party_members)
-		else:
-			print("UI is missing setup_raid_frames(units).")
 
 	initialize_ui()
-
+	refresh_all_statuses()
 
 func _process(delta):
 	if Input.is_action_just_pressed("reset_encounter"):
@@ -62,38 +54,21 @@ func _process(delta):
 	if Input.is_action_just_pressed("command_interrupt"):
 		command_interrupt()
 
-
 func build_party_member_list():
 	party_members.clear()
 
-	# Future-friendly path:
-	# If you later add party members to a Godot group named "party_member",
-	# CombatManager will use those automatically.
-	var grouped_members = get_tree().get_nodes_in_group("party_member")
-
-	if grouped_members.size() > 0:
-		for unit in grouped_members:
-			if unit != null and is_instance_valid(unit):
-				party_members.append(unit)
-
-		print("Party members loaded from group. Count:", party_members.size())
+	if raid_spawner != null and is_instance_valid(raid_spawner):
+		party_members = raid_spawner.spawn_raid_from_roster()
+		print("CombatManager received spawned party count:", party_members.size())
 		return
 
-	# Current prototype fallback:
-	# Uses the four existing scene nodes.
-	var current_units = [
-		warrior,
-		rogue,
-		mage,
-		priest
-	]
+	var grouped_members = get_tree().get_nodes_in_group("party_member")
 
-	for unit in current_units:
+	for unit in grouped_members:
 		if unit != null and is_instance_valid(unit):
 			party_members.append(unit)
 
-	print("Party members loaded from scene nodes. Count:", party_members.size())
-
+	print("CombatManager loaded party from group. Count:", party_members.size())
 
 func store_spawn_positions():
 	spawn_positions.clear()
@@ -104,7 +79,6 @@ func store_spawn_positions():
 
 	if boss != null and is_instance_valid(boss):
 		spawn_positions[boss] = boss.global_position
-
 
 func connect_unit_signals():
 	for unit in party_members:
@@ -117,7 +91,6 @@ func connect_unit_signals():
 			if not unit.is_connected("defeated", callback):
 				unit.connect("defeated", callback)
 
-
 func connect_boss_signals():
 	if boss == null or not is_instance_valid(boss):
 		return
@@ -127,7 +100,6 @@ func connect_boss_signals():
 
 		if not boss.is_connected("defeated", callback):
 			boss.connect("defeated", callback)
-
 
 func initialize_ui():
 	encounter_state = "idle"
@@ -141,14 +113,12 @@ func initialize_ui():
 	if ui.has_method("set_boss_status"):
 		ui.set_boss_status("Idle")
 
-
 func update_status_refresh(delta):
 	status_refresh_timer -= delta
 
 	if status_refresh_timer <= 0:
 		status_refresh_timer = status_refresh_interval
 		refresh_all_statuses()
-
 
 func refresh_all_statuses():
 	if ui == null or not is_instance_valid(ui):
@@ -169,7 +139,6 @@ func refresh_all_statuses():
 	else:
 		ui.set_boss_status("Idle")
 
-
 func set_temporary_status(unit: Node, text: String, duration: float):
 	if unit == null or not is_instance_valid(unit):
 		return
@@ -180,7 +149,6 @@ func set_temporary_status(unit: Node, text: String, duration: float):
 	}
 
 	refresh_all_statuses()
-
 
 func update_temporary_statuses(delta):
 	if temporary_statuses.is_empty():
@@ -204,7 +172,6 @@ func update_temporary_statuses(delta):
 	for unit in expired_units:
 		temporary_statuses.erase(unit)
 
-
 func get_status_override_texts() -> Dictionary:
 	var overrides: Dictionary = {}
 
@@ -220,7 +187,6 @@ func get_status_override_texts() -> Dictionary:
 
 	return overrides
 
-
 func queue_combat_event(event_type: String, data: Dictionary = {}):
 	event_queue.append({
 		"type": event_type,
@@ -229,7 +195,6 @@ func queue_combat_event(event_type: String, data: Dictionary = {}):
 
 	if not processing_events:
 		call_deferred("process_combat_events")
-
 
 func process_combat_events():
 	processing_events = true
@@ -240,7 +205,6 @@ func process_combat_events():
 
 	processing_events = false
 
-
 func handle_combat_event(event: Dictionary):
 	match event["type"]:
 		"unit_defeated":
@@ -248,16 +212,13 @@ func handle_combat_event(event: Dictionary):
 		"boss_defeated":
 			handle_boss_defeated()
 
-
 func _on_unit_defeated(unit: Node):
 	queue_combat_event("unit_defeated", {
 		"unit": unit
 	})
 
-
 func _on_boss_defeated():
 	queue_combat_event("boss_defeated")
-
 
 func command_party_attack():
 	if not boss_alive:
@@ -285,7 +246,6 @@ func command_party_attack():
 
 	refresh_all_statuses()
 
-
 func command_healers_to_heal_boss_target():
 	print("Command: Healers heal boss target")
 
@@ -297,9 +257,7 @@ func command_healers_to_heal_boss_target():
 		heal_target = get_first_living_party_member()
 
 	assign_healers_to_target(heal_target)
-
 	refresh_all_statuses()
-
 
 func command_interrupt():
 	print("Command: Interrupt")
@@ -323,7 +281,6 @@ func command_interrupt():
 	interrupter.command_interrupt(boss)
 	set_temporary_status(interrupter, "Interrupt Command", 0.5)
 
-
 func assign_boss_target(new_target: Node2D):
 	if boss == null or not is_instance_valid(boss):
 		return
@@ -346,7 +303,6 @@ func assign_boss_target(new_target: Node2D):
 
 	refresh_all_statuses()
 
-
 func assign_healers_to_target(new_target: Node2D):
 	for unit in party_members:
 		if not is_unit_alive(unit):
@@ -361,7 +317,6 @@ func assign_healers_to_target(new_target: Node2D):
 		else:
 			unit.command_heal(new_target)
 
-
 func get_current_or_first_living_target() -> Node2D:
 	var current_target = get_boss_target()
 
@@ -369,7 +324,6 @@ func get_current_or_first_living_target() -> Node2D:
 		return current_target
 
 	return get_first_living_party_member()
-
 
 func get_boss_target() -> Node2D:
 	if boss == null or not is_instance_valid(boss):
@@ -380,14 +334,12 @@ func get_boss_target() -> Node2D:
 
 	return null
 
-
 func get_first_living_party_member() -> Node2D:
 	for unit in party_members:
 		if is_unit_alive(unit):
 			return unit
 
 	return null
-
 
 func get_living_party_members() -> Array:
 	var living_members: Array = []
@@ -398,7 +350,6 @@ func get_living_party_members() -> Array:
 
 	return living_members
 
-
 func get_first_living_interrupt_unit() -> Node:
 	for unit in party_members:
 		if not is_unit_alive(unit):
@@ -408,7 +359,6 @@ func get_first_living_interrupt_unit() -> Node:
 			return unit
 
 	return null
-
 
 func is_unit_alive(unit: Node) -> bool:
 	if unit == null:
@@ -421,7 +371,6 @@ func is_unit_alive(unit: Node) -> bool:
 		return unit.is_alive()
 
 	return true
-
 
 func handle_unit_defeated(unit: Node):
 	if unit == null:
@@ -448,7 +397,6 @@ func handle_unit_defeated(unit: Node):
 
 	refresh_all_statuses()
 
-
 func handle_boss_defeated():
 	print("CombatManager handling boss defeated")
 
@@ -464,7 +412,6 @@ func handle_boss_defeated():
 
 	refresh_all_statuses()
 
-
 func handle_party_wipe():
 	print("Party wiped.")
 
@@ -478,7 +425,6 @@ func handle_party_wipe():
 			boss.clear_target()
 
 	refresh_all_statuses()
-
 
 func reset_encounter():
 	print("Resetting encounter")
@@ -503,10 +449,6 @@ func reset_encounter():
 	if boss != null and is_instance_valid(boss):
 		if spawn_positions.has(boss) and boss.has_method("reset_boss"):
 			boss.reset_boss(spawn_positions[boss])
-
-	if ui != null and is_instance_valid(ui):
-		if ui.has_method("setup_raid_frames"):
-			ui.setup_raid_frames(party_members)
 
 	initialize_ui()
 	refresh_all_statuses()

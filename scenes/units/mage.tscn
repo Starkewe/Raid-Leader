@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://bgnyagfrql6bt"]
+
+[ext_resource type="Script" uid="uid://dotxd7qplykm" path="res://scripts/mage.gd" id="1_yh3ei"]
+[ext_resource type="Texture2D" uid="uid://bcxi8k4ajdthm" path="res://icons/Mage.png" id="2_6o071"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
+
+[node name="Mage" type="CharacterBody2D" unique_id=1612081048]
+script = ExtResource("1_yh3ei")
+speed = 180.0
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1491856982]
+texture = ExtResource("2_6o071")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1614981737]
+shape = SubResource("CircleShape2D_0xm2m")
+disabled = true
+
+[node name="HealthBar" type="ProgressBar" parent="." unique_id=1207149423]
+offset_left = -50.0
+offset_top = -75.0
+offset_right = 50.0
+offset_bottom = -65.0
+value = 100.0
+show_percentage = false
+
+[node name="CastBar" type="ProgressBar" parent="." unique_id=1901733867]
+offset_left = -50.0
+offset_top = -95.0
+offset_right = 50.0
+offset_bottom = -85.0
+show_percentage = false

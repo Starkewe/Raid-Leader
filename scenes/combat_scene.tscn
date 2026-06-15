@@ -3,14 +3,7 @@
 [ext_resource type="Script" uid="uid://cdaneqbybmxyo" path="res://scripts/main.gd" id="1_blj0x"]
 [ext_resource type="Script" uid="uid://d3mtqqvb1e6j" path="res://scripts/player.gd" id="2_6r8bj"]
 [ext_resource type="Texture2D" uid="uid://b863kegp6yl0q" path="res://icons/Player.png" id="3_da1ml"]
-[ext_resource type="Script" uid="uid://cjx110vs1n5yi" path="res://scripts/rogue.gd" id="4_lef5q"]
-[ext_resource type="Texture2D" uid="uid://bn04xwh66os6m" path="res://icons/Rogue.png" id="5_aepks"]
-[ext_resource type="Script" uid="uid://dotxd7qplykm" path="res://scripts/mage.gd" id="6_ff51q"]
-[ext_resource type="Texture2D" uid="uid://bcxi8k4ajdthm" path="res://icons/Mage.png" id="7_gcf8m"]
-[ext_resource type="Script" uid="uid://c253xadni02cq" path="res://scripts/warrior.gd" id="8_dobui"]
-[ext_resource type="Texture2D" uid="uid://2cg36g4wi3uh" path="res://icons/Warrior.png" id="9_cto7h"]
-[ext_resource type="Script" uid="uid://sb0u462ha6dn" path="res://scripts/priest.gd" id="10_iwqrp"]
-[ext_resource type="Texture2D" uid="uid://i73sp1hun4lk" path="res://icons/Priest.png" id="11_36hrl"]
+[ext_resource type="Script" uid="uid://qsuiu4dsdim1" path="res://scripts/raid_spawner.gd" id="9_6ovae"]
 [ext_resource type="Script" uid="uid://bi8tmxaveeev8" path="res://scripts/boss.gd" id="12_tvfrr"]
 [ext_resource type="Texture2D" uid="uid://ddx8mppsoowlq" path="res://icons/Boss.png" id="13_ebgdu"]
 [ext_resource type="Script" uid="uid://cpnc8waxypk5g" path="res://scripts/ui.gd" id="14_62tjo"]
@@ -20,7 +13,7 @@
 [sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
 
 [node name="Main" type="Node2D" unique_id=592902322]
-position = Vector2(-101, -211)
+position = Vector2(-106, -214)
 script = ExtResource("1_blj0x")
 
 [node name="Player" type="CharacterBody2D" parent="." unique_id=1652335767]
@@ -28,6 +21,7 @@ position = Vector2(106, 277)
 script = ExtResource("2_6r8bj")
 
 [node name="Sprite2D" type="Sprite2D" parent="Player" unique_id=1546631933]
+position = Vector2(7, 29)
 texture = ExtResource("3_da1ml")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player" unique_id=1203210803]
@@ -42,103 +36,6 @@ offset_top = -75.0
 offset_right = 50.0
 offset_bottom = -65.0
 value = 100.0
-show_percentage = false
-
-[node name="Rogue" type="CharacterBody2D" parent="." unique_id=1616742351]
-position = Vector2(-98, 276)
-script = ExtResource("4_lef5q")
-speed = 180.0
-attack_range = 95.0
-stop_distance = 85.0
-attack_damage = 10
-attack_cooldown = 1.0
-
-[node name="Sprite2D" type="Sprite2D" parent="Rogue" unique_id=944549515]
-texture = ExtResource("5_aepks")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Rogue" unique_id=1259853863]
-shape = SubResource("CircleShape2D_0xm2m")
-disabled = true
-
-[node name="HealthBar" type="ProgressBar" parent="Rogue" unique_id=1994827582]
-offset_left = -50.0
-offset_top = -75.0
-offset_right = 50.0
-offset_bottom = -65.0
-value = 100.0
-show_percentage = false
-
-[node name="Mage" type="CharacterBody2D" parent="." unique_id=1102062815]
-position = Vector2(-98, 432)
-script = ExtResource("6_ff51q")
-speed = 180.0
-
-[node name="Sprite2D" type="Sprite2D" parent="Mage" unique_id=732039930]
-texture = ExtResource("7_gcf8m")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Mage" unique_id=1856187489]
-shape = SubResource("CircleShape2D_0xm2m")
-disabled = true
-
-[node name="HealthBar" type="ProgressBar" parent="Mage" unique_id=1325580729]
-offset_left = -50.0
-offset_top = -75.0
-offset_right = 50.0
-offset_bottom = -65.0
-value = 100.0
-show_percentage = false
-
-[node name="CastBar" type="ProgressBar" parent="Mage" unique_id=1610274050]
-offset_left = -50.0
-offset_top = -95.0
-offset_right = 50.0
-offset_bottom = -85.0
-show_percentage = false
-
-[node name="Warrior" type="CharacterBody2D" parent="." unique_id=1912031607]
-position = Vector2(291, 271)
-script = ExtResource("8_dobui")
-
-[node name="Sprite2D" type="Sprite2D" parent="Warrior" unique_id=2031416161]
-texture = ExtResource("9_cto7h")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Warrior" unique_id=923389647]
-shape = SubResource("CircleShape2D_0xm2m")
-disabled = true
-
-[node name="HealthBar" type="ProgressBar" parent="Warrior" unique_id=959859092]
-offset_left = -50.0
-offset_top = -75.0
-offset_right = 50.0
-offset_bottom = -65.0
-value = 100.0
-show_percentage = false
-
-[node name="Priest" type="CharacterBody2D" parent="." unique_id=393305818]
-position = Vector2(293, 429)
-script = ExtResource("10_iwqrp")
-speed = 180.0
-
-[node name="Sprite2D" type="Sprite2D" parent="Priest" unique_id=1601028815]
-texture = ExtResource("11_36hrl")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Priest" unique_id=947435966]
-shape = SubResource("CircleShape2D_0xm2m")
-disabled = true
-
-[node name="HealthBar" type="ProgressBar" parent="Priest" unique_id=1237232650]
-offset_left = -50.0
-offset_top = -75.0
-offset_right = 50.0
-offset_bottom = -65.0
-value = 100.0
-show_percentage = false
-
-[node name="CastBar" type="ProgressBar" parent="Priest" unique_id=1476173153]
-offset_left = -50.0
-offset_top = -95.0
-offset_right = 50.0
-offset_bottom = -85.0
 show_percentage = false
 
 [node name="Boss" type="CharacterBody2D" parent="." unique_id=1434723703]
@@ -180,3 +77,7 @@ layout_mode = 2
 
 [node name="CombatManager" type="Node" parent="." unique_id=1660831030]
 script = ExtResource("16_1f740")
+
+[node name="RaidSpawner" type="Node2D" parent="." unique_id=1085296750]
+position = Vector2(108, 545)
+script = ExtResource("9_6ovae")

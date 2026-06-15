@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://ckeceftdnbddb"]
+
+[ext_resource type="Script" uid="uid://cjx110vs1n5yi" path="res://scripts/rogue.gd" id="1_4sdmq"]
+[ext_resource type="Texture2D" uid="uid://bn04xwh66os6m" path="res://icons/Rogue.png" id="2_lc83y"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
+
+[node name="Rogue" type="CharacterBody2D" unique_id=449289016]
+script = ExtResource("1_4sdmq")
+speed = 180.0
+attack_range = 95.0
+stop_distance = 85.0
+attack_damage = 10
+attack_cooldown = 1.0
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=392022633]
+texture = ExtResource("2_lc83y")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1258570167]
+shape = SubResource("CircleShape2D_0xm2m")
+disabled = true
+
+[node name="HealthBar" type="ProgressBar" parent="." unique_id=1282935590]
+offset_left = -50.0
+offset_top = -75.0
+offset_right = 50.0
+offset_bottom = -65.0
+value = 100.0
+show_percentage = false

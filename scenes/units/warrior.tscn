@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://dcoj3dagdbdt3"]
+
+[ext_resource type="Script" uid="uid://c253xadni02cq" path="res://scripts/warrior.gd" id="1_fvbna"]
+[ext_resource type="Texture2D" uid="uid://2cg36g4wi3uh" path="res://icons/Warrior.png" id="2_jq62g"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
+
+[node name="Warrior" type="CharacterBody2D" unique_id=317422129]
+script = ExtResource("1_fvbna")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1920222874]
+texture = ExtResource("2_jq62g")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=435050703]
+shape = SubResource("CircleShape2D_0xm2m")
+disabled = true
+
+[node name="HealthBar" type="ProgressBar" parent="." unique_id=94153271]
+offset_left = -50.0
+offset_top = -75.0
+offset_right = 50.0
+offset_bottom = -65.0
+value = 100.0
+show_percentage = false

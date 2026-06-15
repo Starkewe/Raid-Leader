@@ -13,16 +13,12 @@ extends Control
 @onready var start_fight_from_team_button: Button = $TeamPanel/CenterContainer/VBoxContainer/StartFightFromTeamButton
 @onready var back_button: Button = $TeamPanel/CenterContainer/VBoxContainer/BackButton
 
-var class_order: Array[String] = [
-	"Warrior",
-	"Rogue",
-	"Mage",
-	"Priest"
-]
-
+var unit_class_order: Array[String] = []
 var count_labels: Dictionary = {}
 
 func _ready():
+	unit_class_order = GameState.get_available_classes()
+
 	start_fight_button.pressed.connect(_on_start_fight_pressed)
 	manage_team_button.pressed.connect(_on_manage_team_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
@@ -46,12 +42,12 @@ func build_team_rows():
 	clear_roster_rows()
 	count_labels.clear()
 
-	for unit_class in class_order:
+	for unit_class in unit_class_order:
 		var row := HBoxContainer.new()
 		row.custom_minimum_size = Vector2(360, 36)
 
 		var unit_label := Label.new()
-		unit_label.text = unit_class
+		unit_label.text = GameState.get_display_name_for_class(unit_class)
 		unit_label.custom_minimum_size = Vector2(120, 30)
 
 		var minus_button := Button.new()
@@ -88,7 +84,7 @@ func refresh_team_panel():
 
 	total_label.text = "Raid Size: " + str(total_count) + " / " + str(GameState.MAX_RAID_SIZE)
 
-	for unit_class in class_order:
+	for unit_class in unit_class_order:
 		if count_labels.has(unit_class):
 			count_labels[unit_class].text = str(GameState.get_class_count(unit_class))
 
