@@ -15,13 +15,10 @@ var encounter_state: String = "idle"
 var party_members: Array = []
 
 var command_controller: RaidCommandController = null
-var combat_event_queue: CombatEventQueue = null
+var combat_event_queue = null
 var status_presenter = null
 
 var spawn_positions: Dictionary = {}
-
-var status_refresh_timer: float = 0.0
-var status_refresh_interval: float = 0.15
 
 func _ready():
 	print("CombatManager loaded")
@@ -29,7 +26,7 @@ func _ready():
 	command_controller = RaidCommandController.new()
 	connect_command_controller_signals()
 	
-	combat_event_queue = CombatEventQueue.new()
+	combat_event_queue = CombatEventQueueScript.new()
 	combat_event_queue.setup(Callable(self, "handle_combat_event"))
 	
 	status_presenter = CombatStatusPresenterScript.new()
@@ -144,11 +141,11 @@ func initialize_ui():
 	if ui.has_method("set_boss_status"):
 		ui.set_boss_status("Idle")
 
-func update_status_refresh(delta):
-	status_refresh_timer -= delta
+func update_status_refresh(delta: float) -> void:
+	if status_presenter == null:
+		return
 
-	if status_refresh_timer <= 0:
-		status_refresh_timer = status_refresh_interval
+	if status_presenter.should_refresh_statuses(delta):
 		refresh_all_statuses()
 
 func refresh_all_statuses():
@@ -308,7 +305,7 @@ func reset_encounter():
 
 	if status_presenter != null:
 		status_presenter.clear_all_temporary_statuses()
-	status_refresh_timer = 0.0
+		status_presenter.reset_status_refresh_timer()
 
 	for unit in party_members:
 		if unit == null or not is_instance_valid(unit):

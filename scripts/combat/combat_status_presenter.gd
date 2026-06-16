@@ -3,7 +3,8 @@ extends RefCounted
 class_name CombatStatusPresenter
 
 var temporary_statuses: Dictionary = {}
-
+var status_refresh_timer: float = 0.0
+var status_refresh_interval: float = 0.15
 
 func set_temporary_status(unit: Node, text: String, duration: float) -> void:
 	if unit == null:
@@ -79,3 +80,15 @@ func get_status_override_texts(is_unit_alive_callable: Callable = Callable()) ->
 		overrides[unit] = String(data.get("text", ""))
 
 	return overrides
+func should_refresh_statuses(delta: float) -> bool:
+	status_refresh_timer += delta
+
+	if status_refresh_timer < status_refresh_interval:
+		return false
+
+	status_refresh_timer = 0.0
+	return true
+
+
+func reset_status_refresh_timer() -> void:
+	status_refresh_timer = 0.0
