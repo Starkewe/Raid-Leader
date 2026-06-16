@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://bgnyagfrql6bt"]
 
-[ext_resource type="Script" uid="uid://dotxd7qplykm" path="res://scripts/mage.gd" id="1_yh3ei"]
+[ext_resource type="Script" uid="uid://dotxd7qplykm" path="res://scripts/units/mage.gd" id="1_yh3ei"]
 [ext_resource type="Texture2D" uid="uid://bcxi8k4ajdthm" path="res://icons/Mage.png" id="2_6o071"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]

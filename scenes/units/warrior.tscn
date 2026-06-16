@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://dcoj3dagdbdt3"]
 
-[ext_resource type="Script" uid="uid://c253xadni02cq" path="res://scripts/warrior.gd" id="1_fvbna"]
+[ext_resource type="Script" uid="uid://c253xadni02cq" path="res://scripts/units/warrior.gd" id="1_fvbna"]
 [ext_resource type="Texture2D" uid="uid://2cg36g4wi3uh" path="res://icons/Warrior.png" id="2_jq62g"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
