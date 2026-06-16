@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://cdaneqbybmxyo" path="res://scripts/main.gd" id="1_blj0x"]
 [ext_resource type="Script" uid="uid://d3mtqqvb1e6j" path="res://scripts/player/player.gd" id="2_6r8bj"]
 [ext_resource type="Texture2D" uid="uid://b863kegp6yl0q" path="res://icons/Player.png" id="3_da1ml"]
+[ext_resource type="Script" uid="uid://gg36x3bi60u0" path="res://scripts/ui/command_panel.gd" id="8_ivkwx"]
 [ext_resource type="Script" uid="uid://qsuiu4dsdim1" path="res://scripts/spawning/raid_spawner.gd" id="9_6ovae"]
 [ext_resource type="Script" uid="uid://bi8tmxaveeev8" path="res://scripts/units/boss.gd" id="12_tvfrr"]
 [ext_resource type="Texture2D" uid="uid://ddx8mppsoowlq" path="res://icons/Boss.png" id="13_ebgdu"]
@@ -114,6 +115,13 @@ theme_override_styles/panel = SubResource("StyleBoxEmpty_6ovae")
 [node name="RaidFrameGrid" type="GridContainer" parent="UI/RaidFramesPanel" unique_id=1437070350]
 layout_mode = 2
 columns = 5
+
+[node name="CommandPanel" type="PanelContainer" parent="UI" unique_id=555858210]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+grow_horizontal = 0
+script = ExtResource("8_ivkwx")
 
 [node name="CombatManager" type="Node" parent="." unique_id=1660831030]
 script = ExtResource("16_1f740")

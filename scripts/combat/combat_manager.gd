@@ -32,6 +32,8 @@ func _ready():
 	status_presenter = CombatStatusPresenterScript.new()
 
 	call_deferred("initialize_combat")
+func _on_command_panel_submitted(command_data: Dictionary) -> void:
+	print("CombatManager received command panel data:", command_data)
 func connect_command_controller_signals() -> void:
 	if command_controller == null:
 		return
@@ -60,6 +62,10 @@ func initialize_combat():
 
 		if ui.has_method("setup_boss_frame"):
 			ui.setup_boss_frame(boss)
+
+		if ui.has_method("setup_command_panel"):
+			ui.setup_command_panel(party_members)
+
 		connect_ui_signals()
 	
 	initialize_ui()
@@ -312,6 +318,11 @@ func connect_ui_signals():
 
 		if not ui.is_connected("raid_frame_unhovered", unhovered_callback):
 			ui.connect("raid_frame_unhovered", unhovered_callback)
+	if ui.has_signal("command_panel_submitted"):
+		var command_panel_callback := Callable(self, "_on_command_panel_submitted")
+
+		if not ui.is_connected("command_panel_submitted", command_panel_callback):
+			ui.connect("command_panel_submitted", command_panel_callback)
 func _on_raid_frame_hovered(unit: Node) -> void:
 	if command_controller == null:
 		return

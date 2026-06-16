@@ -1,6 +1,7 @@
 extends CanvasLayer
 signal raid_frame_hovered(unit)
 signal raid_frame_unhovered(unit)
+signal command_panel_submitted(command_data: Dictionary)
 
 @export var raid_member_frame_scene: PackedScene
 
@@ -18,11 +19,13 @@ signal raid_frame_unhovered(unit)
 @onready var boss_health_bar: ProgressBar = get_node_or_null("BossFramePanel/VBoxContainer/BossHealthBar")
 @onready var boss_cast_bar: ProgressBar = get_node_or_null("BossFramePanel/VBoxContainer/BossCastBar")
 @onready var boss_status_label: Label = get_node_or_null("BossFramePanel/VBoxContainer/BossStatusLabel")
+@onready var command_panel = get_node_or_null("CommandPanel")
 
 var frame_by_unit: Dictionary = {}
 var boss: Node = null
 
 func _ready():
+	connect_command_panel_signals()
 	position_ui_panels()
 
 	if raid_frame_grid != null:
@@ -255,3 +258,22 @@ func _on_raid_member_frame_hovered(unit: Node):
 
 func _on_raid_member_frame_unhovered(unit: Node):
 	raid_frame_unhovered.emit(unit)
+func connect_command_panel_signals() -> void:
+	if command_panel == null:
+		return
+
+	if not command_panel.has_signal("command_submitted"):
+		return
+
+	var callback := Callable(self, "_on_command_panel_submitted")
+
+	if not command_panel.is_connected("command_submitted", callback):
+		command_panel.connect("command_submitted", callback)
+func setup_command_panel(party_members: Array) -> void:
+	if command_panel == null:
+		return
+
+	if command_panel.has_method("setup_units"):
+		command_panel.setup_units(party_members)
+func _on_command_panel_submitted(command_data: Dictionary) -> void:
+	command_panel_submitted.emit(command_data)
