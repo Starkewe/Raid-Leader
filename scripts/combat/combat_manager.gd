@@ -47,7 +47,10 @@ func initialize_combat():
 
 	if command_controller != null:
 		command_controller.setup(party_members, boss, player)
-
+	
+	if status_presenter != null:
+		status_presenter.setup(ui, boss, Callable(self, "is_unit_alive"))
+	
 	connect_unit_signals()
 	connect_boss_signals()
 
@@ -129,17 +132,13 @@ func connect_boss_signals():
 		if not boss.is_connected("defeated", callback):
 			boss.connect("defeated", callback)
 
-func initialize_ui():
+func initialize_ui() -> void:
 	encounter_state = "idle"
 
-	if ui == null or not is_instance_valid(ui):
+	if status_presenter == null:
 		return
 
-	if ui.has_method("refresh_raid_frames"):
-		ui.refresh_raid_frames({})
-
-	if ui.has_method("set_boss_status"):
-		ui.set_boss_status("Idle")
+	status_presenter.initialize_ui()
 
 func update_status_refresh(delta: float) -> void:
 	if status_presenter == null:
@@ -148,27 +147,11 @@ func update_status_refresh(delta: float) -> void:
 	if status_presenter.should_refresh_statuses(delta):
 		refresh_all_statuses()
 
-func refresh_all_statuses():
-	if ui == null or not is_instance_valid(ui):
+func refresh_all_statuses() -> void:
+	if status_presenter == null:
 		return
 
-	if ui.has_method("refresh_raid_frames"):
-		ui.refresh_raid_frames(get_status_override_texts())
-
-	if ui.has_method("refresh_boss_frame"):
-		ui.refresh_boss_frame(false)
-
-	if not ui.has_method("set_boss_status"):
-		return
-
-	if encounter_state == "victory":
-		ui.set_boss_status("Defeated")
-	elif encounter_state == "wipe":
-		ui.set_boss_status("Party Wiped")
-	elif boss != null and is_instance_valid(boss) and boss.has_method("get_status_text"):
-		ui.set_boss_status(boss.get_status_text())
-	else:
-		ui.set_boss_status("Idle")
+	status_presenter.refresh_all_statuses(encounter_state)
 
 func set_temporary_status(unit: Node, text: String, duration: float) -> void:
 	if status_presenter == null:
@@ -185,12 +168,6 @@ func update_temporary_statuses(delta: float) -> void:
 
 	if changed:
 		refresh_all_statuses()
-
-func get_status_override_texts() -> Dictionary:
-	if status_presenter == null:
-		return {}
-
-	return status_presenter.get_status_override_texts(Callable(self, "is_unit_alive"))
 
 func queue_combat_event(event_type: String, data: Dictionary = {}) -> void:
 	if combat_event_queue == null:

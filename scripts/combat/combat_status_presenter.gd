@@ -2,6 +2,10 @@ extends RefCounted
 
 class_name CombatStatusPresenter
 
+var ui: Node = null
+var boss: Node = null
+var is_unit_alive_callable: Callable = Callable()
+
 var temporary_statuses: Dictionary = {}
 var status_refresh_timer: float = 0.0
 var status_refresh_interval: float = 0.15
@@ -92,3 +96,39 @@ func should_refresh_statuses(delta: float) -> bool:
 
 func reset_status_refresh_timer() -> void:
 	status_refresh_timer = 0.0
+func setup(new_ui: Node, new_boss: Node, new_is_unit_alive_callable: Callable) -> void:
+	ui = new_ui
+	boss = new_boss
+	is_unit_alive_callable = new_is_unit_alive_callable
+func initialize_ui() -> void:
+	if ui == null or not is_instance_valid(ui):
+		return
+
+	if ui.has_method("refresh_raid_frames"):
+		ui.refresh_raid_frames({})
+
+	if ui.has_method("set_boss_status"):
+		ui.set_boss_status("Idle")
+
+
+func refresh_all_statuses(encounter_state: String) -> void:
+	if ui == null or not is_instance_valid(ui):
+		return
+
+	if ui.has_method("refresh_raid_frames"):
+		ui.refresh_raid_frames(get_status_override_texts(is_unit_alive_callable))
+
+	if ui.has_method("refresh_boss_frame"):
+		ui.refresh_boss_frame(false)
+
+	if not ui.has_method("set_boss_status"):
+		return
+
+	if encounter_state == "victory":
+		ui.set_boss_status("Defeated")
+	elif encounter_state == "wipe":
+		ui.set_boss_status("Party Wiped")
+	elif boss != null and is_instance_valid(boss) and boss.has_method("get_status_text"):
+		ui.set_boss_status(boss.get_status_text())
+	else:
+		ui.set_boss_status("Idle")
