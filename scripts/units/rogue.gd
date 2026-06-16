@@ -2,12 +2,11 @@ extends BaseCombatUnit
 
 class_name Rogue
 
-@export var attack_range: float = 165.0
-@export var stop_distance: float = 145.0
+@export var attack_range_units: float = 5.0
+@export var stop_distance_units: float = 5.0
 @export var attack_damage: int = 8
 @export var attack_cooldown: float = 0.8
-
-@export var interrupt_range: float = 190.0
+@export var interrupt_range_units: float = 5.0
 @export var interrupt_cooldown: float = 3.0
 
 var attack_target_node: Node2D = null
@@ -19,12 +18,8 @@ var interrupt_timer: float = 0.0
 
 func _ready():
 	max_health = 85
-	speed = 220.0
-
 	super._ready()
-
 	print("Rogue ready. HP:", health)
-
 
 func _physics_process(delta):
 	if is_dead:
@@ -75,8 +70,8 @@ func command_interrupt(new_target: Node2D):
 
 	print(get_display_name(), "ordered to interrupt:", get_node_display_name(interrupt_target))
 
-	if not is_node_in_range(interrupt_target, interrupt_range):
-		print(get_display_name(), "is too far to interrupt.")
+	if not is_node_in_range_units(interrupt_target, interrupt_range_units):
+		print(get_display_name(), " is too far to interrupt.")
 		return
 
 	try_interrupt()
@@ -92,15 +87,15 @@ func has_valid_attack_target() -> bool:
 
 
 func handle_attack_movement():
-	var distance := get_distance_to_node(attack_target_node)
+	var distance_units: float = get_range_units_to_node(attack_target_node)
 
-	if distance > stop_distance:
+	if distance_units > stop_distance_units:
 		move_toward_node(attack_target_node)
 		return
 
 	stop_movement()
 
-	if distance <= attack_range:
+	if distance_units <= attack_range_units:
 		attack_target()
 
 
@@ -131,7 +126,7 @@ func try_interrupt():
 		print(get_display_name(), "has no valid interrupt target.")
 		return
 
-	if not is_node_in_range(interrupt_target, interrupt_range):
+	if not is_node_in_range_units(interrupt_target, interrupt_range_units):
 		print(get_display_name(), "is too far to interrupt.")
 		return
 

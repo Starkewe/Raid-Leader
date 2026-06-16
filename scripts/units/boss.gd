@@ -1,14 +1,15 @@
 extends CharacterBody2D
 
+const CombatMeasurementsScript := preload("res://scripts/combat/combat_measurements.gd")
+
 signal defeated
 
 @export var max_health: int = 500
-@export var speed: float = 120.0
-
-@export var attack_range: float = 100.0
+@export var speed: float = 140.0
+@export var attack_range_units: float = 5.0
+@export var combat_radius: float = 128.0
 @export var attack_damage: int = 20
 @export var attack_cooldown: float = 1.5
-
 @export var special_cast_interval: float = 6.0
 @export var special_cast_time: float = 2.5
 @export var special_damage: int = 75
@@ -27,6 +28,7 @@ var is_casting: bool = false
 var is_dead: bool = false
 
 func _ready():
+	speed = CombatMeasurementsScript.get_base_movement_speed_pixels_per_second()
 	health = max_health
 	attack_timer = attack_cooldown
 	special_timer = special_cast_interval
@@ -53,16 +55,31 @@ func _physics_process(delta):
 		if special_timer <= 0:
 			start_special_cast()
 
-	var distance := global_position.distance_to(target.global_position)
+	var distance_units: float = get_range_units_to_target(target)
 
-	if distance > attack_range and not is_casting:
+	if distance_units > attack_range_units and not is_casting:
 		chase_target()
 	else:
 		velocity = Vector2.ZERO
 		auto_attack()
 
 	move_and_slide()
+	
+func get_combat_radius() -> float:
+	return combat_radius
 
+func get_distance_pixels_to_target_edge(target_node: Node2D) -> float:
+	if target_node == null or not is_instance_valid(target_node):
+		return 999999.0
+
+	var center_distance: float = global_position.distance_to(target_node.global_position)
+	return maxf(center_distance - combat_radius, 0.0)
+
+
+func get_range_units_to_target(target_node: Node2D) -> float:
+	var distance_pixels: float = get_distance_pixels_to_target_edge(target_node)
+	return CombatMeasurementsScript.pixels_to_range_units(distance_pixels)
+	
 func has_valid_target() -> bool:
 	if target == null:
 		return false

@@ -2,8 +2,8 @@ extends BaseCombatUnit
 
 class_name Mage
 
-@export var cast_range: float = 280.0
-@export var preferred_range: float = 240.0
+@export var cast_range_units: float = 40.0
+
 @export var spell_damage: int = 18
 @export var spell_cooldown: float = 1.0
 @export var spell_cast_time: float = 1.5
@@ -20,14 +20,9 @@ var is_casting: bool = false
 
 func _ready():
 	max_health = 70
-	speed = 150.0
-
 	super._ready()
-
 	update_cast_bar()
-
 	print("Mage ready. HP:", health)
-
 
 func _physics_process(delta):
 	if is_dead:
@@ -87,15 +82,15 @@ func handle_active_cast(delta: float):
 	update_cast(delta)
 
 
-func handle_cast_positioning():
-	var distance := get_distance_to_node(target)
-
-	if distance > cast_range:
-		move_toward_node(target)
+func handle_cast_positioning() -> void:
+	if not is_valid_node(target):
+		stop_movement()
 		return
 
-	if distance < preferred_range - 40.0:
-		move_away_from_node(target)
+	var distance_units: float = get_range_units_to_node(target)
+
+	if distance_units > cast_range_units:
+		move_toward_node(target)
 		return
 
 	stop_movement()
@@ -222,13 +217,10 @@ func get_status_text() -> String:
 		return "Casting Fireball"
 
 	if has_valid_cast_target():
-		var distance := get_distance_to_node(target)
+		var distance_units: float = get_range_units_to_node(target)
 
-		if distance > cast_range:
+		if distance_units > cast_range_units:
 			return "Moving to " + get_node_display_name(target)
-
-		if distance < preferred_range - 40.0:
-			return "Repositioning"
 
 		if cooldown_timer > 0.0:
 			return "Recovering"

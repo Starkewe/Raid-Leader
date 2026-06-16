@@ -1,11 +1,12 @@
 extends CharacterBody2D
-
 class_name BaseCombatUnit
+
+const CombatMeasurementsScript := preload("res://scripts/combat/combat_measurements.gd")
 
 signal defeated(unit)
 
 @export var max_health: int = 100
-@export var speed: float = 160.0
+@export var speed: float = 140.0
 @export var show_world_health_bar: bool = false
 @export var manual_move_stop_distance: float = 12.0
 
@@ -20,9 +21,10 @@ var display_name: String = ""
 
 var has_manual_move_order: bool = false
 var manual_move_destination: Vector2 = Vector2.ZERO
-
+var manual_move_waypoints: Array[Vector2] = []
 
 func _ready():
+	speed = CombatMeasurementsScript.get_base_movement_speed_pixels_per_second()
 	health = max_health
 	update_health_bar()
 
@@ -102,22 +104,40 @@ func stop_movement():
 	velocity = Vector2.ZERO
 
 
-func clear_manual_move_order():
+func clear_manual_move_order() -> void:
 	has_manual_move_order = false
 	manual_move_destination = Vector2.ZERO
+	manual_move_waypoints.clear()
 
 
-func command_move_to_position(destination: Vector2):
+func command_move_to_position(destination: Vector2) -> void:
 	if is_dead:
 		return
 
 	has_manual_move_order = true
+	manual_move_waypoints.clear()
+	manual_move_waypoints.append(destination)
 	manual_move_destination = destination
 
 	on_manual_move_started()
-
 	print(get_display_name(), "moving to position:", destination)
+func command_move_through_positions(destinations: Array[Vector2]) -> void:
+	if is_dead:
+		return
 
+	if destinations.is_empty():
+		return
+
+	has_manual_move_order = true
+	manual_move_waypoints.clear()
+
+	for destination in destinations:
+		manual_move_waypoints.append(destination)
+
+	manual_move_destination = manual_move_waypoints[0]
+
+	on_manual_move_started()
+	print(get_display_name(), "moving through", manual_move_waypoints.size(), "waypoints.")
 
 func on_manual_move_started():
 	pass
@@ -127,14 +147,28 @@ func update_manual_move_order() -> bool:
 	if not has_manual_move_order:
 		return false
 
-	var distance := global_position.distance_to(manual_move_destination)
-
-	if distance <= manual_move_stop_distance:
+	if manual_move_waypoints.is_empty():
 		clear_manual_move_order()
 		stop_movement()
 		return false
 
-	move_toward_position(manual_move_destination)
+	var current_destination: Vector2 = manual_move_waypoints[0]
+	manual_move_destination = current_destination
+
+	var distance: float = global_position.distance_to(current_destination)
+
+	if distance <= manual_move_stop_distance:
+		manual_move_waypoints.remove_at(0)
+
+		if manual_move_waypoints.is_empty():
+			clear_manual_move_order()
+			stop_movement()
+			return false
+
+		current_destination = manual_move_waypoints[0]
+		manual_move_destination = current_destination
+
+	move_toward_position(current_destination)
 	return true
 
 
@@ -213,13 +247,33 @@ func get_distance_to_node(target_node: Node2D) -> float:
 	if not is_valid_node(target_node):
 		return 999999.0
 
-	return global_position.distance_to(target_node.global_position)
+	var center_distance: float = global_position.distance_to(target_node.global_position)
+	var target_radius: float = get_target_combat_radius(target_node)
+
+	return maxf(center_distance - target_radius, 0.0)
+func get_range_units_to_node(target_node: Node2D) -> float:
+	var distance_pixels: float = get_distance_to_node(target_node)
+	return CombatMeasurementsScript.pixels_to_range_units(distance_pixels)
 
 
-func is_node_in_range(target_node: Node2D, check_range: float) -> bool:
-	return get_distance_to_node(target_node) <= check_range
+func is_node_in_range_units(target_node: Node2D, check_range_units: float) -> bool:
+	return get_range_units_to_node(target_node) <= check_range_units
 
 
+func get_target_combat_radius(target_node: Node) -> float:
+	if not is_valid_node(target_node):
+		return 0.0
+
+	if target_node.has_method("get_combat_radius"):
+		var radius_value: Variant = target_node.get_combat_radius()
+		return maxf(float(radius_value), 0.0)
+
+	var property_value: Variant = target_node.get("combat_radius")
+
+	if property_value == null:
+		return 0.0
+
+	return maxf(float(property_value), 0.0)
 func get_node_display_name(target_node: Node) -> String:
 	if not is_valid_node(target_node):
 		return "Invalid Target"

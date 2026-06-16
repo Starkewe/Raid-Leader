@@ -1,6 +1,7 @@
 extends RefCounted
-
 class_name RaidCommandController
+
+const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 
 signal refresh_requested
 signal temporary_status_requested(unit: Node, text: String, duration: float)
@@ -48,7 +49,7 @@ func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
 			return execute_panel_attack(selected_units, where, boss_alive)
 
 		"move":
-			return execute_panel_move(selected_units, where)
+			return execute_panel_move(selected_units, command_data)
 
 		"interrupt":
 			return execute_panel_interrupt(selected_units, where, boss_alive)
@@ -123,12 +124,77 @@ func execute_panel_attack(selected_units: Array, where: String, boss_alive: bool
 
 	return true
 
+func execute_panel_move(selected_units: Array, command_data: Dictionary) -> bool:
+	var where: String = String(command_data.get("where", "none"))
 
-func execute_panel_move(selected_units: Array, where: String) -> bool:
-	if where != "me":
-		print("Move command only supports Where = Me right now.")
+	match where:
+		"me":
+			return execute_move_to_player(selected_units)
+
+		"movement_slot":
+			var region := String(command_data.get("movement_region", "north"))
+			var range_name := String(command_data.get("movement_range", "mid"))
+			return execute_move_to_slot(selected_units, region, range_name)
+
+		"movement_rotate":
+			var region := String(command_data.get("movement_region", "north"))
+			return execute_rotate_to_region(selected_units, region)
+			
+		"movement_rotate_step":
+			var direction := String(command_data.get("movement_direction", "clockwise"))
+			return execute_rotate_step(selected_units, direction)
+
+		"movement_range":
+			var range_name := String(command_data.get("movement_range", "mid"))
+			return execute_move_to_range(selected_units, range_name)
+
+		_:
+			print("Unsupported movement destination:", where)
+			return false
+func execute_rotate_step(selected_units: Array, rotation_direction: String) -> bool:
+	if not is_valid_node(boss) or not boss is Node2D:
+		print("Boss is missing. Cannot rotate movement.")
 		return false
 
+	var boss_2d := boss as Node2D
+	var issued_command: bool = false
+	var living_units: Array = get_living_movable_units(selected_units)
+
+	for unit in living_units:
+		var unit_2d := unit as Node2D
+
+		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
+			boss_2d.global_position,
+			unit_2d.global_position
+		)
+
+		var current_range: String = MovementSlotResolverScript.get_nearest_range_from_position(
+			boss,
+			unit_2d.global_position
+		)
+
+		var next_region: String = MovementSlotResolverScript.get_adjacent_region(
+			current_region,
+			rotation_direction
+		)
+
+		var destination: Vector2 = MovementSlotResolverScript.get_slot_position(
+			boss,
+			next_region,
+			current_range
+		)
+
+		unit.command_move_to_position(destination)
+		temporary_status_requested.emit(unit, "Rotating " + rotation_direction.capitalize(), 0.75)
+		issued_command = true
+
+	if not issued_command:
+		print("No selected units can rotate.")
+		return false
+
+	refresh_requested.emit()
+	return false
+func execute_move_to_player(selected_units: Array) -> bool:
 	if not is_valid_node(player):
 		print("Player node is missing.")
 		return false
@@ -138,7 +204,110 @@ func execute_panel_move(selected_units: Array, where: String) -> bool:
 		return false
 
 	var player_2d := player as Node2D
+	return command_units_to_shared_position(selected_units, player_2d.global_position, "Moving to Player")
+
+
+func execute_move_to_slot(selected_units: Array, region: String, range_name: String) -> bool:
+	if not is_valid_node(boss):
+		print("Boss is missing. Cannot resolve movement slot.")
+		return false
+
+	var slot_position := MovementSlotResolverScript.get_slot_position(boss, region, range_name)
+
+	return command_units_to_shared_position(
+		selected_units,
+		slot_position,
+		"Moving " + region + " " + range_name
+	)
+
+func execute_rotate_to_region(selected_units: Array, region: String) -> bool:
+	if not is_valid_node(boss) or not boss is Node2D:
+		print("Boss is missing. Cannot rotate movement.")
+		return false
+
+	var boss_2d := boss as Node2D
 	var issued_command: bool = false
+	var living_units: Array = get_living_movable_units(selected_units)
+
+	for unit in living_units:
+		var unit_2d := unit as Node2D
+
+		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
+			boss_2d.global_position,
+			unit_2d.global_position
+		)
+
+		var current_range: String = MovementSlotResolverScript.get_nearest_range_from_position(
+			boss,
+			unit_2d.global_position
+		)
+
+		var region_path: Array[String] = MovementSlotResolverScript.get_region_rotation_path(
+			current_region,
+			region
+		)
+
+		var destinations: Array[Vector2] = []
+
+		for path_region in region_path:
+			var destination: Vector2 = MovementSlotResolverScript.get_slot_position(
+				boss,
+				path_region,
+				current_range
+			)
+
+			destinations.append(destination)
+
+		if destinations.is_empty():
+			continue
+
+		if unit.has_method("command_move_through_positions"):
+			unit.command_move_through_positions(destinations)
+		else:
+			unit.command_move_to_position(destinations[destinations.size() - 1])
+
+		temporary_status_requested.emit(unit, "Rotating " + region, 0.75)
+		issued_command = true
+
+	if not issued_command:
+		print("No selected units can rotate.")
+		return false
+
+	refresh_requested.emit()
+	return false
+
+func execute_move_to_range(selected_units: Array, range_name: String) -> bool:
+	if not is_valid_node(boss) or not boss is Node2D:
+		print("Boss is missing. Cannot change movement range.")
+		return false
+
+	var boss_2d := boss as Node2D
+	var issued_command := false
+	var living_units := get_living_movable_units(selected_units)
+
+	for unit in living_units:
+		var unit_2d := unit as Node2D
+		var current_region := MovementSlotResolverScript.get_nearest_region_from_position(
+			boss_2d.global_position,
+			unit_2d.global_position
+		)
+
+		var destination := MovementSlotResolverScript.get_slot_position(boss, current_region, range_name)
+
+		unit.command_move_to_position(destination)
+		temporary_status_requested.emit(unit, "Moving " + range_name, 0.75)
+		issued_command = true
+
+	if not issued_command:
+		print("No selected units can change range.")
+		return false
+
+	refresh_requested.emit()
+	return false
+
+
+func command_units_to_shared_position(selected_units: Array, destination: Vector2, status_text: String) -> bool:
+	var issued_command := false
 
 	for unit in selected_units:
 		if not is_unit_alive(unit):
@@ -147,8 +316,8 @@ func execute_panel_move(selected_units: Array, where: String) -> bool:
 		if not unit.has_method("command_move_to_position"):
 			continue
 
-		unit.command_move_to_position(player_2d.global_position)
-		temporary_status_requested.emit(unit, "Moving to Player", 0.75)
+		unit.command_move_to_position(destination)
+		temporary_status_requested.emit(unit, status_text, 0.75)
 		issued_command = true
 
 	if not issued_command:
@@ -156,10 +325,24 @@ func execute_panel_move(selected_units: Array, where: String) -> bool:
 		return false
 
 	refresh_requested.emit()
-
 	return false
 
+func get_living_movable_units(source_units: Array) -> Array:
+	var movable_units: Array = []
 
+	for unit in source_units:
+		if not is_unit_alive(unit):
+			continue
+
+		if not unit is Node2D:
+			continue
+
+		if not unit.has_method("command_move_to_position"):
+			continue
+
+		movable_units.append(unit)
+
+	return movable_units
 func execute_panel_interrupt(selected_units: Array, where: String, boss_alive: bool) -> bool:
 	if where != "boss":
 		print("Interrupt command only supports Where = Boss right now.")
