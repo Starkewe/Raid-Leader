@@ -2,8 +2,8 @@ extends BaseCombatUnit
 
 class_name Priest
 
-@export var cast_range: float = 280.0
-@export var preferred_range: float = 240.0
+@export var cast_range_units: float = 40.0
+
 @export var heal_amount: int = 15
 @export var heal_cooldown: float = 1.0
 @export var heal_cast_time: float = 1.5
@@ -20,12 +20,8 @@ var is_casting: bool = false
 
 func _ready():
 	max_health = 80
-	speed = 160.0
-
 	super._ready()
-
 	update_cast_bar()
-
 	print("Priest ready. HP:", health)
 
 
@@ -91,25 +87,24 @@ func handle_active_cast(delta: float):
 	update_cast(delta)
 
 
-func handle_heal_positioning():
+func handle_heal_positioning() -> void:
+	if not is_valid_node(heal_target):
+		stop_movement()
+		return
+
 	if heal_target == self:
 		stop_movement()
 		try_start_cast()
 		return
 
-	var distance := get_distance_to_node(heal_target)
+	var distance_units: float = get_range_units_to_node(heal_target)
 
-	if distance > cast_range:
+	if distance_units > cast_range_units:
 		move_toward_node(heal_target)
-		return
-
-	if distance < preferred_range - 40.0:
-		move_away_from_node(heal_target)
 		return
 
 	stop_movement()
 	try_start_cast()
-
 
 func try_start_cast():
 	if cooldown_timer > 0.0:
@@ -240,13 +235,10 @@ func get_status_text() -> String:
 		if heal_target == self:
 			return "Healing Self"
 
-		var distance := get_distance_to_node(heal_target)
+		var distance_units: float = get_range_units_to_node(heal_target)
 
-		if distance > cast_range:
+		if distance_units > cast_range_units:
 			return "Moving to " + get_node_display_name(heal_target)
-
-		if distance < preferred_range - 40.0:
-			return "Repositioning"
 
 		if cooldown_timer > 0.0:
 			return "Recovering"

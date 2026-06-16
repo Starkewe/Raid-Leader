@@ -2,8 +2,8 @@ extends BaseCombatUnit
 
 class_name Warrior
 
-@export var attack_range: float = 175.0
-@export var stop_distance: float = 155.0
+@export var attack_range_units: float = 5.0
+@export var stop_distance_units: float = 5.0
 @export var attack_damage: int = 10
 @export var attack_cooldown: float = 1.0
 
@@ -13,12 +13,8 @@ var cooldown_timer: float = 0.0
 
 func _ready():
 	max_health = 100
-	speed = 180.0
-
 	super._ready()
-
 	print("Warrior ready. HP:", health)
-
 
 func _physics_process(delta):
 	if is_dead:
@@ -64,17 +60,16 @@ func has_valid_attack_target() -> bool:
 
 
 func handle_attack_movement():
-	var distance := get_distance_to_node(target)
+	var distance_units: float = get_range_units_to_node(target)
 
-	if distance > stop_distance:
+	if distance_units > stop_distance_units:
 		move_toward_node(target)
 		return
 
 	stop_movement()
 
-	if distance <= attack_range:
+	if distance_units <= attack_range_units:
 		attack_target()
-
 
 func attack_target():
 	if cooldown_timer > 0.0:

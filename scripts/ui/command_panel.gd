@@ -184,9 +184,23 @@ func populate_where_options_for_current_action() -> void:
 			})
 
 		"move":
-			add_option(where_dropdown, "Me", {
-				"where": "me"
+			add_option(where_dropdown, "Me", { "where": "me" })
+
+			add_option(where_dropdown, "Close Range - Current Direction", {
+				"where": "movement_range",
+				"movement_range": "close"
 			})
+			add_option(where_dropdown, "Mid Range - Current Direction", {
+				"where": "movement_range",
+				"movement_range": "mid"
+			})
+			add_option(where_dropdown, "Far Range - Current Direction", {
+				"where": "movement_range",
+				"movement_range": "far"
+			})
+
+			add_movement_region_options()
+			add_movement_slot_options()
 
 		"interrupt":
 			add_option(where_dropdown, "Boss", {
@@ -260,7 +274,7 @@ func build_command_data() -> Dictionary:
 	var where_data := get_selected_metadata(where_dropdown)
 	var when_data := get_selected_metadata(when_dropdown)
 
-	return {
+	var command_data := {
 		"who_type": String(who_data.get("who_type", "everyone")),
 		"who_value": who_data.get("who_value", ""),
 		"unit": who_data.get("unit", null),
@@ -268,6 +282,14 @@ func build_command_data() -> Dictionary:
 		"where": String(where_data.get("where", "none")),
 		"when": String(when_data.get("when", "now"))
 	}
+
+	for key in where_data.keys():
+		if not command_data.has(key):
+			command_data[key] = where_data[key]
+
+	return command_data
+
+	return command_data
 
 
 func get_unit_display_name(unit: Node) -> String:
@@ -290,3 +312,57 @@ func _on_execute_pressed() -> void:
 	print("CommandPanel submitted:", command_data)
 
 	command_submitted.emit(command_data)
+func add_movement_region_options() -> void:
+	add_option(where_dropdown, "Rotate Counterclockwise", {
+	"where": "movement_rotate_step",
+	"movement_direction": "counterclockwise"
+})
+
+	add_option(where_dropdown, "Rotate Clockwise", {
+		"where": "movement_rotate_step",
+		"movement_direction": "clockwise"
+})
+
+	var regions := [
+		["North", "north"],
+		["Northeast", "northeast"],
+		["East", "east"],
+		["Southeast", "southeast"],
+		["South", "south"],
+		["Southwest", "southwest"],
+		["West", "west"],
+		["Northwest", "northwest"]
+	]
+
+	for region_data in regions:
+		add_option(where_dropdown, "Rotate " + region_data[0], {
+			"where": "movement_rotate",
+			"movement_region": region_data[1]
+		})
+
+
+func add_movement_slot_options() -> void:
+	var regions := [
+		["North", "north"],
+		["Northeast", "northeast"],
+		["East", "east"],
+		["Southeast", "southeast"],
+		["South", "south"],
+		["Southwest", "southwest"],
+		["West", "west"],
+		["Northwest", "northwest"]
+	]
+
+	var ranges := [
+		["Close", "close"],
+		["Mid", "mid"],
+		["Far", "far"]
+	]
+
+	for region_data in regions:
+		for range_data in ranges:
+			add_option(where_dropdown, region_data[0] + " - " + range_data[0], {
+				"where": "movement_slot",
+				"movement_region": region_data[1],
+				"movement_range": range_data[1]
+			})
