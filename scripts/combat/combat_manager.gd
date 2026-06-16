@@ -33,7 +33,15 @@ func _ready():
 
 	call_deferred("initialize_combat")
 func _on_command_panel_submitted(command_data: Dictionary) -> void:
-	print("CombatManager received command panel data:", command_data)
+	if command_controller == null:
+		return
+
+	var command_started: bool = command_controller.execute_panel_command(command_data, boss_alive)
+
+	if command_started:
+		fight_active = true
+		encounter_state = "active"
+		refresh_all_statuses()
 func connect_command_controller_signals() -> void:
 	if command_controller == null:
 		return
