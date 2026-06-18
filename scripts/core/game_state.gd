@@ -4,7 +4,7 @@ const MAX_RAID_SIZE: int = 20
 
 const TUTORIAL_BOSS_CLEAVE_CLOSE_REGION := "cleave_close_region"
 
-const BOSS_ABILITY_TARGET_REGION_CLOSE_CLEAVE := "target_region_close_cleave"
+const ABILITY_TARGET_REGION_CLOSE_CLEAVE := "target_region_close_cleave"
 
 var selected_tutorial_boss_id: String = TUTORIAL_BOSS_CLEAVE_CLOSE_REGION
 
@@ -22,7 +22,7 @@ var tutorial_boss_catalog: Dictionary = {
 		"attack_cooldown": 1.5,
 
 		"ability_ids": [
-			BOSS_ABILITY_TARGET_REGION_CLOSE_CLEAVE
+		ABILITY_TARGET_REGION_CLOSE_CLEAVE
 		],
 
 		"show_debug_region_guides": true,

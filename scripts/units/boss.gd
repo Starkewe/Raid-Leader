@@ -1,7 +1,7 @@
 extends CharacterBody2D
 
 const CombatMeasurementsScript := preload("res://scripts/combat/combat_measurements.gd")
-const DirectionalRegionCleaveScript := preload("res://scripts/abilities/directional_region_cleave.gd")
+const BossAbilityFactoryScript := preload("res://scripts/abilities/boss_ability_factory.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 const CleaveImpactEffectScript := preload("res://scripts/effects/cleave_impact_effect.gd")
 
@@ -115,34 +115,12 @@ func _physics_process(delta):
 	
 func create_next_ability() -> BossAbility:
 	if ability_ids.is_empty():
-		return create_fallback_ability()
+		return BossAbilityFactoryScript.create_fallback_ability()
 
 	var ability_id: String = String(ability_ids[next_ability_index])
 	next_ability_index = (next_ability_index + 1) % ability_ids.size()
 
-	return create_ability_from_id(ability_id)
-
-
-func create_ability_from_id(ability_id: String) -> BossAbility:
-	match ability_id:
-		GameState.BOSS_ABILITY_TARGET_REGION_CLOSE_CLEAVE:
-			var ability := DirectionalRegionCleaveScript.new()
-			ability.region_span_steps = 0
-			ability.affected_ranges = ["close"]
-			return ability
-
-		_:
-			print("Unknown boss ability id:", ability_id)
-			return create_fallback_ability()
-
-
-func create_fallback_ability() -> BossAbility:
-	var ability := DirectionalRegionCleaveScript.new()
-
-	ability.region_span_steps = 0
-	ability.affected_ranges = ["close"]
-
-	return ability
+	return BossAbilityFactoryScript.create_ability_from_id(ability_id)
 func get_combat_radius() -> float:
 	return combat_radius
 
