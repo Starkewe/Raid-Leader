@@ -1,8 +1,17 @@
 extends CharacterBody2D
 
 const CombatMeasurementsScript := preload("res://scripts/combat/combat_measurements.gd")
+const DirectionalRegionCleaveScript := preload("res://scripts/abilities/directional_region_cleave.gd")
+const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
+const CleaveImpactEffectScript := preload("res://scripts/effects/cleave_impact_effect.gd")
 
 signal defeated
+
+@export var show_debug_region_guides: bool = true
+@export var show_debug_range_rings: bool = true
+@export var debug_max_range_units: float = 50.0
+
+@export var impact_effect_max_range_units: float = 50.0
 
 @export var max_health: int = 500
 @export var speed: float = 140.0
@@ -21,6 +30,10 @@ signal defeated
 var health: int
 var target: Node2D = null
 
+var party_members: Array = []
+var current_ability: BossAbility = null
+var next_ability: BossAbility = null
+
 var attack_timer: float = 0.0
 var special_timer: float = 0.0
 var cast_timer: float = 0.0
@@ -31,9 +44,11 @@ func _ready():
 	speed = CombatMeasurementsScript.get_base_movement_speed_pixels_per_second()
 	health = max_health
 	attack_timer = attack_cooldown
-	special_timer = special_cast_interval
+	next_ability = create_default_ability()
+	special_timer = get_next_ability_cooldown()
 	update_health_bar()
 	update_cast_bar()
+	queue_redraw()
 	print("Boss ready. HP:", health)
 
 func _physics_process(delta):
@@ -41,23 +56,31 @@ func _physics_process(delta):
 		return
 
 	if not has_valid_target():
+		if is_casting:
+			cancel_current_cast_due_to_missing_target()
+
 		clear_target()
 		move_and_slide()
 		return
 
-	attack_timer = max(attack_timer - delta, 0)
-	special_timer = max(special_timer - delta, 0)
-
 	if is_casting:
 		velocity = Vector2.ZERO
 		update_special_cast(delta)
-	else:
-		if special_timer <= 0:
-			start_special_cast()
+		move_and_slide()
+		return
+
+	attack_timer = max(attack_timer - delta, 0.0)
+	special_timer = max(special_timer - delta, 0.0)
+
+	if special_timer <= 0.0:
+		start_special_cast()
+		velocity = Vector2.ZERO
+		move_and_slide()
+		return
 
 	var distance_units: float = get_range_units_to_target(target)
 
-	if distance_units > attack_range_units and not is_casting:
+	if distance_units > attack_range_units:
 		chase_target()
 	else:
 		velocity = Vector2.ZERO
@@ -65,6 +88,13 @@ func _physics_process(delta):
 
 	move_and_slide()
 	
+func create_default_ability() -> BossAbility:
+	var ability := DirectionalRegionCleaveScript.new()
+
+	ability.region_span_steps = 0
+	ability.affected_ranges = ["close"]
+
+	return ability
 func get_combat_radius() -> float:
 	return combat_radius
 
@@ -110,7 +140,8 @@ func get_current_target() -> Node2D:
 		return target
 
 	return null
-
+func set_party_members(new_party_members: Array) -> void:
+	party_members = new_party_members
 func chase_target():
 	if not has_valid_target():
 		return
@@ -135,10 +166,23 @@ func start_special_cast():
 	if is_casting:
 		return
 
+	if next_ability == null:
+		next_ability = create_default_ability()
+
+	if not next_ability.can_cast(self, party_members):
+		special_timer = get_next_ability_cooldown()
+		return
+
+	current_ability = next_ability
+	next_ability = create_default_ability()
+
 	is_casting = true
-	cast_timer = special_cast_time
+	cast_timer = current_ability.cast_time
+
+	current_ability.on_cast_start(self, party_members)
+
 	update_cast_bar()
-	print("Boss begins casting BIG SLAM! Interrupt now!")
+	print("Boss begins casting", current_ability.get_cast_name(), "Interrupt now!")
 
 func update_special_cast(delta):
 	cast_timer -= delta
@@ -149,22 +193,51 @@ func update_special_cast(delta):
 
 func finish_special_cast():
 	is_casting = false
-	special_timer = special_cast_interval
+
+	if current_ability != null:
+		special_timer = current_ability.cooldown
+		print("Boss finishes", current_ability.get_cast_name())
+		current_ability.resolve(self, party_members)
+	else:
+		special_timer = get_next_ability_cooldown()
+
+	current_ability = null
+	update_cast_bar()
+func cancel_current_cast_due_to_missing_target() -> void:
+	if not is_casting:
+		return
+
+	is_casting = false
+	cast_timer = 0.0
+
+	if current_ability != null:
+		current_ability.on_interrupted(self, party_members)
+		special_timer = current_ability.cooldown
+	else:
+		special_timer = get_next_ability_cooldown()
+
+	current_ability = null
 	update_cast_bar()
 
-	print("Boss finishes BIG SLAM!")
-
-	if has_valid_target():
-		if target.has_method("take_damage"):
-			target.take_damage(special_damage)
-
+	print("Boss cast cancelled because its target is no longer valid.")
 func interrupt_cast() -> bool:
 	if is_dead:
 		return false
 
 	if is_casting:
+		if current_ability != null and not current_ability.interruptible:
+			print("Boss cast cannot be interrupted.")
+			return false
+
 		is_casting = false
-		special_timer = special_cast_interval
+
+		if current_ability != null:
+			current_ability.on_interrupted(self, party_members)
+			special_timer = current_ability.cooldown
+		else:
+			special_timer = get_next_ability_cooldown()
+
+		current_ability = null
 		update_cast_bar()
 		print("Boss cast interrupted!")
 		return true
@@ -219,11 +292,11 @@ func update_cast_bar():
 		cast_bar.value = 0
 		return
 
-	cast_bar.max_value = special_cast_time
+	cast_bar.max_value = get_current_cast_time()
 
 	if is_casting:
 		cast_bar.visible = true
-		cast_bar.value = special_cast_time - cast_timer
+		cast_bar.value = get_current_cast_time() - cast_timer
 	else:
 		cast_bar.visible = false
 		cast_bar.value = 0
@@ -233,8 +306,11 @@ func reset_boss(new_position: Vector2):
 	clear_target()
 
 	is_casting = false
+	current_ability = null
+	next_ability = create_default_ability()
+
 	attack_timer = attack_cooldown
-	special_timer = special_cast_interval
+	special_timer = get_next_ability_cooldown()
 	cast_timer = 0
 
 	global_position = new_position
@@ -246,8 +322,11 @@ func get_status_text() -> String:
 	if is_dead:
 		return "Defeated"
 
+	if is_casting and current_ability != null:
+		return current_ability.get_status_text()
+
 	if is_casting:
-		return "Casting Big Slam"
+		return "Casting"
 
 	if target != null and is_instance_valid(target):
 		if target.has_method("is_alive") and target.is_alive():
@@ -267,16 +346,138 @@ func get_cast_progress_percent() -> float:
 	if not is_casting:
 		return 0.0
 
-	if special_cast_time <= 0:
+	var active_cast_time := get_current_cast_time()
+
+	if active_cast_time <= 0:
 		return 0.0
 
-	return clamp(((special_cast_time - cast_timer) / special_cast_time) * 100.0, 0.0, 100.0)
-
+	return clamp(((active_cast_time - cast_timer) / active_cast_time) * 100.0, 0.0, 100.0)
+	
 func get_cast_name() -> String:
-	if is_casting:
-		return "Big Slam"
+	if is_casting and current_ability != null:
+		return current_ability.get_cast_name()
 
 	return ""
+func get_next_ability_cooldown() -> float:
+	if next_ability != null:
+		return next_ability.cooldown
 
+	return special_cast_interval
 func get_display_name() -> String:
 	return "Boss"
+	
+func get_current_cast_time() -> float:
+	if current_ability != null:
+		return current_ability.cast_time
+
+	return special_cast_time
+func _draw() -> void:
+	if show_debug_range_rings:
+		draw_debug_range_boundaries()
+
+	if show_debug_region_guides:
+		draw_debug_region_boundaries()
+
+func draw_debug_region_boundaries() -> void:
+	var max_apothem: float = get_debug_max_range_apothem()
+
+	# Extend slightly beyond the outer debug octagon for readability.
+	var extended_apothem: float = max_apothem + 80.0
+	var max_circumradius: float = get_octagon_circumradius_from_apothem(extended_apothem)
+
+	for i in range(8):
+		var boundary_direction: Vector2 = get_region_boundary_direction(i)
+
+		draw_line(
+			Vector2.ZERO,
+			boundary_direction * max_circumradius,
+			Color(1.0, 1.0, 1.0, 0.55),
+			2.0
+		)
+
+func draw_debug_range_boundaries() -> void:
+	var boss_apothem: float = combat_radius
+	var close_mid_boundary_apothem: float = get_range_boundary_apothem(
+		MovementSlotResolverScript.RANGE_CLOSE,
+		MovementSlotResolverScript.RANGE_MID
+	)
+	var mid_far_boundary_apothem: float = get_range_boundary_apothem(
+		MovementSlotResolverScript.RANGE_MID,
+		MovementSlotResolverScript.RANGE_FAR
+	)
+	var debug_outer_apothem: float = get_debug_max_range_apothem()
+
+	# Boss edge
+	draw_octagon_outline(boss_apothem, Color(1, 1, 1, 0.45), 2.0)
+
+	# Close / Mid boundary
+	draw_octagon_outline(close_mid_boundary_apothem, Color(0.2, 1.0, 0.2, 0.55), 2.0)
+
+	# Mid / Far boundary
+	draw_octagon_outline(mid_far_boundary_apothem, Color(1.0, 1.0, 0.2, 0.55), 2.0)
+
+	# Extra outer debug limit at 50 range units
+	draw_octagon_outline(debug_outer_apothem, Color(0.2, 0.6, 1.0, 0.65), 2.0)
+func get_range_boundary_apothem(range_a: String, range_b: String) -> float:
+	var offset_a_units: float = MovementSlotResolverScript.get_range_offset_units(range_a)
+	var offset_b_units: float = MovementSlotResolverScript.get_range_offset_units(range_b)
+
+	var boundary_offset_units: float = (offset_a_units + offset_b_units) * 0.5
+	var boundary_offset_pixels: float = CombatMeasurementsScript.range_units_to_pixels(boundary_offset_units)
+
+	return combat_radius + boundary_offset_pixels
+
+
+func draw_octagon_outline(apothem: float, color: Color, width: float = 2.0) -> void:
+	var points: PackedVector2Array = get_octagon_points_from_apothem(apothem)
+
+	if points.size() < 2:
+		return
+
+	var closed_points := PackedVector2Array(points)
+	closed_points.append(points[0])
+
+	draw_polyline(closed_points, color, width, true)
+
+
+func get_octagon_points_from_apothem(apothem: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+
+	if apothem <= 0.0:
+		return points
+
+	var circumradius: float = get_octagon_circumradius_from_apothem(apothem)
+
+	for i in range(8):
+		var boundary_direction: Vector2 = get_region_boundary_direction(i)
+		points.append(boundary_direction * circumradius)
+
+	return points
+
+
+func get_octagon_circumradius_from_apothem(apothem: float) -> float:
+	return apothem / cos(PI / 8.0)
+
+
+func get_region_boundary_direction(index: int) -> Vector2:
+	var start_angle: float = -PI / 2.0 - PI / 8.0
+	var step_angle: float = TAU / 8.0
+	var angle: float = start_angle + step_angle * float(index)
+
+	return Vector2.RIGHT.rotated(angle)
+func get_debug_max_range_apothem() -> float:
+	var debug_offset_pixels: float = CombatMeasurementsScript.range_units_to_pixels(debug_max_range_units)
+	return combat_radius + debug_offset_pixels
+func play_region_impact_effect(region: String, ranges: Array[String]) -> void:
+	var effect := CleaveImpactEffectScript.new()
+
+	effect.z_index = 100
+
+	add_child(effect)
+
+	effect.setup(
+		region,
+		ranges,
+		combat_radius,
+		impact_effect_max_range_units
+	)

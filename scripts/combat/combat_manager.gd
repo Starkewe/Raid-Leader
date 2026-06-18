@@ -55,6 +55,10 @@ func initialize_combat():
 	build_party_member_list()
 	store_spawn_positions()
 
+	if boss != null and is_instance_valid(boss):
+		if boss.has_method("set_party_members"):
+			boss.set_party_members(party_members)
+
 	if command_controller != null:
 		command_controller.setup(party_members, boss, player)
 	

@@ -147,7 +147,9 @@ func execute_panel_move(selected_units: Array, command_data: Dictionary) -> bool
 		"movement_range":
 			var range_name := String(command_data.get("movement_range", "mid"))
 			return execute_move_to_range(selected_units, range_name)
-
+		"movement_range_step":
+			var direction := String(command_data.get("movement_direction", "out"))
+			return execute_range_step(selected_units, direction)
 		_:
 			print("Unsupported movement destination:", where)
 			return false
@@ -304,7 +306,69 @@ func execute_move_to_range(selected_units: Array, range_name: String) -> bool:
 
 	refresh_requested.emit()
 	return false
+func execute_range_step(selected_units: Array, range_direction: String) -> bool:
+	if not is_valid_node(boss) or not boss is Node2D:
+		print("Boss is missing. Cannot step range.")
+		return false
 
+	var boss_2d := boss as Node2D
+	var issued_command := false
+	var living_units := get_living_movable_units(selected_units)
+
+	for unit in living_units:
+		var unit_2d := unit as Node2D
+
+		var current_region := MovementSlotResolverScript.get_nearest_region_from_position(
+			boss_2d.global_position,
+			unit_2d.global_position
+		)
+
+		var current_range := MovementSlotResolverScript.get_nearest_range_from_position(
+			boss,
+			unit_2d.global_position
+		)
+
+		var next_range := MovementSlotResolverScript.get_adjacent_range(
+			current_range,
+			range_direction
+		)
+
+		if next_range == current_range:
+			var boundary_text := "Already " + current_range
+
+			if range_direction == MovementSlotResolverScript.RANGE_DIRECTION_IN:
+				boundary_text = "Already close"
+			elif range_direction == MovementSlotResolverScript.RANGE_DIRECTION_OUT:
+				boundary_text = "Already far"
+
+			temporary_status_requested.emit(unit, boundary_text, 0.75)
+			continue
+
+		var destination := MovementSlotResolverScript.get_slot_position(
+			boss,
+			current_region,
+			next_range
+		)
+
+		unit.command_move_to_position(destination)
+
+		var status_text := "Moving " + range_direction
+
+		if range_direction == MovementSlotResolverScript.RANGE_DIRECTION_IN:
+			status_text = "Moving in"
+		elif range_direction == MovementSlotResolverScript.RANGE_DIRECTION_OUT:
+			status_text = "Moving out"
+
+		temporary_status_requested.emit(unit, status_text, 0.75)
+		issued_command = true
+
+	if not issued_command:
+		print("No selected units can step range.")
+		refresh_requested.emit()
+		return false
+
+	refresh_requested.emit()
+	return false
 
 func command_units_to_shared_position(selected_units: Array, destination: Vector2, status_text: String) -> bool:
 	var issued_command := false
