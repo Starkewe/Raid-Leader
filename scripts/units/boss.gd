@@ -1,7 +1,7 @@
 extends CharacterBody2D
 
 const CombatMeasurementsScript := preload("res://scripts/combat/combat_measurements.gd")
-const DirectionalRegionCleaveScript := preload("res://scripts/abilities/directional_region_cleave.gd")
+const BossAbilityFactoryScript := preload("res://scripts/abilities/boss_ability_factory.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 const CleaveImpactEffectScript := preload("res://scripts/effects/cleave_impact_effect.gd")
 
@@ -30,6 +30,10 @@ signal defeated
 var health: int
 var target: Node2D = null
 
+var boss_display_name: String = "Boss"
+var ability_ids: Array = []
+var next_ability_index: int = 0
+
 var party_members: Array = []
 var current_ability: BossAbility = null
 var next_ability: BossAbility = null
@@ -41,16 +45,37 @@ var is_casting: bool = false
 var is_dead: bool = false
 
 func _ready():
+	apply_selected_boss_profile()
+
 	speed = CombatMeasurementsScript.get_base_movement_speed_pixels_per_second()
 	health = max_health
 	attack_timer = attack_cooldown
-	next_ability = create_default_ability()
+	next_ability = create_next_ability()
 	special_timer = get_next_ability_cooldown()
-	update_health_bar()
-	update_cast_bar()
-	queue_redraw()
-	print("Boss ready. HP:", health)
+	
+func apply_selected_boss_profile() -> void:
+	if not Engine.has_singleton("GameState") and not has_node("/root/GameState"):
+		return
 
+	var boss_data: Dictionary = GameState.get_selected_tutorial_boss_data()
+
+	if boss_data.is_empty():
+		return
+
+	boss_display_name = String(boss_data.get("boss_display_name", boss_display_name))
+
+	max_health = int(boss_data.get("max_health", max_health))
+	attack_range_units = float(boss_data.get("attack_range_units", attack_range_units))
+	combat_radius = float(boss_data.get("combat_radius", combat_radius))
+	attack_damage = int(boss_data.get("attack_damage", attack_damage))
+	attack_cooldown = float(boss_data.get("attack_cooldown", attack_cooldown))
+
+	show_debug_region_guides = bool(boss_data.get("show_debug_region_guides", show_debug_region_guides))
+	show_debug_range_rings = bool(boss_data.get("show_debug_range_rings", show_debug_range_rings))
+	debug_max_range_units = float(boss_data.get("debug_max_range_units", debug_max_range_units))
+
+	ability_ids = boss_data.get("ability_ids", []).duplicate()
+	next_ability_index = 0
 func _physics_process(delta):
 	if is_dead:
 		return
@@ -88,13 +113,14 @@ func _physics_process(delta):
 
 	move_and_slide()
 	
-func create_default_ability() -> BossAbility:
-	var ability := DirectionalRegionCleaveScript.new()
+func create_next_ability() -> BossAbility:
+	if ability_ids.is_empty():
+		return BossAbilityFactoryScript.create_fallback_ability()
 
-	ability.region_span_steps = 0
-	ability.affected_ranges = ["close"]
+	var ability_id: String = String(ability_ids[next_ability_index])
+	next_ability_index = (next_ability_index + 1) % ability_ids.size()
 
-	return ability
+	return BossAbilityFactoryScript.create_ability_from_id(ability_id)
 func get_combat_radius() -> float:
 	return combat_radius
 
@@ -167,14 +193,14 @@ func start_special_cast():
 		return
 
 	if next_ability == null:
-		next_ability = create_default_ability()
+		next_ability = create_next_ability()
 
 	if not next_ability.can_cast(self, party_members):
 		special_timer = get_next_ability_cooldown()
 		return
 
 	current_ability = next_ability
-	next_ability = create_default_ability()
+	next_ability = create_next_ability()
 
 	is_casting = true
 	cast_timer = current_ability.cast_time
@@ -307,7 +333,8 @@ func reset_boss(new_position: Vector2):
 
 	is_casting = false
 	current_ability = null
-	next_ability = create_default_ability()
+	next_ability_index = 0
+	next_ability = create_next_ability()
 
 	attack_timer = attack_cooldown
 	special_timer = get_next_ability_cooldown()
@@ -364,7 +391,7 @@ func get_next_ability_cooldown() -> float:
 
 	return special_cast_interval
 func get_display_name() -> String:
-	return "Boss"
+	return boss_display_name
 	
 func get_current_cast_time() -> float:
 	if current_ability != null:
