@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Raid Leader"
-run/main_scene="uid://d4bdnpijqc7g2"
+run/main_scene="uid://bwo8mcf3gaqju"
 config/features=PackedStringArray("4.6", "Forward Plus")
 
 [autoload]
