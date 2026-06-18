@@ -2,6 +2,23 @@ extends Node
 
 const MAX_RAID_SIZE: int = 20
 
+const TUTORIAL_BOSS_CLEAVE_CLOSE_REGION := "cleave_close_region"
+
+var selected_tutorial_boss_id: String = TUTORIAL_BOSS_CLEAVE_CLOSE_REGION
+
+var tutorial_boss_catalog: Dictionary = {
+	TUTORIAL_BOSS_CLEAVE_CLOSE_REGION: {
+		"display_name": "Cleave: Close Region",
+		"description": "A basic tutorial boss that cleaves the close-range region matching its current target.",
+		"scene_path": "res://scenes/combat_scene.tscn"
+	}
+}
+
+var model_settings: Dictionary = {
+	"speech_to_text_model": "whisper_local_default",
+	"command_parser_model": "local_command_parser_default",
+	"raid_leader_model": "local_raid_leader_default"
+}
 var unit_class_order: Array[String] = [
 	"Warrior",
 	"Rogue",
@@ -100,3 +117,58 @@ func reset_default_roster():
 		"Mage": 1,
 		"Priest": 1
 	}
+func get_tutorial_boss_ids() -> Array[String]:
+	var ids: Array[String] = []
+
+	for boss_id in tutorial_boss_catalog.keys():
+		ids.append(String(boss_id))
+
+	return ids
+
+
+func get_tutorial_boss_data(boss_id: String) -> Dictionary:
+	if not tutorial_boss_catalog.has(boss_id):
+		return {}
+
+	return tutorial_boss_catalog[boss_id].duplicate()
+
+
+func set_selected_tutorial_boss(boss_id: String) -> void:
+	if not tutorial_boss_catalog.has(boss_id):
+		print("Unknown tutorial boss id:", boss_id)
+		return
+
+	selected_tutorial_boss_id = boss_id
+
+
+func get_selected_tutorial_boss_id() -> String:
+	return selected_tutorial_boss_id
+
+
+func get_selected_tutorial_boss_data() -> Dictionary:
+	return get_tutorial_boss_data(selected_tutorial_boss_id)
+
+
+func get_selected_tutorial_scene_path() -> String:
+	var boss_data := get_selected_tutorial_boss_data()
+
+	if boss_data.is_empty():
+		return "res://scenes/combat_scene.tscn"
+
+	return String(boss_data.get("scene_path", "res://scenes/combat_scene.tscn"))
+
+
+func get_model_setting(setting_name: String) -> String:
+	return String(model_settings.get(setting_name, "default"))
+
+
+func set_model_setting(setting_name: String, setting_value: String) -> void:
+	if not model_settings.has(setting_name):
+		print("Unknown model setting:", setting_name)
+		return
+
+	model_settings[setting_name] = setting_value
+
+
+func get_model_settings() -> Dictionary:
+	return model_settings.duplicate()
