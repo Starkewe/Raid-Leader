@@ -18,6 +18,14 @@ const REGION_NORTHWEST := "northwest"
 
 const ROTATION_COUNTERCLOCKWISE := "counterclockwise"
 const ROTATION_CLOCKWISE := "clockwise"
+const RANGE_DIRECTION_IN := "in"
+const RANGE_DIRECTION_OUT := "out"
+
+const RANGE_ORDER := [
+	RANGE_CLOSE,
+	RANGE_MID,
+	RANGE_FAR
+]
 
 const REGION_ORDER := [
 	REGION_NORTH,
@@ -62,6 +70,26 @@ static func get_adjacent_region(current_region: String, rotation_direction: Stri
 	var next_index: int = (current_index + step_direction + region_count) % region_count
 
 	return String(REGION_ORDER[next_index])
+static func get_adjacent_range(current_range: String, range_direction: String) -> String:
+	var current_index: int = RANGE_ORDER.find(current_range)
+
+	if current_index == -1:
+		return RANGE_MID
+
+	var step_direction: int = 0
+
+	if range_direction == RANGE_DIRECTION_IN:
+		step_direction = -1
+	elif range_direction == RANGE_DIRECTION_OUT:
+		step_direction = 1
+
+	var next_index: int = clampi(
+		current_index + step_direction,
+		0,
+		RANGE_ORDER.size() - 1
+	)
+
+	return String(RANGE_ORDER[next_index])
 static func get_slot_position(boss_node: Node, region: String, range_name: String) -> Vector2:
 	if boss_node == null or not is_instance_valid(boss_node):
 		return Vector2.ZERO

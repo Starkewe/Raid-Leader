@@ -185,7 +185,15 @@ func populate_where_options_for_current_action() -> void:
 
 		"move":
 			add_option(where_dropdown, "Me", { "where": "me" })
+			add_option(where_dropdown, "Move In One Range", {
+				"where": "movement_range_step",
+				"movement_direction": "in"
+			})
 
+			add_option(where_dropdown, "Move Out One Range", {
+				"where": "movement_range_step",
+				"movement_direction": "out"
+			})
 			add_option(where_dropdown, "Close Range - Current Direction", {
 				"where": "movement_range",
 				"movement_range": "close"
