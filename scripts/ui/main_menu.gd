@@ -12,6 +12,21 @@ extends Control
 @onready var roster_rows: VBoxContainer = $TeamPanel/CenterContainer/VBoxContainer/RosterRows
 @onready var start_fight_from_team_button: Button = $TeamPanel/CenterContainer/VBoxContainer/StartFightFromTeamButton
 @onready var back_button: Button = $TeamPanel/CenterContainer/VBoxContainer/BackButton
+@onready var main_menu_vbox: VBoxContainer = $CenterContainer/VBoxContainer
+
+var tutorial_button: Button = null
+var settings_button: Button = null
+
+var tutorial_panel: PanelContainer = null
+var tutorial_grid: GridContainer = null
+var tutorial_description_label: Label = null
+var start_tutorial_button: Button = null
+var selected_tutorial_boss_id: String = ""
+
+var settings_panel: PanelContainer = null
+var speech_to_text_dropdown: OptionButton = null
+var command_parser_dropdown: OptionButton = null
+var raid_leader_dropdown: OptionButton = null
 
 var unit_class_order: Array[String] = []
 var count_labels: Dictionary = {}
@@ -26,18 +41,199 @@ func _ready():
 	start_fight_from_team_button.pressed.connect(_on_start_fight_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 
+	build_main_menu_extra_buttons()
+	build_tutorial_panel()
+	build_settings_panel()
 	build_team_rows()
 	show_main_menu()
+	
+func build_main_menu_extra_buttons() -> void:
+	tutorial_button = Button.new()
+	tutorial_button.text = "Tutorial"
+	tutorial_button.pressed.connect(_on_tutorial_pressed)
 
+	settings_button = Button.new()
+	settings_button.text = "Settings"
+	settings_button.pressed.connect(_on_settings_pressed)
+
+	main_menu_vbox.add_child(tutorial_button)
+	main_menu_vbox.add_child(settings_button)
+
+	main_menu_vbox.move_child(tutorial_button, 2)
+	main_menu_vbox.move_child(settings_button, 3)
+func build_tutorial_panel() -> void:
+	tutorial_panel = PanelContainer.new()
+	tutorial_panel.visible = false
+	add_child(tutorial_panel)
+
+	var center := CenterContainer.new()
+	tutorial_panel.add_child(center)
+
+	var root := VBoxContainer.new()
+	root.custom_minimum_size = Vector2(700, 420)
+	root.add_theme_constant_override("separation", 10)
+	center.add_child(root)
+
+	var title := Label.new()
+	title.text = "Tutorial Bosses"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(title)
+
+	tutorial_grid = GridContainer.new()
+	tutorial_grid.columns = 5
+	root.add_child(tutorial_grid)
+
+	build_tutorial_boss_buttons()
+
+	tutorial_description_label = Label.new()
+	tutorial_description_label.text = "Select a tutorial boss."
+	tutorial_description_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	root.add_child(tutorial_description_label)
+
+	start_tutorial_button = Button.new()
+	start_tutorial_button.text = "Start Tutorial"
+	start_tutorial_button.disabled = true
+	start_tutorial_button.pressed.connect(_on_start_tutorial_pressed)
+	root.add_child(start_tutorial_button)
+
+	var back := Button.new()
+	back.text = "Back"
+	back.pressed.connect(_on_back_pressed)
+	root.add_child(back)
+
+	position_fullscreen_panel(tutorial_panel)
+
+
+func build_tutorial_boss_buttons() -> void:
+	for child in tutorial_grid.get_children():
+		child.queue_free()
+
+	var boss_ids: Array[String] = GameState.get_tutorial_boss_ids()
+
+	for boss_id in boss_ids:
+		var boss_data: Dictionary = GameState.get_tutorial_boss_data(boss_id)
+
+		var button := Button.new()
+		button.custom_minimum_size = Vector2(130, 60)
+		button.text = String(boss_data.get("display_name", boss_id))
+		button.pressed.connect(_on_tutorial_boss_selected.bind(boss_id))
+
+		tutorial_grid.add_child(button)
+func build_settings_panel() -> void:
+	settings_panel = PanelContainer.new()
+	settings_panel.visible = false
+	add_child(settings_panel)
+
+	var center := CenterContainer.new()
+	settings_panel.add_child(center)
+
+	var root := VBoxContainer.new()
+	root.custom_minimum_size = Vector2(700, 420)
+	root.add_theme_constant_override("separation", 10)
+	center.add_child(root)
+
+	var title := Label.new()
+	title.text = "Settings"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(title)
+
+	speech_to_text_dropdown = add_model_dropdown(
+		root,
+		"Speech-to-Text Model",
+		"speech_to_text_model",
+		[
+			["Local Whisper Default", "whisper_local_default"],
+			["Whisper Large V3 Turbo", "whisper_large_v3_turbo"]
+		]
+	)
+
+	command_parser_dropdown = add_model_dropdown(
+		root,
+		"Command Parser Model",
+		"command_parser_model",
+		[
+			["Local Command Parser Default", "local_command_parser_default"],
+			["Cloud Command Parser", "cloud_command_parser"]
+		]
+	)
+
+	raid_leader_dropdown = add_model_dropdown(
+		root,
+		"Raid Leader Model",
+		"raid_leader_model",
+		[
+			["Local Raid Leader Default", "local_raid_leader_default"],
+			["Cloud Raid Leader", "cloud_raid_leader"]
+		]
+	)
+
+	var apply_button := Button.new()
+	apply_button.text = "Apply Settings"
+	apply_button.pressed.connect(_on_apply_settings_pressed)
+	root.add_child(apply_button)
+
+	var back := Button.new()
+	back.text = "Back"
+	back.pressed.connect(_on_back_pressed)
+	root.add_child(back)
+
+	position_fullscreen_panel(settings_panel)
+
+func add_model_dropdown(
+	parent: Node,
+	label_text: String,
+	setting_name: String,
+	options: Array
+) -> OptionButton:
+	var label := Label.new()
+	label.text = label_text
+	parent.add_child(label)
+
+	var dropdown := OptionButton.new()
+	parent.add_child(dropdown)
+
+	var current_value: String = GameState.get_model_setting(setting_name)
+
+	for option_data in options:
+		var option_label: String = String(option_data[0])
+		var option_value: String = String(option_data[1])
+		var index := dropdown.get_item_count()
+
+		dropdown.add_item(option_label)
+		dropdown.set_item_metadata(index, option_value)
+
+		if option_value == current_value:
+			dropdown.select(index)
+
+	return dropdown
 func show_main_menu():
 	main_menu_container.visible = true
 	team_panel.visible = false
 
+	if tutorial_panel != null:
+		tutorial_panel.visible = false
+
+	if settings_panel != null:
+		settings_panel.visible = false
+
 func show_team_panel():
 	main_menu_container.visible = false
 	team_panel.visible = true
-	refresh_team_panel()
 
+	if tutorial_panel != null:
+		tutorial_panel.visible = false
+
+	if settings_panel != null:
+		settings_panel.visible = false
+
+	refresh_team_panel()
+func position_fullscreen_panel(panel: Control) -> void:
+	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panel.offset_left = 0
+	panel.offset_top = 0
+	panel.offset_right = 0
+	panel.offset_bottom = 0
+	
 func build_team_rows():
 	clear_roster_rows()
 	count_labels.clear()
@@ -115,7 +311,76 @@ func _on_start_fight_pressed():
 func _on_manage_team_pressed():
 	print("Opening team management")
 	show_team_panel()
+func _on_tutorial_pressed() -> void:
+	main_menu_container.visible = false
+	team_panel.visible = false
 
+	if settings_panel != null:
+		settings_panel.visible = false
+
+	if tutorial_panel != null:
+		tutorial_panel.visible = true
+
+
+func _on_settings_pressed() -> void:
+	main_menu_container.visible = false
+	team_panel.visible = false
+
+	if tutorial_panel != null:
+		tutorial_panel.visible = false
+
+	if settings_panel != null:
+		settings_panel.visible = true
+
+
+func _on_tutorial_boss_selected(boss_id: String) -> void:
+	selected_tutorial_boss_id = boss_id
+	GameState.set_selected_tutorial_boss(boss_id)
+
+	var boss_data: Dictionary = GameState.get_tutorial_boss_data(boss_id)
+
+	if tutorial_description_label != null:
+		tutorial_description_label.text = String(boss_data.get("description", ""))
+
+	if start_tutorial_button != null:
+		start_tutorial_button.disabled = false
+
+
+func _on_start_tutorial_pressed() -> void:
+	var scene_path: String = GameState.get_selected_tutorial_scene_path()
+
+	print("Starting tutorial boss:", GameState.get_selected_tutorial_boss_id())
+	print("Loading scene:", scene_path)
+
+	var result = get_tree().change_scene_to_file(scene_path)
+
+	if result != OK:
+		print("Failed to load tutorial scene:", scene_path)
+
+
+func _on_apply_settings_pressed() -> void:
+	apply_model_dropdown_setting(speech_to_text_dropdown, "speech_to_text_model")
+	apply_model_dropdown_setting(command_parser_dropdown, "command_parser_model")
+	apply_model_dropdown_setting(raid_leader_dropdown, "raid_leader_model")
+
+	print("Applied model settings:", GameState.get_model_settings())
+
+func apply_model_dropdown_setting(dropdown: OptionButton, setting_name: String) -> void:
+	if dropdown == null:
+		return
+
+	var selected_index := dropdown.selected
+
+	if selected_index < 0:
+		return
+
+	var metadata = dropdown.get_item_metadata(selected_index)
+
+	if metadata == null:
+		return
+
+	GameState.set_model_setting(setting_name, String(metadata))
+	
 func _on_back_pressed():
 	show_main_menu()
 
