@@ -4,13 +4,30 @@ const MAX_RAID_SIZE: int = 20
 
 const TUTORIAL_BOSS_CLEAVE_CLOSE_REGION := "cleave_close_region"
 
+const BOSS_ABILITY_TARGET_REGION_CLOSE_CLEAVE := "target_region_close_cleave"
+
 var selected_tutorial_boss_id: String = TUTORIAL_BOSS_CLEAVE_CLOSE_REGION
 
 var tutorial_boss_catalog: Dictionary = {
 	TUTORIAL_BOSS_CLEAVE_CLOSE_REGION: {
 		"display_name": "Cleave: Close Region",
 		"description": "A basic tutorial boss that cleaves the close-range region matching its current target.",
-		"scene_path": "res://scenes/combat_scene.tscn"
+		"scene_path": "res://scenes/combat_scene.tscn",
+
+		"boss_display_name": "Cleave Trainer",
+		"max_health": 500,
+		"attack_range_units": 5.0,
+		"combat_radius": 128.0,
+		"attack_damage": 20,
+		"attack_cooldown": 1.5,
+
+		"ability_ids": [
+			BOSS_ABILITY_TARGET_REGION_CLOSE_CLEAVE
+		],
+
+		"show_debug_region_guides": true,
+		"show_debug_range_rings": true,
+		"debug_max_range_units": 50.0
 	}
 }
 
