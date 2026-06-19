@@ -53,8 +53,32 @@ var tutorial_boss_catalog: Dictionary = {
 	}
 }
 
+const SPEECH_TO_TEXT_MODEL_BASE_EN := "base_en"
+const SPEECH_TO_TEXT_MODEL_SMALL_EN := "small_en"
+const SPEECH_TO_TEXT_MODEL_SMALL_EN_Q4_0 := "small_en_q4_0"
+
+const WHISPER_MODELS_DIR := "E:/Raid Leader/tools/whisper.cpp/models"
+
+var speech_to_text_model_catalog: Dictionary = {
+	SPEECH_TO_TEXT_MODEL_BASE_EN: {
+		"display_name": "Whisper Base English",
+		"file_name": "ggml-base.en.bin",
+		"description": "Fast baseline model. Good for quick prototype testing."
+	},
+	SPEECH_TO_TEXT_MODEL_SMALL_EN: {
+		"display_name": "Whisper Small English",
+		"file_name": "ggml-small.en.bin",
+		"description": "Better accuracy than base.en, but larger and slower."
+	},
+	SPEECH_TO_TEXT_MODEL_SMALL_EN_Q4_0: {
+		"display_name": "Whisper Small English Q4_0",
+		"file_name": "ggml-small.en-q4_0.bin",
+		"description": "Quantized small.en model. Good candidate for command recognition."
+	}
+}
+
 var model_settings: Dictionary = {
-	"speech_to_text_model": "whisper_local_default",
+	"speech_to_text_model": SPEECH_TO_TEXT_MODEL_BASE_EN,
 	"command_parser_model": "local_command_parser_default",
 	"raid_leader_model": "local_raid_leader_default"
 }
@@ -196,7 +220,48 @@ func get_selected_tutorial_scene_path() -> String:
 
 	return String(boss_data.get("scene_path", "res://scenes/combat_scene.tscn"))
 
+func get_speech_to_text_model_options() -> Array:
+	var options: Array = []
 
+	for model_key in speech_to_text_model_catalog.keys():
+		var model_data: Dictionary = speech_to_text_model_catalog[model_key]
+		options.append([
+			String(model_data.get("display_name", model_key)),
+			String(model_key)
+		])
+
+	return options
+
+
+func get_speech_to_text_model_data(model_key: String) -> Dictionary:
+	if not speech_to_text_model_catalog.has(model_key):
+		return speech_to_text_model_catalog[SPEECH_TO_TEXT_MODEL_BASE_EN].duplicate()
+
+	return speech_to_text_model_catalog[model_key].duplicate()
+
+
+func get_selected_speech_to_text_model_key() -> String:
+	var model_key := String(model_settings.get("speech_to_text_model", SPEECH_TO_TEXT_MODEL_BASE_EN))
+
+	if not speech_to_text_model_catalog.has(model_key):
+		return SPEECH_TO_TEXT_MODEL_BASE_EN
+
+	return model_key
+
+
+func get_selected_speech_to_text_model_path() -> String:
+	var model_key := get_selected_speech_to_text_model_key()
+	var model_data := get_speech_to_text_model_data(model_key)
+	var file_name := String(model_data.get("file_name", "ggml-base.en.bin"))
+
+	return WHISPER_MODELS_DIR.path_join(file_name)
+
+
+func get_selected_speech_to_text_model_display_name() -> String:
+	var model_key := get_selected_speech_to_text_model_key()
+	var model_data := get_speech_to_text_model_data(model_key)
+
+	return String(model_data.get("display_name", model_key))
 func get_model_setting(setting_name: String) -> String:
 	return String(model_settings.get(setting_name, "default"))
 
@@ -206,8 +271,12 @@ func set_model_setting(setting_name: String, setting_value: String) -> void:
 		print("Unknown model setting:", setting_name)
 		return
 
-	model_settings[setting_name] = setting_value
+	if setting_name == "speech_to_text_model":
+		if not speech_to_text_model_catalog.has(setting_value):
+			print("Unknown speech-to-text model:", setting_value)
+			return
 
+	model_settings[setting_name] = setting_value
 
 func get_model_settings() -> Dictionary:
 	return model_settings.duplicate()

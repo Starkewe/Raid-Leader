@@ -184,6 +184,17 @@ func get_debug_source_text(source: String) -> String:
 
 
 func get_debug_who_text(command_data: Dictionary) -> String:
+	var selectors: Array = command_data.get("who_selectors", [])
+	var exclude_selectors: Array = command_data.get("who_exclude_selectors", [])
+
+	if not selectors.is_empty():
+		var text := get_debug_selector_list_text(selectors)
+
+		if not exclude_selectors.is_empty():
+			text += " except " + get_debug_selector_list_text(exclude_selectors)
+
+		return text
+
 	var who_type := String(command_data.get("who_type", ""))
 
 	match who_type:
@@ -195,6 +206,12 @@ func get_debug_who_text(command_data: Dictionary) -> String:
 
 		"group":
 			return "Group: " + str(command_data.get("who_value", ""))
+
+		"role":
+			return "Role: " + String(command_data.get("who_value", ""))
+
+		"unit_identity":
+			return "Unit: " + String(command_data.get("who_value", ""))
 
 		"unit":
 			var unit = command_data.get("unit", null)
@@ -209,8 +226,49 @@ func get_debug_who_text(command_data: Dictionary) -> String:
 
 		_:
 			return "Unknown"
+func get_debug_selector_list_text(selectors: Array) -> String:
+	var parts: Array[String] = []
+
+	for selector in selectors:
+		if selector is Dictionary:
+			parts.append(get_debug_selector_text(selector))
+
+	return " and ".join(parts)
 
 
+func get_debug_selector_text(selector: Dictionary) -> String:
+	var selector_type := String(selector.get("type", ""))
+	var selector_value = selector.get("value", "")
+
+	match selector_type:
+		"everyone":
+			return "Everyone"
+
+		"class":
+			return "Class: " + String(selector_value)
+
+		"group":
+			return "Group: " + str(selector_value)
+
+		"role":
+			return "Role: " + String(selector_value)
+
+		"unit_identity":
+			return "Unit: " + String(selector.get("class", "")) + " " + str(selector.get("number", ""))
+
+		"unit":
+			var unit = selector.get("unit", null)
+
+			if unit != null and is_instance_valid(unit):
+				if unit.has_method("get_display_name"):
+					return "Unit: " + String(unit.get_display_name())
+
+				return "Unit: " + unit.name
+
+			return "Unit: Missing"
+
+		_:
+			return "Unknown"
 func get_debug_what_text(command_data: Dictionary) -> String:
 	var what := String(command_data.get("what", ""))
 
