@@ -11,8 +11,10 @@ const VoiceCommandParserScript := preload("res://scripts/voice/voice_command_par
 @onready var player = get_node_or_null("../Player")
 
 @export var voice_transcriber_path: NodePath
+@export var voice_command_parser_path: NodePath
 
-var voice_transcriber: VoiceTranscriberClient
+var voice_transcriber: VoiceTranscriberClient = null
+var voice_command_parser: VoiceCommandParser = null
 
 var boss_alive: bool = true
 var fight_active: bool = false
@@ -40,15 +42,72 @@ func _ready():
 	
 	call_deferred("initialize_combat")
 func _on_command_panel_submitted(command_data: Dictionary) -> void:
+	submit_command_data(command_data, "command_panel")
+func submit_command_data(command_data: Dictionary, source: String = "unknown") -> bool:
 	if command_controller == null:
-		return
+		push_warning("CombatManager cannot execute command because command_controller is missing.")
+		return false
+
+	if command_data.is_empty():
+		push_warning("CombatManager rejected empty command_data from " + source + ".")
+		return false
+
+	var validation_result := validate_command_data(command_data)
+
+	if not bool(validation_result.get("ok", false)):
+		var reason := String(validation_result.get("reason", "Unknown validation failure."))
+		push_warning("CombatManager rejected command_data from " + source + ": " + reason)
+		return false
+
+	print("CombatManager executing command from ", source, ": ", command_data)
 
 	var command_started: bool = command_controller.execute_panel_command(command_data, boss_alive)
 
 	if command_started:
 		fight_active = true
 		encounter_state = "active"
-		refresh_all_statuses()
+
+	refresh_all_statuses()
+
+	return command_started
+
+
+func validate_command_data(command_data: Dictionary) -> Dictionary:
+	var required_keys := [
+		"who_type",
+		"who_value",
+		"unit",
+		"what",
+		"where",
+		"when"
+	]
+
+	for key in required_keys:
+		if not command_data.has(key):
+			return {
+				"ok": false,
+				"reason": "Missing required key: " + key
+			}
+
+	var what := String(command_data.get("what", "")).strip_edges()
+	var where := String(command_data.get("where", "")).strip_edges()
+
+	if what.is_empty():
+		return {
+			"ok": false,
+			"reason": "Command action is empty."
+		}
+
+	if where.is_empty():
+		return {
+			"ok": false,
+			"reason": "Command destination is empty."
+		}
+
+	return {
+		"ok": true,
+		"reason": ""
+	}
 func connect_command_controller_signals() -> void:
 	if command_controller == null:
 		return
@@ -410,14 +469,17 @@ func get_unit_debug_name(unit: Node) -> String:
 		return "None"
 
 	return command_controller.get_unit_debug_name(unit)
+	
 func setup_voice_commands() -> void:
-	voice_transcriber = get_node_or_null(voice_transcriber_path) as VoiceTranscriberClient
-
-	if voice_transcriber == null:
-		voice_transcriber = get_node_or_null("../VoicePipeline/VoiceTranscriberClient") as VoiceTranscriberClient
+	setup_voice_transcriber()
+	setup_voice_command_parser()
 
 	if voice_transcriber == null:
 		push_warning("CombatManager could not find VoiceTranscriberClient. Voice commands disabled.")
+		return
+
+	if voice_command_parser == null:
+		push_warning("CombatManager could not find or create VoiceCommandParser. Voice commands disabled.")
 		return
 
 	if not voice_transcriber.transcript_received.is_connected(_on_voice_transcript_received):
@@ -427,32 +489,63 @@ func setup_voice_commands() -> void:
 		voice_transcriber.transcription_failed.connect(_on_voice_transcription_failed)
 
 
+func setup_voice_transcriber() -> void:
+	voice_transcriber = null
+
+	if not voice_transcriber_path.is_empty():
+		voice_transcriber = get_node_or_null(voice_transcriber_path) as VoiceTranscriberClient
+
+	if voice_transcriber != null:
+		return
+
+	voice_transcriber = get_node_or_null("../VoicePipeline/VoiceTranscriberClient") as VoiceTranscriberClient
+
+	if voice_transcriber != null:
+		return
+
+	voice_transcriber = get_node_or_null("../VoiceTranscriberClient") as VoiceTranscriberClient
+
+
+func setup_voice_command_parser() -> void:
+	voice_command_parser = null
+
+	if not voice_command_parser_path.is_empty():
+		voice_command_parser = get_node_or_null(voice_command_parser_path) as VoiceCommandParser
+
+	if voice_command_parser != null:
+		return
+
+	voice_command_parser = get_node_or_null("../VoicePipeline/VoiceCommandParser") as VoiceCommandParser
+
+	if voice_command_parser != null:
+		return
+
+	voice_command_parser = get_node_or_null("../VoiceCommandParser") as VoiceCommandParser
+
+	if voice_command_parser != null:
+		return
+
+	voice_command_parser = VoiceCommandParserScript.new()
+
+
 func _on_voice_transcript_received(transcript: String) -> void:
-	print("Parsing voice command:", transcript)
-
-	var command_data: Dictionary = VoiceCommandParserScript.parse_transcript(transcript)
-
-	if command_data.is_empty():
-		print("Voice command could not be parsed:", transcript)
+	if voice_command_parser == null:
+		push_warning("Voice transcript received, but VoiceCommandParser is missing.")
 		return
 
-	execute_voice_command(command_data)
+	print("Voice transcript received by CombatManager: ", transcript)
 
+	var parse_result: Dictionary = voice_command_parser.parse(transcript)
 
-func _on_voice_transcription_failed(message: String) -> void:
-	print("Voice transcription failed:", message)
-
-
-func execute_voice_command(command_data: Dictionary) -> void:
-	if command_controller == null:
+	if not bool(parse_result.get("ok", false)):
+		var reason := String(parse_result.get("reason", "Could not parse voice command."))
+		push_warning("Voice command rejected: " + reason)
 		return
 
-	print("Executing voice command data:", command_data)
+	var command_data: Dictionary = parse_result.get("command_data", {})
 
-	var command_started: bool = command_controller.execute_panel_command(command_data, boss_alive)
+	submit_command_data(command_data, "voice")
 
-	if command_started:
-		fight_active = true
-		encounter_state = "active"
 
-	refresh_all_statuses()
+func _on_voice_transcription_failed(reason: String) -> void:
+	push_warning("Voice transcription failed: " + reason)

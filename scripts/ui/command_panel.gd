@@ -297,9 +297,6 @@ func build_command_data() -> Dictionary:
 
 	return command_data
 
-	return command_data
-
-
 func get_unit_display_name(unit: Node) -> String:
 	if unit == null or not is_instance_valid(unit):
 		return "Unknown"

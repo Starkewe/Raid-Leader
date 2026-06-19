@@ -2,217 +2,141 @@ extends Node
 class_name VoiceCommandParser
 
 
-static func parse_transcript(transcript: String) -> Dictionary:
-	var text := _normalize_text(transcript)
-
-	var who_data := _parse_who_data(text)
-	var what := _parse_what(text)
-
-	if who_data.is_empty() or what.is_empty():
-		return {}
+func parse(transcript: String) -> Dictionary:
+	var text := _normalize(transcript)
 
 	var command_data := {
-		"who_type": String(who_data.get("who_type", "everyone")),
-		"who_value": who_data.get("who_value", ""),
+		"who_type": "",
+		"who_value": null,
 		"unit": null,
-		"what": what,
-		"where": "none",
-		"when": "now",
-		"raw_transcript": transcript
+		"what": "",
+		"where": "",
+		"when": "now"
 	}
 
-	_apply_where_data(command_data, text, what)
+	var who_result := _parse_who(text)
+	if not who_result.ok:
+		return _fail("Could not determine target group or unit from: %s" % transcript)
 
-	return command_data
+	command_data["who_type"] = who_result.who_type
+	command_data["who_value"] = who_result.who_value
+	command_data["unit"] = who_result.unit
+
+	var what_result := _parse_what(text)
+	if not what_result.ok:
+		return _fail("Could not determine command action from: %s" % transcript)
+
+	command_data["what"] = what_result.what
+	command_data["where"] = what_result.where
+
+	for key in what_result.extra.keys():
+		command_data[key] = what_result.extra[key]
+
+	return {
+		"ok": true,
+		"command_data": command_data,
+		"reason": ""
+	}
 
 
-static func _normalize_text(text: String) -> String:
-	var normalized := text.to_lower().strip_edges()
+func _normalize(text: String) -> String:
+	var output := text.to_lower().strip_edges()
 
-	normalized = normalized.replace(".", "")
-	normalized = normalized.replace(",", "")
-	normalized = normalized.replace("!", "")
-	normalized = normalized.replace("?", "")
-	normalized = normalized.replace("'", "")
+	output = output.replace(".", "")
+	output = output.replace(",", "")
+	output = output.replace("!", "")
+	output = output.replace("?", "")
 
-	return normalized
+	# Common Whisper cleanup.
+	output = output.replace("every one", "everyone")
+	output = output.replace("preached", "priest")
+	output = output.replace("rouge", "rogue")
+
+	return output
 
 
-static func _parse_who_data(text: String) -> Dictionary:
+func _parse_who(text: String) -> Dictionary:
 	if text.contains("everyone") or text.contains("everybody") or text.contains("all"):
-		return {
-			"who_type": "everyone",
-			"who_value": ""
-		}
+		return _who("everyone", null, null)
 
-	if text.contains("group one") or text.contains("group 1"):
-		return {
-			"who_type": "group",
-			"who_value": 1
-		}
+	if text.contains("warrior") or text.contains("tank"):
+		return _who("class", "warrior", null)
 
-	if text.contains("group two") or text.contains("group 2"):
-		return {
-			"who_type": "group",
-			"who_value": 2
-		}
+	if text.contains("priest") or text.contains("healer"):
+		return _who("class", "priest", null)
 
-	if text.contains("group three") or text.contains("group 3"):
-		return {
-			"who_type": "group",
-			"who_value": 3
-		}
+	if text.contains("mage"):
+		return _who("class", "mage", null)
 
-	if text.contains("group four") or text.contains("group 4"):
-		return {
-			"who_type": "group",
-			"who_value": 4
-		}
+	if text.contains("rogue"):
+		return _who("class", "rogue", null)
 
-	if text.contains("tank") or text.contains("tanks") or text.contains("warrior") or text.contains("warriors"):
-		return {
-			"who_type": "class",
-			"who_value": "Warrior"
-		}
+	for i in range(1, 5):
+		if text.contains("group %d" % i):
+			return _who("group", i, null)
 
-	if text.contains("healer") or text.contains("healers") or text.contains("priest") or text.contains("priests"):
-		return {
-			"who_type": "class",
-			"who_value": "Priest"
-		}
-
-	if text.contains("rogue") or text.contains("rogues") or text.contains("melee"):
-		return {
-			"who_type": "class",
-			"who_value": "Rogue"
-		}
-
-	if text.contains("mage") or text.contains("mages") or text.contains("ranged"):
-		return {
-			"who_type": "class",
-			"who_value": "Mage"
-		}
-
-	return {}
+	return {
+		"ok": false,
+		"who_type": "",
+		"who_value": null,
+		"unit": null
+	}
 
 
-static func _parse_what(text: String) -> String:
-	if text.contains("attack"):
-		return "attack"
-
-	if text.contains("move") or text.contains("go") or text.contains("rotate") or text.contains("come"):
-		return "move"
-
-	if text.contains("interrupt") or text.contains("kick"):
-		return "interrupt"
+func _parse_what(text: String) -> Dictionary:
+	if text.contains("interrupt"):
+		return _what("interrupt", "", {})
 
 	if text.contains("heal"):
-		return "heal"
+		return _what("heal", "", {})
 
-	return ""
+	if text.contains("move out") or text.contains("out"):
+		return _what("movement", "out", {
+			"movement_direction": "out",
+			"movement_steps": 1
+		})
 
+	if text.contains("move in") or text.contains("in"):
+		return _what("movement", "in", {
+			"movement_direction": "in",
+			"movement_steps": 1
+		})
 
-static func _apply_where_data(command_data: Dictionary, text: String, what: String) -> void:
-	match what:
-		"attack":
-			command_data["where"] = "boss"
+	if text.contains("come to me") or text.contains("to me") or text.contains("on me"):
+		return _what("movement", "me", {
+			"movement_direction": "toward_player",
+			"movement_steps": 1
+		})
 
-		"interrupt":
-			command_data["where"] = "boss"
-
-		"heal":
-			command_data["where"] = "boss_target"
-
-		"move":
-			_apply_movement_where_data(command_data, text)
-
-		_:
-			command_data["where"] = "none"
-
-
-static func _apply_movement_where_data(command_data: Dictionary, text: String) -> void:
-	if text.contains("move in") or text.contains("go in") or text.contains("come in") or text.contains("closer"):
-		command_data["where"] = "movement_range_step"
-		command_data["movement_direction"] = "in"
-		return
-
-	if text.contains("move out") or text.contains("go out") or text.contains("spread out") or text.contains("away"):
-		command_data["where"] = "movement_range_step"
-		command_data["movement_direction"] = "out"
-		return
-
-	var region := _parse_region(text)
-
-	if not region.is_empty():
-		if text.contains("rotate") or text.contains("turn"):
-			command_data["where"] = "movement_rotate"
-			command_data["movement_region"] = region
-			return
-
-	if _has_range_word(text):
-		command_data["where"] = "movement_slot"
-		command_data["movement_region"] = region
-		command_data["movement_range"] = _parse_range(text)
-		return
-
-	# Direction without rotate/range is ambiguous for now.
-	command_data.clear()
-	return
-
-	if text.contains("close"):
-		command_data["where"] = "movement_range"
-		command_data["movement_range"] = "close"
-		return
-
-	if text.contains("mid") or text.contains("middle"):
-		command_data["where"] = "movement_range"
-		command_data["movement_range"] = "mid"
-		return
-
-	if text.contains("far"):
-		command_data["where"] = "movement_range"
-		command_data["movement_range"] = "far"
-		return
-
-	command_data["where"] = "me"
-static func _has_range_word(text: String) -> bool:
-	return text.contains("close") or text.contains("mid") or text.contains("middle") or text.contains("far")
+	return {
+		"ok": false,
+		"what": "",
+		"where": "",
+		"extra": {}
+	}
 
 
-static func _parse_range(text: String) -> String:
-	if text.contains("close"):
-		return "close"
+func _who(who_type: String, who_value, unit) -> Dictionary:
+	return {
+		"ok": true,
+		"who_type": who_type,
+		"who_value": who_value,
+		"unit": unit
+	}
 
-	if text.contains("mid") or text.contains("middle"):
-		return "mid"
 
-	if text.contains("far"):
-		return "far"
+func _what(what: String, where: String, extra: Dictionary) -> Dictionary:
+	return {
+		"ok": true,
+		"what": what,
+		"where": where,
+		"extra": extra
+	}
 
-	return ""
-static func _parse_region(text: String) -> String:
-	if text.contains("northeast") or text.contains("north east"):
-		return "northeast"
 
-	if text.contains("northwest") or text.contains("north west"):
-		return "northwest"
-
-	if text.contains("southeast") or text.contains("south east"):
-		return "southeast"
-
-	if text.contains("southwest") or text.contains("south west"):
-		return "southwest"
-
-	if text.contains("north"):
-		return "north"
-
-	if text.contains("south"):
-		return "south"
-
-	if text.contains("east"):
-		return "east"
-
-	if text.contains("west"):
-		return "west"
-
-	return ""
+func _fail(reason: String) -> Dictionary:
+	return {
+		"ok": false,
+		"command_data": {},
+		"reason": reason
+	}
