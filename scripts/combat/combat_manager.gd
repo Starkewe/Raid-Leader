@@ -2,11 +2,17 @@ extends Node
 
 const CombatEventQueueScript := preload("res://scripts/combat/combat_event_queue.gd")
 const CombatStatusPresenterScript := preload("res://scripts/combat/combat_status_presenter.gd")
+const VoiceTranscriberClientScript := preload("res://scripts/voice/voice_transcriber_client.gd")
+const VoiceCommandParserScript := preload("res://scripts/voice/voice_command_parser.gd")
 
 @onready var raid_spawner: RaidSpawner = get_node_or_null("../RaidSpawner")
 @onready var boss = get_node_or_null("../Boss")
 @onready var ui = get_node_or_null("../UI")
 @onready var player = get_node_or_null("../Player")
+
+@export var voice_transcriber_path: NodePath
+
+var voice_transcriber: VoiceTranscriberClient
 
 var boss_alive: bool = true
 var fight_active: bool = false
@@ -30,7 +36,8 @@ func _ready():
 	combat_event_queue.setup(Callable(self, "handle_combat_event"))
 	
 	status_presenter = CombatStatusPresenterScript.new()
-
+	setup_voice_commands()
+	
 	call_deferred("initialize_combat")
 func _on_command_panel_submitted(command_data: Dictionary) -> void:
 	if command_controller == null:
@@ -403,3 +410,49 @@ func get_unit_debug_name(unit: Node) -> String:
 		return "None"
 
 	return command_controller.get_unit_debug_name(unit)
+func setup_voice_commands() -> void:
+	voice_transcriber = get_node_or_null(voice_transcriber_path) as VoiceTranscriberClient
+
+	if voice_transcriber == null:
+		voice_transcriber = get_node_or_null("../VoicePipeline/VoiceTranscriberClient") as VoiceTranscriberClient
+
+	if voice_transcriber == null:
+		push_warning("CombatManager could not find VoiceTranscriberClient. Voice commands disabled.")
+		return
+
+	if not voice_transcriber.transcript_received.is_connected(_on_voice_transcript_received):
+		voice_transcriber.transcript_received.connect(_on_voice_transcript_received)
+
+	if not voice_transcriber.transcription_failed.is_connected(_on_voice_transcription_failed):
+		voice_transcriber.transcription_failed.connect(_on_voice_transcription_failed)
+
+
+func _on_voice_transcript_received(transcript: String) -> void:
+	print("Parsing voice command:", transcript)
+
+	var command_data: Dictionary = VoiceCommandParserScript.parse_transcript(transcript)
+
+	if command_data.is_empty():
+		print("Voice command could not be parsed:", transcript)
+		return
+
+	execute_voice_command(command_data)
+
+
+func _on_voice_transcription_failed(message: String) -> void:
+	print("Voice transcription failed:", message)
+
+
+func execute_voice_command(command_data: Dictionary) -> void:
+	if command_controller == null:
+		return
+
+	print("Executing voice command data:", command_data)
+
+	var command_started: bool = command_controller.execute_panel_command(command_data, boss_alive)
+
+	if command_started:
+		fight_active = true
+		encounter_state = "active"
+
+	refresh_all_statuses()

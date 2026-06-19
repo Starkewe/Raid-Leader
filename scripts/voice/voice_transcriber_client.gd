@@ -1,173 +1,97 @@
 extends Node
 class_name VoiceTranscriberClient
 
-signal transcript_received(text: String)
-signal transcription_failed(message: String)
+signal transcription_started()
+signal transcription_completed(text: String)
+signal transcript_received(transcript: String)
+signal transcription_failed(reason: String)
 
-const VOICE_BUS_NAME := "VoiceRecord"
-const RECORDING_PATH := "user://voice_command.wav"
+@export var whisper_exe_path: String = "E:/Raid Leader/tools/whisper.cpp/build/bin/Release/whisper-cli.exe"
+@export var whisper_model_path: String = "E:/Raid Leader/tools/whisper.cpp/ggml-base.en.bin"
 
-@export var transcription_endpoint: String = "http://127.0.0.1:8765/transcribe"
-
-var microphone_player: AudioStreamPlayer = null
-var record_effect: AudioEffectRecord = null
-var http_request: HTTPRequest = null
-var is_recording: bool = false
+var _thread: Thread = null
+var _busy: bool = false
 
 
-func _ready() -> void:
-	setup_microphone_recording()
-
-	http_request = HTTPRequest.new()
-	add_child(http_request)
-	http_request.request_completed.connect(_on_request_completed)
+func is_busy() -> bool:
+	return _busy
 
 
-func setup_microphone_recording() -> void:
-	var bus_index := AudioServer.get_bus_index(VOICE_BUS_NAME)
-
-	if bus_index == -1:
-		AudioServer.add_bus()
-		bus_index = AudioServer.bus_count - 1
-		AudioServer.set_bus_name(bus_index, VOICE_BUS_NAME)
-
-	record_effect = get_or_create_record_effect(bus_index)
-
-	microphone_player = AudioStreamPlayer.new()
-	microphone_player.stream = AudioStreamMicrophone.new()
-	microphone_player.bus = VOICE_BUS_NAME
-	add_child(microphone_player)
-	microphone_player.play()
-
-
-func get_or_create_record_effect(bus_index: int) -> AudioEffectRecord:
-	for i in range(AudioServer.get_bus_effect_count(bus_index)):
-		var existing_effect := AudioServer.get_bus_effect(bus_index, i)
-
-		if existing_effect is AudioEffectRecord:
-			return existing_effect as AudioEffectRecord
-
-	var effect := AudioEffectRecord.new()
-	AudioServer.add_bus_effect(bus_index, effect)
-
-	return effect
-
-
-func start_recording() -> void:
-	if record_effect == null:
-		transcription_failed.emit("Voice recording is not initialized.")
+func transcribe_wav(wav_path: String) -> void:
+	if _busy:
+		transcription_failed.emit("Transcriber is already busy.")
 		return
 
-	if is_recording:
+	if wav_path.is_empty():
+		transcription_failed.emit("Missing WAV path.")
 		return
 
-	print("Voice recording started.")
-	record_effect.set_recording_active(false)
-	record_effect.set_recording_active(true)
-	is_recording = true
+	_busy = true
+	transcription_started.emit()
+
+	_thread = Thread.new()
+	_thread.start(_transcribe_thread.bind(wav_path))
 
 
-func stop_recording_and_transcribe() -> void:
-	if record_effect == null:
-		transcription_failed.emit("Voice recording is not initialized.")
+func _transcribe_thread(wav_path: String) -> void:
+	var global_wav_path := _globalize_if_needed(wav_path)
+
+	var global_voice_dir := ProjectSettings.globalize_path("user://voice")
+	DirAccess.make_dir_recursive_absolute(global_voice_dir)
+
+	var output_prefix := ProjectSettings.globalize_path("user://voice/last_transcription")
+	var output_txt_path := output_prefix + ".txt"
+
+	if FileAccess.file_exists(output_txt_path):
+		DirAccess.remove_absolute(output_txt_path)
+
+	var args := PackedStringArray([
+		"-m", whisper_model_path,
+		"-f", global_wav_path,
+		"-l", "en",
+		"-nt",
+		"-np",
+		"-otxt",
+		"-of", output_prefix
+	])
+
+	var output: Array = []
+	var exit_code := OS.execute(whisper_exe_path, args, output, true, false)
+
+	var text := ""
+
+	if exit_code == 0 and FileAccess.file_exists(output_txt_path):
+		var file := FileAccess.open(output_txt_path, FileAccess.READ)
+
+		if file != null:
+			text = file.get_as_text().strip_edges()
+
+	call_deferred("_finish_transcription", exit_code, text)
+
+
+func _finish_transcription(exit_code: int, text: String) -> void:
+	if _thread != null:
+		_thread.wait_to_finish()
+		_thread = null
+
+	_busy = false
+
+	if exit_code != 0:
+		transcription_failed.emit("whisper.cpp failed with exit code %s." % exit_code)
 		return
 
-	if not is_recording:
+	if text.is_empty():
+		transcription_failed.emit("Whisper returned empty transcription.")
 		return
 
-	print("Voice recording stopped.")
-	record_effect.set_recording_active(false)
-	is_recording = false
+	print("Voice transcript received: ", text)
 
-	var recording := record_effect.get_recording()
-
-	if recording == null:
-		transcription_failed.emit("No voice recording captured.")
-		return
-
-	if recording.get_length() < 0.15:
-		transcription_failed.emit("Voice recording was too short.")
-		return
-
-	var save_result := recording.save_to_wav(RECORDING_PATH)
-
-	if save_result != OK:
-		transcription_failed.emit("Failed to save voice recording.")
-		return
-
-	send_recording_to_transcriber()
+	transcription_completed.emit(text)
+	transcript_received.emit(text)
 
 
-func send_recording_to_transcriber() -> void:
-	if http_request == null:
-		transcription_failed.emit("HTTPRequest node is missing.")
-		return
+func _globalize_if_needed(path: String) -> String:
+	if path.begins_with("res://") or path.begins_with("user://"):
+		return ProjectSettings.globalize_path(path)
 
-	var file := FileAccess.open(RECORDING_PATH, FileAccess.READ)
-
-	if file == null:
-		transcription_failed.emit("Could not open saved voice recording.")
-		return
-
-	var bytes := file.get_buffer(file.get_length())
-	file.close()
-
-	var body := JSON.stringify({
-		"filename": "voice_command.wav",
-		"audio_base64": Marshalls.raw_to_base64(bytes),
-		"speech_to_text_model": GameState.get_model_setting("speech_to_text_model")
-	})
-
-	var headers := [
-		"Content-Type: application/json"
-	]
-
-	print("Sending voice recording to:", transcription_endpoint)
-
-	var result := http_request.request(
-		transcription_endpoint,
-		headers,
-		HTTPClient.METHOD_POST,
-		body
-	)
-
-	if result != OK:
-		transcription_failed.emit("Failed to send recording to transcriber.")
-
-
-func _on_request_completed(
-	result: int,
-	response_code: int,
-	headers: PackedStringArray,
-	body: PackedByteArray
-) -> void:
-	if result != HTTPRequest.RESULT_SUCCESS:
-		transcription_failed.emit("Transcription request failed.")
-		return
-
-	if response_code < 200 or response_code >= 300:
-		transcription_failed.emit("Transcription server returned HTTP " + str(response_code))
-		return
-
-	var response_text := body.get_string_from_utf8()
-	var json := JSON.new()
-	var parse_result := json.parse(response_text)
-
-	if parse_result != OK:
-		transcription_failed.emit("Transcription response was not valid JSON.")
-		return
-
-	var data = json.data
-
-	if typeof(data) != TYPE_DICTIONARY:
-		transcription_failed.emit("Transcription response was not a dictionary.")
-		return
-
-	var transcript := String(data.get("text", "")).strip_edges()
-
-	if transcript.is_empty():
-		transcription_failed.emit("Transcription returned empty text.")
-		return
-
-	print("Voice transcript:", transcript)
-	transcript_received.emit(transcript)
+	return path

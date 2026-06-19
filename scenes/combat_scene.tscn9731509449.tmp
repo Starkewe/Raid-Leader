@@ -137,7 +137,7 @@ script = ExtResource("9_6ovae")
 
 [node name="VoicePipeline" type="Node" parent="." unique_id=381630109]
 
-[node name="VoiceMicPlayer" type="AudioStreamPlayer" parent="VoicePipeline" unique_id=241362338]
+[node name="VoiceMicPlayer" type="AudioStreamPlayer2D" parent="VoicePipeline" unique_id=1743517898]
 stream = SubResource("AudioStreamMicrophone_ivkwx")
 bus = &"VoiceCapture"
 

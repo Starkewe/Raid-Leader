@@ -1,185 +1,218 @@
-extends RefCounted
+extends Node
 class_name VoiceCommandParser
 
 
 static func parse_transcript(transcript: String) -> Dictionary:
-	var text := normalize_text(transcript)
+	var text := _normalize_text(transcript)
 
-	if text.is_empty():
+	var who_data := _parse_who_data(text)
+	var what := _parse_what(text)
+
+	if who_data.is_empty() or what.is_empty():
 		return {}
 
-	var command_data := parse_who(text)
+	var command_data := {
+		"who_type": String(who_data.get("who_type", "everyone")),
+		"who_value": who_data.get("who_value", ""),
+		"unit": null,
+		"what": what,
+		"where": "none",
+		"when": "now",
+		"raw_transcript": transcript
+	}
 
-	if has_any(text, ["attack", "start attack", "hit boss", "attack boss", "dps boss"]):
-		command_data["what"] = "attack"
-		command_data["where"] = "boss"
-		return command_data
+	_apply_where_data(command_data, text, what)
 
-	if has_any(text, ["interrupt", "kick", "stop cast", "stop casting"]):
-		command_data["what"] = "interrupt"
-		command_data["where"] = "boss"
-		return command_data
-
-	if has_any(text, ["heal", "heal target", "heal boss target", "heal the target"]):
-		command_data["what"] = "heal"
-		command_data["where"] = "boss_target"
-		return command_data
-
-	if has_any(text, ["move", "go", "rotate", "step", "come", "spread"]):
-		return parse_move_command(text, command_data)
-
-	return {}
+	return command_data
 
 
-static func parse_move_command(text: String, command_data: Dictionary) -> Dictionary:
-	command_data["what"] = "move"
+static func _normalize_text(text: String) -> String:
+	var normalized := text.to_lower().strip_edges()
 
-	if has_any(text, ["move in", "come in", "step in", "closer", "move closer"]):
-		command_data["where"] = "movement_range_step"
-		command_data["movement_direction"] = "in"
-		return command_data
+	normalized = normalized.replace(".", "")
+	normalized = normalized.replace(",", "")
+	normalized = normalized.replace("!", "")
+	normalized = normalized.replace("?", "")
+	normalized = normalized.replace("'", "")
 
-	if has_any(text, ["move out", "go out", "step out", "back out", "farther", "move farther"]):
-		command_data["where"] = "movement_range_step"
-		command_data["movement_direction"] = "out"
-		return command_data
-
-	var range_name := parse_range(text)
-	var region_name := parse_region(text)
-
-	if region_name != "" and range_name != "":
-		command_data["where"] = "movement_slot"
-		command_data["movement_region"] = region_name
-		command_data["movement_range"] = range_name
-		return command_data
-
-	if region_name != "":
-		command_data["where"] = "movement_rotate"
-		command_data["movement_region"] = region_name
-		return command_data
-
-	if range_name != "":
-		command_data["where"] = "movement_range"
-		command_data["movement_range"] = range_name
-		return command_data
-
-	if has_any(text, ["to me", "on me", "come to me", "stack on me"]):
-		command_data["where"] = "me"
-		return command_data
-
-	return {}
+	return normalized
 
 
-static func parse_who(text: String) -> Dictionary:
-	if has_any(text, ["group one", "group 1"]):
+static func _parse_who_data(text: String) -> Dictionary:
+	if text.contains("everyone") or text.contains("everybody") or text.contains("all"):
+		return {
+			"who_type": "everyone",
+			"who_value": ""
+		}
+
+	if text.contains("group one") or text.contains("group 1"):
 		return {
 			"who_type": "group",
 			"who_value": 1
 		}
 
-	if has_any(text, ["group two", "group 2"]):
+	if text.contains("group two") or text.contains("group 2"):
 		return {
 			"who_type": "group",
 			"who_value": 2
 		}
 
-	if has_any(text, ["group three", "group 3"]):
+	if text.contains("group three") or text.contains("group 3"):
 		return {
 			"who_type": "group",
 			"who_value": 3
 		}
 
-	if has_any(text, ["group four", "group 4"]):
+	if text.contains("group four") or text.contains("group 4"):
 		return {
 			"who_type": "group",
 			"who_value": 4
 		}
 
-	if has_any(text, ["warrior", "warriors", "tank", "tanks"]):
+	if text.contains("tank") or text.contains("tanks") or text.contains("warrior") or text.contains("warriors"):
 		return {
 			"who_type": "class",
 			"who_value": "Warrior"
 		}
 
-	if has_any(text, ["rogue", "rogues"]):
-		return {
-			"who_type": "class",
-			"who_value": "Rogue"
-		}
-
-	if has_any(text, ["mage", "mages", "caster", "casters"]):
-		return {
-			"who_type": "class",
-			"who_value": "Mage"
-		}
-
-	if has_any(text, ["priest", "priests", "healer", "healers"]):
+	if text.contains("healer") or text.contains("healers") or text.contains("priest") or text.contains("priests"):
 		return {
 			"who_type": "class",
 			"who_value": "Priest"
 		}
 
-	return {
-		"who_type": "everyone",
-		"who_value": ""
-	}
+	if text.contains("rogue") or text.contains("rogues") or text.contains("melee"):
+		return {
+			"who_type": "class",
+			"who_value": "Rogue"
+		}
+
+	if text.contains("mage") or text.contains("mages") or text.contains("ranged"):
+		return {
+			"who_type": "class",
+			"who_value": "Mage"
+		}
+
+	return {}
 
 
-static func parse_region(text: String) -> String:
-	var region_terms := [
-		["north east", "northeast", "north-east"],
-		["south east", "southeast", "south-east"],
-		["south west", "southwest", "south-west"],
-		["north west", "northwest", "north-west"],
-		["north"],
-		["east"],
-		["south"],
-		["west"]
-	]
+static func _parse_what(text: String) -> String:
+	if text.contains("attack"):
+		return "attack"
 
-	var region_values := [
-		"northeast",
-		"southeast",
-		"southwest",
-		"northwest",
-		"north",
-		"east",
-		"south",
-		"west"
-	]
+	if text.contains("move") or text.contains("go") or text.contains("rotate") or text.contains("come"):
+		return "move"
 
-	for i in range(region_terms.size()):
-		if has_any(text, region_terms[i]):
-			return region_values[i]
+	if text.contains("interrupt") or text.contains("kick"):
+		return "interrupt"
+
+	if text.contains("heal"):
+		return "heal"
 
 	return ""
 
 
-static func parse_range(text: String) -> String:
-	if has_any(text, ["close", "melee"]):
+static func _apply_where_data(command_data: Dictionary, text: String, what: String) -> void:
+	match what:
+		"attack":
+			command_data["where"] = "boss"
+
+		"interrupt":
+			command_data["where"] = "boss"
+
+		"heal":
+			command_data["where"] = "boss_target"
+
+		"move":
+			_apply_movement_where_data(command_data, text)
+
+		_:
+			command_data["where"] = "none"
+
+
+static func _apply_movement_where_data(command_data: Dictionary, text: String) -> void:
+	if text.contains("move in") or text.contains("go in") or text.contains("come in") or text.contains("closer"):
+		command_data["where"] = "movement_range_step"
+		command_data["movement_direction"] = "in"
+		return
+
+	if text.contains("move out") or text.contains("go out") or text.contains("spread out") or text.contains("away"):
+		command_data["where"] = "movement_range_step"
+		command_data["movement_direction"] = "out"
+		return
+
+	var region := _parse_region(text)
+
+	if not region.is_empty():
+		if text.contains("rotate") or text.contains("turn"):
+			command_data["where"] = "movement_rotate"
+			command_data["movement_region"] = region
+			return
+
+	if _has_range_word(text):
+		command_data["where"] = "movement_slot"
+		command_data["movement_region"] = region
+		command_data["movement_range"] = _parse_range(text)
+		return
+
+	# Direction without rotate/range is ambiguous for now.
+	command_data.clear()
+	return
+
+	if text.contains("close"):
+		command_data["where"] = "movement_range"
+		command_data["movement_range"] = "close"
+		return
+
+	if text.contains("mid") or text.contains("middle"):
+		command_data["where"] = "movement_range"
+		command_data["movement_range"] = "mid"
+		return
+
+	if text.contains("far"):
+		command_data["where"] = "movement_range"
+		command_data["movement_range"] = "far"
+		return
+
+	command_data["where"] = "me"
+static func _has_range_word(text: String) -> bool:
+	return text.contains("close") or text.contains("mid") or text.contains("middle") or text.contains("far")
+
+
+static func _parse_range(text: String) -> String:
+	if text.contains("close"):
 		return "close"
 
-	if has_any(text, ["mid", "middle"]):
+	if text.contains("mid") or text.contains("middle"):
 		return "mid"
 
-	if has_any(text, ["far", "long", "ranged"]):
+	if text.contains("far"):
 		return "far"
 
 	return ""
+static func _parse_region(text: String) -> String:
+	if text.contains("northeast") or text.contains("north east"):
+		return "northeast"
 
+	if text.contains("northwest") or text.contains("north west"):
+		return "northwest"
 
-static func normalize_text(transcript: String) -> String:
-	var text := transcript.to_lower().strip_edges()
+	if text.contains("southeast") or text.contains("south east"):
+		return "southeast"
 
-	for symbol in [".", ",", "!", "?", ";", ":"]:
-		text = text.replace(symbol, "")
+	if text.contains("southwest") or text.contains("south west"):
+		return "southwest"
 
-	return text
+	if text.contains("north"):
+		return "north"
 
+	if text.contains("south"):
+		return "south"
 
-static func has_any(text: String, terms: Array) -> bool:
-	for term in terms:
-		if text.contains(String(term)):
-			return true
+	if text.contains("east"):
+		return "east"
 
-	return false
+	if text.contains("west"):
+		return "west"
+
+	return ""
