@@ -1,97 +1,90 @@
 extends Node
 class_name VoiceTranscriberClient
 
-signal transcription_started()
-signal transcription_completed(text: String)
-signal transcript_received(transcript: String)
+signal transcript_received(text: String)
 signal transcription_failed(reason: String)
 
-@export var whisper_exe_path: String = "E:/Raid Leader/tools/whisper.cpp/build/bin/Release/whisper-cli.exe"
-@export var whisper_model_path: String = "E:/Raid Leader/tools/whisper.cpp/ggml-base.en.bin"
+@export_file("*.exe") var whisper_cli_path := "E:/Raid Leader/tools/whisper.cpp/build/bin/Release/whisper-cli.exe"
+@export_file("*.bin") var model_path := "E:/Raid Leader/tools/whisper.cpp/ggml-base.en.bin"
 
-var _thread: Thread = null
-var _busy: bool = false
-
-
-func is_busy() -> bool:
-	return _busy
+var _thread: Thread
+var _is_transcribing := false
 
 
 func transcribe_wav(wav_path: String) -> void:
-	if _busy:
-		transcription_failed.emit("Transcriber is already busy.")
+	if _is_transcribing:
+		transcription_failed.emit("Transcription is already running.")
 		return
 
-	if wav_path.is_empty():
-		transcription_failed.emit("Missing WAV path.")
+	if not FileAccess.file_exists(wav_path):
+		transcription_failed.emit("WAV file does not exist: %s" % wav_path)
 		return
 
-	_busy = true
-	transcription_started.emit()
+	if not FileAccess.file_exists(whisper_cli_path):
+		transcription_failed.emit("whisper-cli.exe was not found.")
+		return
 
+	if not FileAccess.file_exists(model_path):
+		transcription_failed.emit("Whisper model was not found.")
+		return
+
+	_is_transcribing = true
 	_thread = Thread.new()
-	_thread.start(_transcribe_thread.bind(wav_path))
+	_thread.start(_run_whisper.bind(wav_path))
 
 
-func _transcribe_thread(wav_path: String) -> void:
-	var global_wav_path := _globalize_if_needed(wav_path)
-
-	var global_voice_dir := ProjectSettings.globalize_path("user://voice")
-	DirAccess.make_dir_recursive_absolute(global_voice_dir)
-
-	var output_prefix := ProjectSettings.globalize_path("user://voice/last_transcription")
-	var output_txt_path := output_prefix + ".txt"
-
-	if FileAccess.file_exists(output_txt_path):
-		DirAccess.remove_absolute(output_txt_path)
-
+func _run_whisper(wav_path: String) -> void:
+	var output := []
 	var args := PackedStringArray([
-		"-m", whisper_model_path,
-		"-f", global_wav_path,
-		"-l", "en",
-		"-nt",
-		"-np",
-		"-otxt",
-		"-of", output_prefix
+		"-m", model_path,
+		"-f", wav_path,
+		"-nt"
 	])
 
-	var output: Array = []
-	var exit_code := OS.execute(whisper_exe_path, args, output, true, false)
+	var exit_code := OS.execute(whisper_cli_path, args, output, true, false)
+	var raw_output := "\n".join(output)
 
-	var text := ""
-
-	if exit_code == 0 and FileAccess.file_exists(output_txt_path):
-		var file := FileAccess.open(output_txt_path, FileAccess.READ)
-
-		if file != null:
-			text = file.get_as_text().strip_edges()
-
-	call_deferred("_finish_transcription", exit_code, text)
+	call_deferred("_finish_transcription", exit_code, raw_output)
 
 
-func _finish_transcription(exit_code: int, text: String) -> void:
-	if _thread != null:
+func _finish_transcription(exit_code: int, raw_output: String) -> void:
+	if _thread:
 		_thread.wait_to_finish()
 		_thread = null
 
-	_busy = false
+	_is_transcribing = false
 
 	if exit_code != 0:
-		transcription_failed.emit("whisper.cpp failed with exit code %s." % exit_code)
+		transcription_failed.emit("whisper-cli failed with exit code %d: %s" % [exit_code, raw_output])
 		return
+
+	var text := _clean_whisper_output(raw_output)
 
 	if text.is_empty():
-		transcription_failed.emit("Whisper returned empty transcription.")
+		transcription_failed.emit("Whisper returned empty transcript.")
 		return
 
-	print("Voice transcript received: ", text)
-
-	transcription_completed.emit(text)
 	transcript_received.emit(text)
 
 
-func _globalize_if_needed(path: String) -> String:
-	if path.begins_with("res://") or path.begins_with("user://"):
-		return ProjectSettings.globalize_path(path)
+func _clean_whisper_output(raw_output: String) -> String:
+	var lines := raw_output.split("\n", false)
+	var transcript_parts: Array[String] = []
 
-	return path
+	for line in lines:
+		var cleaned := line.strip_edges()
+
+		if cleaned.is_empty():
+			continue
+
+		# Skip common whisper.cpp diagnostic lines.
+		if cleaned.begins_with("whisper_"):
+			continue
+		if cleaned.begins_with("system_info"):
+			continue
+		if cleaned.begins_with("main:"):
+			continue
+
+		transcript_parts.append(cleaned)
+
+	return " ".join(transcript_parts).strip_edges()
