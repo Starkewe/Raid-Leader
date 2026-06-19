@@ -5,7 +5,9 @@ signal transcript_received(text: String)
 signal transcription_failed(reason: String)
 
 @export_file("*.exe") var whisper_cli_path: String = "E:/Raid Leader/tools/whisper.cpp/build/bin/Release/whisper-cli.exe"
-@export_file("*.bin") var model_path: String = "E:/Raid Leader/tools/whisper.cpp/ggml-base.en.bin"
+
+@export var use_settings_menu_model: bool = true
+@export_file("*.bin") var fallback_model_path: String = "E:/Raid Leader/tools/whisper.cpp/models/ggml-base.en.bin"
 
 var _thread: Thread = null
 var _is_transcribing: bool = false
@@ -13,7 +15,11 @@ var _is_transcribing: bool = false
 
 func is_busy() -> bool:
 	return _is_transcribing
+func get_active_model_path() -> String:
+	if use_settings_menu_model:
+		return GameState.get_selected_speech_to_text_model_path()
 
+	return fallback_model_path
 
 func transcribe_wav(wav_path: String) -> void:
 	if _is_transcribing:
@@ -32,17 +38,19 @@ func transcribe_wav(wav_path: String) -> void:
 		transcription_failed.emit("whisper-cli.exe was not found: %s" % whisper_cli_path)
 		return
 
-	if not FileAccess.file_exists(model_path):
-		transcription_failed.emit("Whisper model was not found: %s" % model_path)
+	var active_model_path := get_active_model_path()
+
+	if not FileAccess.file_exists(active_model_path):
+		transcription_failed.emit("Whisper model was not found: %s" % active_model_path)
 		return
 
 	_is_transcribing = true
 
 	_thread = Thread.new()
-	_thread.start(_run_whisper.bind(wav_path))
+	_thread.start(_run_whisper.bind(wav_path, active_model_path))
 
 
-func _run_whisper(wav_path: String) -> void:
+func _run_whisper(wav_path: String, active_model_path: String) -> void:
 	var global_wav_path := _globalize_if_needed(wav_path)
 
 	var output_dir := "user://voice"
@@ -60,7 +68,7 @@ func _run_whisper(wav_path: String) -> void:
 	var output: Array = []
 
 	var args := PackedStringArray([
-		"-m", model_path,
+		"-m", active_model_path,
 		"-f", global_wav_path,
 		"-l", "en",
 		"-nt",
@@ -68,7 +76,7 @@ func _run_whisper(wav_path: String) -> void:
 		"-otxt",
 		"-of", global_output_prefix
 	])
-
+	print("Running Whisper model: ", active_model_path)
 	var exit_code := OS.execute(whisper_cli_path, args, output, true, false)
 	var raw_output := "\n".join(output)
 

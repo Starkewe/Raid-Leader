@@ -138,13 +138,10 @@ func build_settings_panel() -> void:
 	root.add_child(title)
 
 	speech_to_text_dropdown = add_model_dropdown(
-		root,
-		"Speech-to-Text Model",
-		"speech_to_text_model",
-		[
-			["Local Whisper Default", "whisper_local_default"],
-			["Whisper Large V3 Turbo", "whisper_large_v3_turbo"]
-		]
+	root,
+	"Speech-to-Text Model",
+	"speech_to_text_model",
+	GameState.get_speech_to_text_model_options()
 	)
 
 	command_parser_dropdown = add_model_dropdown(
