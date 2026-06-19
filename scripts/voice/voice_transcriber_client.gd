@@ -9,12 +9,21 @@ signal transcription_failed(reason: String)
 @export var use_settings_menu_model: bool = true
 @export_file("*.bin") var fallback_model_path: String = "E:/Raid Leader/tools/whisper.cpp/models/ggml-base.en.bin"
 
+@export var max_queued_transcriptions: int = 3
+
 var _thread: Thread = null
 var _is_transcribing: bool = false
+var _pending_wav_paths: Array[String] = []
+var _active_wav_path: String = ""
 
 
 func is_busy() -> bool:
+	return not can_accept_transcription()
+func is_transcribing() -> bool:
 	return _is_transcribing
+func can_accept_transcription() -> bool:
+	return _pending_wav_paths.size() < max_queued_transcriptions
+	
 func get_active_model_path() -> String:
 	if use_settings_menu_model:
 		return GameState.get_selected_speech_to_text_model_path()
@@ -22,10 +31,6 @@ func get_active_model_path() -> String:
 	return fallback_model_path
 
 func transcribe_wav(wav_path: String) -> void:
-	if _is_transcribing:
-		transcription_failed.emit("Transcription is already running.")
-		return
-
 	if wav_path.is_empty():
 		transcription_failed.emit("Missing WAV path.")
 		return
@@ -38,18 +43,78 @@ func transcribe_wav(wav_path: String) -> void:
 		transcription_failed.emit("whisper-cli.exe was not found: %s" % whisper_cli_path)
 		return
 
+	if _pending_wav_paths.size() >= max_queued_transcriptions:
+		transcription_failed.emit("Transcription queue is full.")
+		return
+
+	var queued_wav_path := _copy_wav_to_queue_file(wav_path)
+
+	if queued_wav_path.is_empty():
+		transcription_failed.emit("Failed to copy WAV into transcription queue.")
+		return
+
+	_pending_wav_paths.append(queued_wav_path)
+
+	print("Queued voice transcription:", queued_wav_path, "Queue size:", _pending_wav_paths.size())
+
+	_start_next_transcription_if_needed()
+func _start_next_transcription_if_needed() -> void:
+	if _is_transcribing:
+		return
+
+	if _pending_wav_paths.is_empty():
+		return
+
+	var next_wav_path := String(_pending_wav_paths.pop_front())
+
+	if not FileAccess.file_exists(next_wav_path):
+		transcription_failed.emit("Queued WAV file does not exist: %s" % next_wav_path)
+		call_deferred("_start_next_transcription_if_needed")
+		return
+
 	var active_model_path := get_active_model_path()
 
 	if not FileAccess.file_exists(active_model_path):
 		transcription_failed.emit("Whisper model was not found: %s" % active_model_path)
+		call_deferred("_start_next_transcription_if_needed")
 		return
 
 	_is_transcribing = true
+	_active_wav_path = next_wav_path
 
 	_thread = Thread.new()
-	_thread.start(_run_whisper.bind(wav_path, active_model_path))
+	_thread.start(_run_whisper.bind(next_wav_path, active_model_path))
+func _copy_wav_to_queue_file(wav_path: String) -> String:
+	var global_source_path := _globalize_if_needed(wav_path)
 
+	if not FileAccess.file_exists(global_source_path):
+		return ""
 
+	var source_file := FileAccess.open(global_source_path, FileAccess.READ)
+
+	if source_file == null:
+		return ""
+
+	var wav_data := source_file.get_buffer(source_file.get_length())
+	source_file.close()
+
+	var queue_dir := "user://voice/queued"
+	var global_queue_dir := ProjectSettings.globalize_path(queue_dir)
+
+	DirAccess.make_dir_recursive_absolute(global_queue_dir)
+
+	var queued_path := queue_dir + "/voice_command_%d.wav" % Time.get_ticks_usec()
+	var global_queued_path := ProjectSettings.globalize_path(queued_path)
+
+	var queued_file := FileAccess.open(global_queued_path, FileAccess.WRITE)
+
+	if queued_file == null:
+		return ""
+
+	queued_file.store_buffer(wav_data)
+	queued_file.close()
+
+	return queued_path
 func _run_whisper(wav_path: String, active_model_path: String) -> void:
 	var global_wav_path := _globalize_if_needed(wav_path)
 
@@ -96,21 +161,29 @@ func _finish_transcription(exit_code: int, transcript: String, raw_output: Strin
 		_thread.wait_to_finish()
 		_thread = null
 
+	var finished_wav_path := _active_wav_path
+
+	_active_wav_path = ""
 	_is_transcribing = false
+
+	_delete_file_if_exists(finished_wav_path)
 
 	if exit_code != 0:
 		transcription_failed.emit("whisper-cli failed with exit code %d: %s" % [exit_code, raw_output])
+		_start_next_transcription_if_needed()
 		return
 
 	var text := transcript.strip_edges()
 
 	if text.is_empty():
 		transcription_failed.emit("Whisper returned empty transcript.")
+		_start_next_transcription_if_needed()
 		return
 
 	print("Voice transcript: ", text)
 	transcript_received.emit(text)
 
+	_start_next_transcription_if_needed()
 
 func _read_text_file(path: String) -> String:
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -201,11 +274,26 @@ func _globalize_if_needed(path: String) -> String:
 		return ProjectSettings.globalize_path(path)
 
 	return path
+	
+func _delete_file_if_exists(path: String) -> void:
+	if path.is_empty():
+		return
 
+	var global_path := _globalize_if_needed(path)
+
+	if FileAccess.file_exists(global_path):
+		DirAccess.remove_absolute(global_path)
 
 func _exit_tree() -> void:
 	if _thread != null:
 		_thread.wait_to_finish()
 		_thread = null
 
+	_delete_file_if_exists(_active_wav_path)
+	_active_wav_path = ""
+
+	for queued_wav_path in _pending_wav_paths:
+		_delete_file_if_exists(String(queued_wav_path))
+
+	_pending_wav_paths.clear()
 	_is_transcribing = false
