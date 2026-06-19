@@ -184,7 +184,10 @@ func populate_where_options_for_current_action() -> void:
 			})
 
 		"move":
-			add_option(where_dropdown, "Me", { "where": "me" })
+			add_option(where_dropdown, "Me", {
+				"where": "me"
+			})
+
 			add_option(where_dropdown, "Move In One Range", {
 				"where": "movement_range_step",
 				"movement_direction": "in"
@@ -194,14 +197,17 @@ func populate_where_options_for_current_action() -> void:
 				"where": "movement_range_step",
 				"movement_direction": "out"
 			})
+
 			add_option(where_dropdown, "Close Range - Current Direction", {
 				"where": "movement_range",
 				"movement_range": "close"
 			})
+
 			add_option(where_dropdown, "Mid Range - Current Direction", {
 				"where": "movement_range",
 				"movement_range": "mid"
 			})
+
 			add_option(where_dropdown, "Far Range - Current Direction", {
 				"where": "movement_range",
 				"movement_range": "far"
@@ -318,16 +324,6 @@ func _on_execute_pressed() -> void:
 
 	command_submitted.emit(command_data)
 func add_movement_region_options() -> void:
-	add_option(where_dropdown, "Rotate Counterclockwise", {
-	"where": "movement_rotate_step",
-	"movement_direction": "counterclockwise"
-})
-
-	add_option(where_dropdown, "Rotate Clockwise", {
-		"where": "movement_rotate_step",
-		"movement_direction": "clockwise"
-})
-
 	var regions := [
 		["North", "north"],
 		["Northeast", "northeast"],
@@ -338,6 +334,22 @@ func add_movement_region_options() -> void:
 		["West", "west"],
 		["Northwest", "northwest"]
 	]
+
+	for region_data in regions:
+		add_option(where_dropdown, "Move " + region_data[0] + " - Current Range", {
+			"where": "movement_region",
+			"movement_region": region_data[1]
+		})
+
+	add_option(where_dropdown, "Rotate Counterclockwise", {
+		"where": "movement_rotate_step",
+		"movement_direction": "counterclockwise"
+	})
+
+	add_option(where_dropdown, "Rotate Clockwise", {
+		"where": "movement_rotate_step",
+		"movement_direction": "clockwise"
+	})
 
 	for region_data in regions:
 		add_option(where_dropdown, "Rotate " + region_data[0], {

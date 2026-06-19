@@ -1,4 +1,7 @@
 extends CanvasLayer
+
+const CommandDebugPanelScript := preload("res://scripts/ui/command_debug_panel.gd")
+
 signal raid_frame_hovered(unit)
 signal raid_frame_unhovered(unit)
 signal command_panel_submitted(command_data: Dictionary)
@@ -21,11 +24,13 @@ signal command_panel_submitted(command_data: Dictionary)
 @onready var boss_status_label: Label = get_node_or_null("BossFramePanel/VBoxContainer/BossStatusLabel")
 @onready var command_panel = get_node_or_null("CommandPanel")
 
+var command_debug_panel: Control = null
 var frame_by_unit: Dictionary = {}
 var boss: Node = null
 
 func _ready():
 	connect_command_panel_signals()
+	setup_command_debug_panel()
 	position_ui_panels()
 
 	if raid_frame_grid != null:
@@ -45,6 +50,7 @@ func _ready():
 func position_ui_panels():
 	position_raid_frames_panel()
 	position_boss_frame_panel()
+	position_command_debug_panel()
 
 func position_raid_frames_panel():
 	if raid_frames_panel == null:
@@ -277,3 +283,35 @@ func setup_command_panel(party_members: Array) -> void:
 		command_panel.setup_units(party_members)
 func _on_command_panel_submitted(command_data: Dictionary) -> void:
 	command_panel_submitted.emit(command_data)
+func setup_command_debug_panel() -> void:
+	command_debug_panel = get_node_or_null("CommandDebugPanel") as Control
+
+	if command_debug_panel == null:
+		command_debug_panel = CommandDebugPanelScript.new()
+		command_debug_panel.name = "CommandDebugPanel"
+		add_child(command_debug_panel)
+
+	position_command_debug_panel()
+
+
+func position_command_debug_panel() -> void:
+	if command_debug_panel == null:
+		return
+
+	command_debug_panel.position = Vector2(20, 20)
+
+
+func set_command_debug_info(data: Dictionary) -> void:
+	if command_debug_panel == null:
+		return
+
+	if command_debug_panel.has_method("set_debug_data"):
+		command_debug_panel.set_debug_data(data)
+
+
+func clear_command_debug_info() -> void:
+	if command_debug_panel == null:
+		return
+
+	if command_debug_panel.has_method("clear_debug_data"):
+		command_debug_panel.clear_debug_data()

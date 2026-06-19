@@ -1,12 +1,11 @@
 extends RefCounted
 class_name RaidCommandController
 
-const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
+const CommandTargetResolverScript := preload("res://scripts/commands/command_target_resolver.gd")
+const MovementCommandExecutorScript := preload("res://scripts/commands/movement_command_executor.gd")
 
 signal refresh_requested
 signal temporary_status_requested(unit: Node, text: String, duration: float)
-
-const GROUP_SIZE: int = 5
 
 var party_members: Array = []
 var boss: Node = null
@@ -16,11 +15,49 @@ var priest_follow_boss_target: bool = false
 var boss_target_healers: Array = []
 var hovered_unit: Node = null
 
+var target_resolver = null
+var movement_executor = null
+
 
 func setup(new_party_members: Array, new_boss: Node, new_player: Node) -> void:
 	party_members = new_party_members
 	boss = new_boss
 	player = new_player
+
+	target_resolver = CommandTargetResolverScript.new()
+	target_resolver.setup(party_members)
+
+	movement_executor = MovementCommandExecutorScript.new()
+	movement_executor.setup(
+		boss,
+		player,
+		Callable(self, "is_unit_alive")
+	)
+
+	connect_movement_executor_signals()
+
+
+func connect_movement_executor_signals() -> void:
+	if movement_executor == null:
+		return
+
+	var refresh_callback := Callable(self, "_on_movement_refresh_requested")
+
+	if not movement_executor.refresh_requested.is_connected(refresh_callback):
+		movement_executor.refresh_requested.connect(refresh_callback)
+
+	var temporary_status_callback := Callable(self, "_on_movement_temporary_status_requested")
+
+	if not movement_executor.temporary_status_requested.is_connected(temporary_status_callback):
+		movement_executor.temporary_status_requested.connect(temporary_status_callback)
+
+
+func _on_movement_refresh_requested() -> void:
+	refresh_requested.emit()
+
+
+func _on_movement_temporary_status_requested(unit: Node, text: String, duration: float) -> void:
+	temporary_status_requested.emit(unit, text, duration)
 
 
 func reset_commands() -> void:
@@ -32,10 +69,6 @@ func reset_commands() -> void:
 func is_following_boss_target() -> bool:
 	return priest_follow_boss_target
 
-
-# -------------------------------------------------------------------
-# Command panel entry point
-# -------------------------------------------------------------------
 
 func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
 	var selected_units: Array = get_units_for_command(command_data)
@@ -63,31 +96,10 @@ func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
 
 
 func get_units_for_command(command_data: Dictionary) -> Array:
-	var who_type: String = String(command_data.get("who_type", "everyone"))
-	var selected_units: Array = []
+	if target_resolver == null:
+		return []
 
-	match who_type:
-		"everyone":
-			selected_units = get_living_party_members()
-
-		"class":
-			var class_name_value: String = String(command_data.get("who_value", ""))
-			selected_units = get_living_units_by_class(class_name_value)
-
-		"group":
-			var group_number: int = int(command_data.get("who_value", 0))
-			selected_units = get_living_units_by_group(group_number)
-
-		"unit":
-			var unit_node: Node = command_data.get("unit", null) as Node
-
-			if is_unit_alive(unit_node):
-				selected_units.append(unit_node)
-
-		_:
-			print("Unknown who_type:", who_type)
-
-	return selected_units
+	return target_resolver.get_units_for_command(command_data)
 
 
 func execute_panel_attack(selected_units: Array, where: String, boss_alive: bool) -> bool:
@@ -120,293 +132,17 @@ func execute_panel_attack(selected_units: Array, where: String, boss_alive: bool
 	var target := get_current_or_first_living_target()
 	assign_boss_target(target)
 
-	refresh_requested.emit()
-
 	return true
 
+
 func execute_panel_move(selected_units: Array, command_data: Dictionary) -> bool:
-	var where: String = String(command_data.get("where", "none"))
-
-	match where:
-		"me":
-			return execute_move_to_player(selected_units)
-
-		"movement_slot":
-			var region := String(command_data.get("movement_region", "north"))
-			var range_name := String(command_data.get("movement_range", "mid"))
-			return execute_move_to_slot(selected_units, region, range_name)
-
-		"movement_rotate":
-			var region := String(command_data.get("movement_region", "north"))
-			return execute_rotate_to_region(selected_units, region)
-			
-		"movement_rotate_step":
-			var direction := String(command_data.get("movement_direction", "clockwise"))
-			return execute_rotate_step(selected_units, direction)
-
-		"movement_range":
-			var range_name := String(command_data.get("movement_range", "mid"))
-			return execute_move_to_range(selected_units, range_name)
-		"movement_range_step":
-			var direction := String(command_data.get("movement_direction", "out"))
-			return execute_range_step(selected_units, direction)
-		_:
-			print("Unsupported movement destination:", where)
-			return false
-func execute_rotate_step(selected_units: Array, rotation_direction: String) -> bool:
-	if not is_valid_node(boss) or not boss is Node2D:
-		print("Boss is missing. Cannot rotate movement.")
+	if movement_executor == null:
+		print("Movement executor is missing.")
 		return false
 
-	var boss_2d := boss as Node2D
-	var issued_command: bool = false
-	var living_units: Array = get_living_movable_units(selected_units)
-
-	for unit in living_units:
-		var unit_2d := unit as Node2D
-
-		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
-			boss_2d.global_position,
-			unit_2d.global_position
-		)
-
-		var current_range: String = MovementSlotResolverScript.get_nearest_range_from_position(
-			boss,
-			unit_2d.global_position
-		)
-
-		var next_region: String = MovementSlotResolverScript.get_adjacent_region(
-			current_region,
-			rotation_direction
-		)
-
-		var destination: Vector2 = MovementSlotResolverScript.get_slot_position(
-			boss,
-			next_region,
-			current_range
-		)
-
-		unit.command_move_to_position(destination)
-		temporary_status_requested.emit(unit, "Rotating " + rotation_direction.capitalize(), 0.75)
-		issued_command = true
-
-	if not issued_command:
-		print("No selected units can rotate.")
-		return false
-
-	refresh_requested.emit()
-	return false
-func execute_move_to_player(selected_units: Array) -> bool:
-	if not is_valid_node(player):
-		print("Player node is missing.")
-		return false
-
-	if not player is Node2D:
-		print("Player node is not a Node2D.")
-		return false
-
-	var player_2d := player as Node2D
-	return command_units_to_shared_position(selected_units, player_2d.global_position, "Moving to Player")
+	return movement_executor.execute_move(selected_units, command_data)
 
 
-func execute_move_to_slot(selected_units: Array, region: String, range_name: String) -> bool:
-	if not is_valid_node(boss):
-		print("Boss is missing. Cannot resolve movement slot.")
-		return false
-
-	var slot_position := MovementSlotResolverScript.get_slot_position(boss, region, range_name)
-
-	return command_units_to_shared_position(
-		selected_units,
-		slot_position,
-		"Moving " + region + " " + range_name
-	)
-
-func execute_rotate_to_region(selected_units: Array, region: String) -> bool:
-	if not is_valid_node(boss) or not boss is Node2D:
-		print("Boss is missing. Cannot rotate movement.")
-		return false
-
-	var boss_2d := boss as Node2D
-	var issued_command: bool = false
-	var living_units: Array = get_living_movable_units(selected_units)
-
-	for unit in living_units:
-		var unit_2d := unit as Node2D
-
-		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
-			boss_2d.global_position,
-			unit_2d.global_position
-		)
-
-		var current_range: String = MovementSlotResolverScript.get_nearest_range_from_position(
-			boss,
-			unit_2d.global_position
-		)
-
-		var region_path: Array[String] = MovementSlotResolverScript.get_region_rotation_path(
-			current_region,
-			region
-		)
-
-		var destinations: Array[Vector2] = []
-
-		for path_region in region_path:
-			var destination: Vector2 = MovementSlotResolverScript.get_slot_position(
-				boss,
-				path_region,
-				current_range
-			)
-
-			destinations.append(destination)
-
-		if destinations.is_empty():
-			continue
-
-		if unit.has_method("command_move_through_positions"):
-			unit.command_move_through_positions(destinations)
-		else:
-			unit.command_move_to_position(destinations[destinations.size() - 1])
-
-		temporary_status_requested.emit(unit, "Rotating " + region, 0.75)
-		issued_command = true
-
-	if not issued_command:
-		print("No selected units can rotate.")
-		return false
-
-	refresh_requested.emit()
-	return false
-
-func execute_move_to_range(selected_units: Array, range_name: String) -> bool:
-	if not is_valid_node(boss) or not boss is Node2D:
-		print("Boss is missing. Cannot change movement range.")
-		return false
-
-	var boss_2d := boss as Node2D
-	var issued_command := false
-	var living_units := get_living_movable_units(selected_units)
-
-	for unit in living_units:
-		var unit_2d := unit as Node2D
-		var current_region := MovementSlotResolverScript.get_nearest_region_from_position(
-			boss_2d.global_position,
-			unit_2d.global_position
-		)
-
-		var destination := MovementSlotResolverScript.get_slot_position(boss, current_region, range_name)
-
-		unit.command_move_to_position(destination)
-		temporary_status_requested.emit(unit, "Moving " + range_name, 0.75)
-		issued_command = true
-
-	if not issued_command:
-		print("No selected units can change range.")
-		return false
-
-	refresh_requested.emit()
-	return false
-func execute_range_step(selected_units: Array, range_direction: String) -> bool:
-	if not is_valid_node(boss) or not boss is Node2D:
-		print("Boss is missing. Cannot step range.")
-		return false
-
-	var boss_2d := boss as Node2D
-	var issued_command := false
-	var living_units := get_living_movable_units(selected_units)
-
-	for unit in living_units:
-		var unit_2d := unit as Node2D
-
-		var current_region := MovementSlotResolverScript.get_nearest_region_from_position(
-			boss_2d.global_position,
-			unit_2d.global_position
-		)
-
-		var current_range := MovementSlotResolverScript.get_nearest_range_from_position(
-			boss,
-			unit_2d.global_position
-		)
-
-		var next_range := MovementSlotResolverScript.get_adjacent_range(
-			current_range,
-			range_direction
-		)
-
-		if next_range == current_range:
-			var boundary_text := "Already " + current_range
-
-			if range_direction == MovementSlotResolverScript.RANGE_DIRECTION_IN:
-				boundary_text = "Already close"
-			elif range_direction == MovementSlotResolverScript.RANGE_DIRECTION_OUT:
-				boundary_text = "Already far"
-
-			temporary_status_requested.emit(unit, boundary_text, 0.75)
-			continue
-
-		var destination := MovementSlotResolverScript.get_slot_position(
-			boss,
-			current_region,
-			next_range
-		)
-
-		unit.command_move_to_position(destination)
-
-		var status_text := "Moving " + range_direction
-
-		if range_direction == MovementSlotResolverScript.RANGE_DIRECTION_IN:
-			status_text = "Moving in"
-		elif range_direction == MovementSlotResolverScript.RANGE_DIRECTION_OUT:
-			status_text = "Moving out"
-
-		temporary_status_requested.emit(unit, status_text, 0.75)
-		issued_command = true
-
-	if not issued_command:
-		print("No selected units can step range.")
-		refresh_requested.emit()
-		return false
-
-	refresh_requested.emit()
-	return false
-
-func command_units_to_shared_position(selected_units: Array, destination: Vector2, status_text: String) -> bool:
-	var issued_command := false
-
-	for unit in selected_units:
-		if not is_unit_alive(unit):
-			continue
-
-		if not unit.has_method("command_move_to_position"):
-			continue
-
-		unit.command_move_to_position(destination)
-		temporary_status_requested.emit(unit, status_text, 0.75)
-		issued_command = true
-
-	if not issued_command:
-		print("No selected units can move.")
-		return false
-
-	refresh_requested.emit()
-	return false
-
-func get_living_movable_units(source_units: Array) -> Array:
-	var movable_units: Array = []
-
-	for unit in source_units:
-		if not is_unit_alive(unit):
-			continue
-
-		if not unit is Node2D:
-			continue
-
-		if not unit.has_method("command_move_to_position"):
-			continue
-
-		movable_units.append(unit)
-
-	return movable_units
 func execute_panel_interrupt(selected_units: Array, where: String, boss_alive: bool) -> bool:
 	if where != "boss":
 		print("Interrupt command only supports Where = Boss right now.")
@@ -430,10 +166,9 @@ func execute_panel_interrupt(selected_units: Array, where: String, boss_alive: b
 
 	interrupter.command_interrupt(boss)
 	temporary_status_requested.emit(interrupter, "Interrupt Command", 0.5)
-
 	refresh_requested.emit()
 
-	return false
+	return true
 
 
 func execute_panel_heal(selected_units: Array, where: String) -> bool:
@@ -456,15 +191,10 @@ func execute_panel_heal(selected_units: Array, where: String) -> bool:
 	boss_target_healers = selected_healers
 
 	assign_healers_to_target(heal_target, boss_target_healers)
-
 	refresh_requested.emit()
 
-	return false
+	return true
 
-
-# -------------------------------------------------------------------
-# Existing keyboard / direct commands
-# -------------------------------------------------------------------
 
 func command_party_attack(boss_alive: bool) -> bool:
 	if not boss_alive:
@@ -487,12 +217,14 @@ func command_party_attack(boss_alive: bool) -> bool:
 			unit.command_attack(boss)
 			issued_command = true
 
+	if not issued_command:
+		print("No living party members can attack.")
+		return false
+
 	var target := get_current_or_first_living_target()
 	assign_boss_target(target)
 
-	refresh_requested.emit()
-
-	return issued_command
+	return true
 
 
 func command_healers_to_heal_boss_target() -> void:
@@ -507,7 +239,6 @@ func command_healers_to_heal_boss_target() -> void:
 	priest_follow_boss_target = boss_target_healers.size() > 0
 
 	assign_healers_to_target(heal_target, boss_target_healers)
-
 	refresh_requested.emit()
 
 
@@ -531,8 +262,8 @@ func command_interrupt(boss_alive: bool) -> void:
 		return
 
 	interrupter.command_interrupt(boss)
-
 	temporary_status_requested.emit(interrupter, "Interrupt Command", 0.5)
+	refresh_requested.emit()
 
 
 func command_hovered_unit_to_player() -> void:
@@ -545,30 +276,19 @@ func command_hovered_unit_to_player() -> void:
 		hovered_unit = null
 		return
 
-	if not is_valid_node(player):
-		print("Player node is missing.")
+	if movement_executor == null:
+		print("Movement executor is missing.")
 		return
-
-	if not player is Node2D:
-		print("Player node is not a Node2D.")
-		return
-
-	if not hovered_unit.has_method("command_move_to_position"):
-		print(get_unit_debug_name(hovered_unit), "cannot receive movement commands.")
-		return
-
-	var player_2d := player as Node2D
 
 	print("Command:", get_unit_debug_name(hovered_unit), "move to player position.")
 
-	hovered_unit.command_move_to_position(player_2d.global_position)
+	movement_executor.execute_move(
+		[hovered_unit],
+		{
+			"where": "me"
+		}
+	)
 
-	temporary_status_requested.emit(hovered_unit, "Moving to Player", 0.75)
-
-
-# -------------------------------------------------------------------
-# Hovered unit selection
-# -------------------------------------------------------------------
 
 func set_hovered_unit(unit: Node) -> void:
 	if not is_valid_node(unit):
@@ -588,10 +308,6 @@ func clear_hovered_unit_if_matches(unit: Node) -> void:
 func is_hovered_unit(unit: Node) -> bool:
 	return hovered_unit == unit
 
-
-# -------------------------------------------------------------------
-# Boss targeting / healer assignment
-# -------------------------------------------------------------------
 
 func assign_boss_target(new_target: Node) -> void:
 	if not is_valid_node(boss):
@@ -649,10 +365,6 @@ func stop_all_party_actions() -> void:
 			unit.stop_action()
 
 
-# -------------------------------------------------------------------
-# Unit lookup helpers
-# -------------------------------------------------------------------
-
 func get_current_or_first_living_target() -> Node:
 	var current_target := get_boss_target()
 
@@ -681,47 +393,16 @@ func get_first_living_party_member() -> Node:
 
 
 func get_living_party_members() -> Array:
-	var living_members: Array = []
+	if target_resolver == null:
+		var living_members: Array = []
 
-	for unit in party_members:
-		if is_unit_alive(unit):
-			living_members.append(unit)
+		for unit in party_members:
+			if is_unit_alive(unit):
+				living_members.append(unit)
 
-	return living_members
+		return living_members
 
-
-func get_living_units_by_class(class_name_value: String) -> Array:
-	var matching_units: Array = []
-
-	for unit in party_members:
-		if not is_unit_alive(unit):
-			continue
-
-		if get_unit_class_name(unit) == class_name_value:
-			matching_units.append(unit)
-
-	return matching_units
-
-
-func get_living_units_by_group(group_number: int) -> Array:
-	var matching_units: Array = []
-
-	if group_number <= 0:
-		return matching_units
-
-	var start_index: int = (group_number - 1) * GROUP_SIZE
-	var end_index: int = start_index + GROUP_SIZE
-
-	for index in range(start_index, end_index):
-		if index < 0 or index >= party_members.size():
-			continue
-
-		var unit = party_members[index]
-
-		if is_unit_alive(unit):
-			matching_units.append(unit)
-
-	return matching_units
+	return target_resolver.get_living_party_members()
 
 
 func get_living_healer_units_from_units(source_units: Array) -> Array:
@@ -753,6 +434,9 @@ func get_first_living_interrupt_unit_from_units(source_units: Array) -> Node:
 
 
 func get_unit_class_name(unit: Node) -> String:
+	if target_resolver != null:
+		return target_resolver.get_unit_class_name(unit)
+
 	if not is_valid_node(unit):
 		return ""
 

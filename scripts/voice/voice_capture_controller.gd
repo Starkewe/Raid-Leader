@@ -9,7 +9,7 @@ signal recording_failed(reason: String)
 @export var hard_zero_threshold: float = 0.000001
 @export var max_hard_zero_run_kept: int = 16
 
-@export var push_to_talk_action: String = "voice_command"
+@export var push_to_talk_action: String = "voice_push_to_talk"
 @export var capture_bus_name: String = "VoiceCapture"
 @export var mic_player_path: NodePath
 @export var transcriber_path: NodePath
@@ -183,11 +183,16 @@ func _finish_recording_and_transcribe() -> void:
 
 	if remove_capture_padding:
 		var padded_frame_count: int = frames_to_save.size()
-		frames_to_save = _remove_hard_zero_padding(frames_to_save)
+		var cleaned_frames: PackedVector2Array = _remove_hard_zero_padding(frames_to_save)
 
 		print("Voice padding cleanup frames before: ", padded_frame_count)
-		print("Voice padding cleanup frames after: ", frames_to_save.size())
-		print("Voice padding cleanup seconds after: ", float(frames_to_save.size()) / float(sample_rate))
+		print("Voice padding cleanup frames after: ", cleaned_frames.size())
+		print("Voice padding cleanup seconds after: ", float(cleaned_frames.size()) / float(sample_rate))
+
+		if cleaned_frames.is_empty():
+			print("Voice padding cleanup removed all frames. Keeping original recording instead.")
+		else:
+			frames_to_save = cleaned_frames
 
 	if trim_silence:
 		frames_to_save = _trim_silence(frames_to_save, sample_rate)
@@ -411,3 +416,6 @@ func _get_peak_mono_amplitude(frames: PackedVector2Array) -> float:
 
 func _write_ascii(file: FileAccess, text: String) -> void:
 	file.store_buffer(text.to_ascii_buffer())
+func fail_recording(reason: String) -> void:
+	print("Voice recording failed: ", reason)
+	recording_failed.emit(reason)

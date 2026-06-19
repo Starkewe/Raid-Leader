@@ -43,34 +43,67 @@ func _ready():
 	call_deferred("initialize_combat")
 func _on_command_panel_submitted(command_data: Dictionary) -> void:
 	submit_command_data(command_data, "command_panel")
-func submit_command_data(command_data: Dictionary, source: String = "unknown") -> bool:
+func submit_command_data(
+	command_data: Dictionary,
+	source: String = "unknown",
+	debug_context: Dictionary = {}
+) -> bool:
 	if command_controller == null:
-		push_warning("CombatManager cannot execute command because command_controller is missing.")
+		var missing_controller_result := "Rejected - command controller is missing."
+
+		push_warning(missing_controller_result)
+
+		update_command_debug(
+			build_command_debug_data(source, command_data, debug_context, missing_controller_result)
+		)
+
 		return false
 
 	if command_data.is_empty():
-		push_warning("CombatManager rejected empty command_data from " + source + ".")
+		var empty_result := "Rejected - command data is empty."
+
+		push_warning(empty_result)
+
+		update_command_debug(
+			build_command_debug_data(source, command_data, debug_context, empty_result)
+		)
+
 		return false
 
 	var validation_result := validate_command_data(command_data)
 
 	if not bool(validation_result.get("ok", false)):
 		var reason := String(validation_result.get("reason", "Unknown validation failure."))
+		var validation_result_text := "Rejected - " + reason
+
 		push_warning("CombatManager rejected command_data from " + source + ": " + reason)
+
+		update_command_debug(
+			build_command_debug_data(source, command_data, debug_context, validation_result_text)
+		)
+
 		return false
 
 	print("CombatManager executing command from ", source, ": ", command_data)
 
-	var command_started: bool = command_controller.execute_panel_command(command_data, boss_alive)
+	var command_issued: bool = command_controller.execute_panel_command(command_data, boss_alive)
 
-	if command_started:
+	if command_issued and should_command_start_fight(command_data):
 		fight_active = true
 		encounter_state = "active"
 
+	var result_text := "Executed"
+
+	if not command_issued:
+		result_text = "Rejected - no valid unit, target, or command handler."
+
+	update_command_debug(
+		build_command_debug_data(source, command_data, debug_context, result_text)
+	)
+
 	refresh_all_statuses()
 
-	return command_started
-
+	return command_issued
 
 func validate_command_data(command_data: Dictionary) -> Dictionary:
 	var required_keys := [
@@ -108,6 +141,145 @@ func validate_command_data(command_data: Dictionary) -> Dictionary:
 		"ok": true,
 		"reason": ""
 	}
+func should_command_start_fight(command_data: Dictionary) -> bool:
+	return String(command_data.get("what", "")) == "attack"
+
+
+func update_command_debug(data: Dictionary) -> void:
+	if ui == null or not is_instance_valid(ui):
+		return
+
+	if ui.has_method("set_command_debug_info"):
+		ui.set_command_debug_info(data)
+
+
+func build_command_debug_data(
+	source: String,
+	command_data: Dictionary,
+	debug_context: Dictionary,
+	result_text: String
+) -> Dictionary:
+	return {
+		"source": get_debug_source_text(source),
+		"transcript": String(debug_context.get("transcript", "-")),
+		"normalized": String(debug_context.get("normalized_text", "-")),
+		"who": get_debug_who_text(command_data),
+		"what": get_debug_what_text(command_data),
+		"where": get_debug_where_text(command_data),
+		"result": result_text,
+		"command_data": get_debug_command_data_text(command_data)
+	}
+
+
+func get_debug_source_text(source: String) -> String:
+	match source:
+		"voice":
+			return "Voice"
+
+		"command_panel":
+			return "Command Panel"
+
+		_:
+			return source.capitalize()
+
+
+func get_debug_who_text(command_data: Dictionary) -> String:
+	var who_type := String(command_data.get("who_type", ""))
+
+	match who_type:
+		"everyone":
+			return "Everyone"
+
+		"class":
+			return "Class: " + String(command_data.get("who_value", ""))
+
+		"group":
+			return "Group: " + str(command_data.get("who_value", ""))
+
+		"unit":
+			var unit = command_data.get("unit", null)
+
+			if unit != null and is_instance_valid(unit):
+				if unit.has_method("get_display_name"):
+					return "Unit: " + String(unit.get_display_name())
+
+				return "Unit: " + unit.name
+
+			return "Unit: Missing"
+
+		_:
+			return "Unknown"
+
+
+func get_debug_what_text(command_data: Dictionary) -> String:
+	var what := String(command_data.get("what", ""))
+
+	if what.is_empty():
+		return "-"
+
+	return what.capitalize()
+
+
+func get_debug_where_text(command_data: Dictionary) -> String:
+	var where := String(command_data.get("where", ""))
+
+	match where:
+		"boss":
+			return "Boss"
+
+		"boss_target":
+			return "Boss Target"
+
+		"me":
+			return "Me"
+
+		"movement_range_step":
+			return "Range Step: " + String(command_data.get("movement_direction", ""))
+
+		"movement_range":
+			return "Range: " + String(command_data.get("movement_range", ""))
+
+		"movement_region":
+			return "Region: " + String(command_data.get("movement_region", ""))
+
+		"movement_slot":
+			return (
+				"Slot: "
+				+ String(command_data.get("movement_region", ""))
+				+ " "
+				+ String(command_data.get("movement_range", ""))
+			)
+
+		"movement_rotate_step":
+			return "Rotate Step: " + String(command_data.get("movement_direction", ""))
+
+		"movement_rotate":
+			return "Rotate To: " + String(command_data.get("movement_region", ""))
+
+		_:
+			if where.is_empty():
+				return "-"
+
+			return where
+
+func get_debug_command_data_text(command_data: Dictionary) -> String:
+	if command_data.is_empty():
+		return "-"
+
+	var safe_data := {}
+
+	for key in command_data.keys():
+		var value = command_data[key]
+
+		if value is Node:
+			if value.has_method("get_display_name"):
+				safe_data[key] = value.get_display_name()
+			else:
+				safe_data[key] = value.name
+		else:
+			safe_data[key] = value
+
+	return str(safe_data)
 func connect_command_controller_signals() -> void:
 	if command_controller == null:
 		return
@@ -380,6 +552,9 @@ func reset_encounter():
 			boss.reset_boss(spawn_positions[boss])
 
 	initialize_ui()
+	if ui != null and is_instance_valid(ui):
+		if ui.has_method("clear_command_debug_info"):
+			ui.clear_command_debug_info()
 	refresh_all_statuses()
 func connect_ui_signals():
 	if ui == null or not is_instance_valid(ui):
@@ -530,22 +705,57 @@ func setup_voice_command_parser() -> void:
 
 func _on_voice_transcript_received(transcript: String) -> void:
 	if voice_command_parser == null:
-		push_warning("Voice transcript received, but VoiceCommandParser is missing.")
+		var parser_missing_result := "Rejected - VoiceCommandParser is missing."
+
+		push_warning(parser_missing_result)
+
+		update_command_debug({
+			"source": "voice",
+			"transcript": transcript,
+			"normalized": "-",
+			"who": "-",
+			"what": "-",
+			"where": "-",
+			"result": parser_missing_result,
+			"command_data": "-"
+		})
+
 		return
 
 	print("Voice transcript received by CombatManager: ", transcript)
 
 	var parse_result: Dictionary = voice_command_parser.parse(transcript)
+	var normalized_text := String(parse_result.get("normalized_text", ""))
 
 	if not bool(parse_result.get("ok", false)):
 		var reason := String(parse_result.get("reason", "Could not parse voice command."))
+		var rejected_result := "Rejected - " + reason
+
 		push_warning("Voice command rejected: " + reason)
+
+		update_command_debug({
+			"source": "voice",
+			"transcript": transcript,
+			"normalized": normalized_text,
+			"who": "-",
+			"what": "-",
+			"where": "-",
+			"result": rejected_result,
+			"command_data": "-"
+		})
+
 		return
 
 	var command_data: Dictionary = parse_result.get("command_data", {})
 
-	submit_command_data(command_data, "voice")
-
+	submit_command_data(
+		command_data,
+		"voice",
+		{
+			"transcript": transcript,
+			"normalized_text": normalized_text
+		}
+	)
 
 func _on_voice_transcription_failed(reason: String) -> void:
 	push_warning("Voice transcription failed: " + reason)
