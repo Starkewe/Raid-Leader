@@ -2,9 +2,12 @@ extends RefCounted
 class_name BossAbilityFactory
 
 const DirectionalRegionCleaveScript := preload("res://scripts/abilities/directional_region_cleave.gd")
+const TwinSweepingPullScript := preload("res://scripts/abilities/twin_sweeping_pull.gd")
 
 const ABILITY_TARGET_REGION_CLOSE_CLEAVE := "target_region_close_cleave"
 const ABILITY_TARGET_REGION_FULL_CONE := "target_region_full_cone"
+const ABILITY_TWIN_SWEEPING_PULL := "twin_sweeping_pull"
+
 
 static func create_ability_from_id(ability_id: String) -> BossAbility:
 	match ability_id:
@@ -13,6 +16,9 @@ static func create_ability_from_id(ability_id: String) -> BossAbility:
 
 		ABILITY_TARGET_REGION_FULL_CONE:
 			return create_target_region_full_cone()
+
+		ABILITY_TWIN_SWEEPING_PULL:
+			return create_twin_sweeping_pull()
 
 		_:
 			print("Unknown boss ability id:", ability_id)
@@ -26,7 +32,8 @@ static func create_target_region_close_cleave() -> BossAbility:
 	ability.affected_ranges = ["close"]
 
 	return ability
-	
+
+
 static func create_target_region_full_cone() -> BossAbility:
 	var ability := DirectionalRegionCleaveScript.new()
 
@@ -38,6 +45,11 @@ static func create_target_region_full_cone() -> BossAbility:
 	ability.affected_ranges = ["close", "mid", "far"]
 
 	return ability
+
+
+static func create_twin_sweeping_pull() -> BossAbility:
+	return TwinSweepingPullScript.new()
+
 
 static func create_fallback_ability() -> BossAbility:
 	return create_target_region_close_cleave()

@@ -72,15 +72,6 @@ func parse(transcript: String) -> Dictionary:
 	print("Voice raw normalized text: ", raw_normalized_text)
 	print("Voice command normalized text: ", text)
 
-	var who_result := _parse_who(text)
-
-	if not bool(who_result.get("ok", false)):
-		return _fail(
-			"Could not determine target group or unit from: %s" % transcript,
-			text,
-			transcript
-		)
-
 	var action_result := _parse_action(text)
 
 	if not bool(action_result.get("ok", false)):
@@ -89,6 +80,18 @@ func parse(transcript: String) -> Dictionary:
 			text,
 			transcript
 		)
+
+	var who_result := _parse_who(text)
+
+	if not bool(who_result.get("ok", false)):
+		if _can_action_auto_select_subject(action_result):
+			who_result = _default_auto_interrupt_who_result()
+		else:
+			return _fail(
+				"Could not determine target group or unit from: %s" % transcript,
+				text,
+				transcript
+			)
 
 	var command_data := {
 		"who_type": String(who_result.get("who_type", "everyone")),
@@ -107,6 +110,9 @@ func parse(transcript: String) -> Dictionary:
 
 	if not exclude_selectors.is_empty():
 		command_data["who_exclude_selectors"] = exclude_selectors
+
+	if bool(who_result.get("auto_selected_subject", false)):
+		command_data["auto_selected_subject"] = true
 
 	var extra: Dictionary = action_result.get("extra", {})
 
@@ -332,6 +338,26 @@ func _parse_who(text: String) -> Dictionary:
 		"unit": null,
 		"who_selectors": include_selectors,
 		"who_exclude_selectors": exclude_selectors
+	}
+func _can_action_auto_select_subject(action_result: Dictionary) -> bool:
+	return String(action_result.get("what", "")) == "interrupt"
+
+func _default_auto_interrupt_who_result() -> Dictionary:
+	var selectors: Array = [
+		{
+			"type": SELECTOR_EVERYONE,
+			"value": ""
+		}
+	]
+
+	return {
+		"ok": true,
+		"who_type": SELECTOR_EVERYONE,
+		"who_value": "",
+		"unit": null,
+		"who_selectors": selectors,
+		"who_exclude_selectors": [],
+		"auto_selected_subject": true
 	}
 func _extract_fuzzy_subject_selector(text: String) -> Array:
 	var subject_text := _get_subject_text_before_action(text)

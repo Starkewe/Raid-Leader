@@ -26,6 +26,15 @@ func on_cast_start(boss: Node, party_members: Array) -> void:
 		print(ability_name, "windup:", windup_text)
 
 
+func on_cast_update(
+	boss: Node,
+	party_members: Array,
+	elapsed_time: float,
+	remaining_time: float
+) -> void:
+	pass
+
+
 func resolve(boss: Node, party_members: Array) -> void:
 	print(ability_name, "resolved, but has no effect implemented.")
 
@@ -40,3 +49,11 @@ func get_status_text() -> String:
 
 func get_cast_name() -> String:
 	return ability_name
+
+
+func get_cast_bar_max_time(elapsed_time: float, remaining_time: float) -> float:
+	return maxf(cast_time, 0.01)
+
+
+func get_cast_bar_value(elapsed_time: float, remaining_time: float) -> float:
+	return clampf(elapsed_time, 0.0, get_cast_bar_max_time(elapsed_time, remaining_time))

@@ -13,7 +13,7 @@ signal defeated
 
 @export var impact_effect_max_range_units: float = 50.0
 
-@export var max_health: int = 500
+@export var max_health: int = 3000
 @export var speed: float = 140.0
 @export var attack_range_units: float = 5.0
 @export var combat_radius: float = 128.0
@@ -41,6 +41,7 @@ var next_ability: BossAbility = null
 var attack_timer: float = 0.0
 var special_timer: float = 0.0
 var cast_timer: float = 0.0
+var current_cast_elapsed: float = 0.0
 var is_casting: bool = false
 var is_dead: bool = false
 
@@ -204,14 +205,29 @@ func start_special_cast():
 
 	is_casting = true
 	cast_timer = current_ability.cast_time
+	current_cast_elapsed = 0.0
 
 	current_ability.on_cast_start(self, party_members)
 
 	update_cast_bar()
-	print("Boss begins casting", current_ability.get_cast_name(), "Interrupt now!")
+
+	if current_ability.interruptible:
+		print("Boss begins casting", current_ability.get_cast_name(), "Interrupt now!")
+	else:
+		print("Boss begins casting", current_ability.get_cast_name(), "This cast cannot be interrupted.")
 
 func update_special_cast(delta):
 	cast_timer -= delta
+	current_cast_elapsed += delta
+
+	if current_ability != null:
+		current_ability.on_cast_update(
+			self,
+			party_members,
+			current_cast_elapsed,
+			maxf(cast_timer, 0.0)
+		)
+
 	update_cast_bar()
 
 	if cast_timer <= 0:
@@ -228,6 +244,7 @@ func finish_special_cast():
 		special_timer = get_next_ability_cooldown()
 
 	current_ability = null
+	current_cast_elapsed = 0.0
 	update_cast_bar()
 func cancel_current_cast_due_to_missing_target() -> void:
 	if not is_casting:
@@ -235,6 +252,7 @@ func cancel_current_cast_due_to_missing_target() -> void:
 
 	is_casting = false
 	cast_timer = 0.0
+	current_cast_elapsed = 0.0
 
 	if current_ability != null:
 		current_ability.on_interrupted(self, party_members)
@@ -256,6 +274,8 @@ func interrupt_cast() -> bool:
 			return false
 
 		is_casting = false
+		cast_timer = 0.0
+		current_cast_elapsed = 0.0
 
 		if current_ability != null:
 			current_ability.on_interrupted(self, party_members)
@@ -293,6 +313,9 @@ func die():
 	update_health_bar()
 
 	is_casting = false
+	cast_timer = 0.0
+	current_cast_elapsed = 0.0
+	current_ability = null
 	update_cast_bar()
 	clear_target()
 
@@ -318,11 +341,13 @@ func update_cast_bar():
 		cast_bar.value = 0
 		return
 
-	cast_bar.max_value = get_current_cast_time()
+	var active_cast_time := get_current_cast_time()
+
+	cast_bar.max_value = active_cast_time
 
 	if is_casting:
 		cast_bar.visible = true
-		cast_bar.value = get_current_cast_time() - cast_timer
+		cast_bar.value = get_current_cast_bar_value()
 	else:
 		cast_bar.visible = false
 		cast_bar.value = 0
@@ -338,7 +363,8 @@ func reset_boss(new_position: Vector2):
 
 	attack_timer = attack_cooldown
 	special_timer = get_next_ability_cooldown()
-	cast_timer = 0
+	cast_timer = 0.0
+	current_cast_elapsed = 0.0
 
 	global_position = new_position
 
@@ -378,7 +404,7 @@ func get_cast_progress_percent() -> float:
 	if active_cast_time <= 0:
 		return 0.0
 
-	return clamp(((active_cast_time - cast_timer) / active_cast_time) * 100.0, 0.0, 100.0)
+	return clamp((get_current_cast_bar_value() / active_cast_time) * 100.0, 0.0, 100.0)
 	
 func get_cast_name() -> String:
 	if is_casting and current_ability != null:
@@ -395,9 +421,20 @@ func get_display_name() -> String:
 	
 func get_current_cast_time() -> float:
 	if current_ability != null:
-		return current_ability.cast_time
+		return current_ability.get_cast_bar_max_time(
+			current_cast_elapsed,
+			maxf(cast_timer, 0.0)
+		)
 
 	return special_cast_time
+func get_current_cast_bar_value() -> float:
+	if current_ability != null:
+		return current_ability.get_cast_bar_value(
+			current_cast_elapsed,
+			maxf(cast_timer, 0.0)
+		)
+
+	return clampf(special_cast_time - cast_timer, 0.0, special_cast_time)	
 func _draw() -> void:
 	if show_debug_range_rings:
 		draw_debug_range_boundaries()

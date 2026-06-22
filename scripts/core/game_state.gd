@@ -4,9 +4,11 @@ const MAX_RAID_SIZE: int = 20
 
 const TUTORIAL_BOSS_CLEAVE_CLOSE_REGION := "cleave_close_region"
 const TUTORIAL_BOSS_LONG_REGION_CONE := "long_region_cone"
+const TUTORIAL_BOSS_TWIN_SWEEPING_PULL := "twin_sweeping_pull"
 
 const ABILITY_TARGET_REGION_CLOSE_CLEAVE := "target_region_close_cleave"
 const ABILITY_TARGET_REGION_FULL_CONE := "target_region_full_cone"
+const ABILITY_TWIN_SWEEPING_PULL := "twin_sweeping_pull"
 
 var selected_tutorial_boss_id: String = TUTORIAL_BOSS_CLEAVE_CLOSE_REGION
 
@@ -17,27 +19,28 @@ var tutorial_boss_catalog: Dictionary = {
 		"scene_path": "res://scenes/combat_scene.tscn",
 
 		"boss_display_name": "Cleave Trainer",
-		"max_health": 500,
+		"max_health": 3000,
 		"attack_range_units": 5.0,
 		"combat_radius": 128.0,
 		"attack_damage": 20,
 		"attack_cooldown": 1.5,
 
 		"ability_ids": [
-		ABILITY_TARGET_REGION_CLOSE_CLEAVE
+			ABILITY_TARGET_REGION_CLOSE_CLEAVE
 		],
 
 		"show_debug_region_guides": true,
 		"show_debug_range_rings": true,
 		"debug_max_range_units": 50.0
 	},
-		TUTORIAL_BOSS_LONG_REGION_CONE: {
+
+	TUTORIAL_BOSS_LONG_REGION_CONE: {
 		"display_name": "Cone: Full Region",
 		"description": "A tutorial boss that locks onto its target's region and fires through the full close, mid, and far lane.",
 		"scene_path": "res://scenes/combat_scene.tscn",
 
 		"boss_display_name": "Cone Trainer",
-		"max_health": 500,
+		"max_health": 3000,
 		"attack_range_units": 5.0,
 		"combat_radius": 128.0,
 		"attack_damage": 20,
@@ -45,6 +48,27 @@ var tutorial_boss_catalog: Dictionary = {
 
 		"ability_ids": [
 			ABILITY_TARGET_REGION_FULL_CONE
+		],
+
+		"show_debug_region_guides": true,
+		"show_debug_range_rings": true,
+		"debug_max_range_units": 50.0
+	},
+
+	TUTORIAL_BOSS_TWIN_SWEEPING_PULL: {
+		"display_name": "Sweep: Random Pull",
+		"description": "A tutorial boss that pulls the raid into a random close region, then sweeps counterclockwise and clockwise from that region.",
+		"scene_path": "res://scenes/combat_scene.tscn",
+
+		"boss_display_name": "Sweep Trainer",
+		"max_health": 3000,
+		"attack_range_units": 5.0,
+		"combat_radius": 128.0,
+		"attack_damage": 20,
+		"attack_cooldown": 1.5,
+
+		"ability_ids": [
+			ABILITY_TWIN_SWEEPING_PULL
 		],
 
 		"show_debug_region_guides": true,
@@ -78,7 +102,7 @@ var speech_to_text_model_catalog: Dictionary = {
 }
 
 var model_settings: Dictionary = {
-	"speech_to_text_model": SPEECH_TO_TEXT_MODEL_BASE_EN,
+	"speech_to_text_model": SPEECH_TO_TEXT_MODEL_SMALL_EN_Q4_0,
 	"command_parser_model": "local_command_parser_default",
 	"raid_leader_model": "local_raid_leader_default"
 }

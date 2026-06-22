@@ -424,14 +424,83 @@ func get_first_living_interrupt_unit() -> Node:
 
 func get_first_living_interrupt_unit_from_units(source_units: Array) -> Node:
 	for unit in source_units:
-		if not is_unit_alive(unit):
-			continue
-
-		if unit.has_method("command_interrupt"):
+		if is_valid_interrupt_candidate(unit):
 			return unit
 
 	return null
+func is_valid_interrupt_candidate(unit: Node) -> bool:
+	if not is_unit_alive(unit):
+		return false
 
+	if not unit.has_method("command_interrupt"):
+		return false
+
+	if not is_valid_node(boss):
+		return false
+
+	if not can_unit_interrupt_target(unit, boss):
+		return false
+
+	if not is_interrupt_ready(unit):
+		return false
+
+	if not is_unit_in_interrupt_range(unit, boss):
+		return false
+
+	return true
+
+
+func can_unit_interrupt_target(unit: Node, target_node: Node) -> bool:
+	if unit.has_method("can_interrupt_target"):
+		return bool(unit.can_interrupt_target(target_node))
+
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+
+	return target_node.has_method("interrupt_cast")
+
+
+func is_interrupt_ready(unit: Node) -> bool:
+	var interrupt_timer_value = unit.get("interrupt_timer")
+
+	if interrupt_timer_value != null:
+		if float(interrupt_timer_value) > 0.0:
+			return false
+
+	return true
+
+
+func is_unit_in_interrupt_range(unit: Node, target_node: Node) -> bool:
+	if not is_valid_node(unit):
+		return false
+
+	if not is_valid_node(target_node):
+		return false
+
+	if not unit is Node2D:
+		return false
+
+	if not target_node is Node2D:
+		return false
+
+	var interrupt_range_units := get_interrupt_range_units_for_unit(unit)
+
+	if unit.has_method("is_node_in_range_units"):
+		return bool(unit.is_node_in_range_units(target_node, interrupt_range_units))
+
+	var unit_2d := unit as Node2D
+	var target_2d := target_node as Node2D
+
+	return unit_2d.global_position.distance_to(target_2d.global_position) <= interrupt_range_units
+
+
+func get_interrupt_range_units_for_unit(unit: Node) -> float:
+	var interrupt_range_value = unit.get("interrupt_range_units")
+
+	if interrupt_range_value != null:
+		return float(interrupt_range_value)
+
+	return 5.0
 
 func get_unit_class_name(unit: Node) -> String:
 	if target_resolver != null:
