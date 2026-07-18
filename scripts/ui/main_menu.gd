@@ -21,12 +21,9 @@ var tutorial_panel: PanelContainer = null
 var tutorial_grid: GridContainer = null
 var tutorial_description_label: Label = null
 var start_tutorial_button: Button = null
-var selected_tutorial_boss_id: String = ""
 
 var settings_panel: PanelContainer = null
 var speech_to_text_dropdown: OptionButton = null
-var command_parser_dropdown: OptionButton = null
-var raid_leader_dropdown: OptionButton = null
 
 var unit_class_order: Array[String] = []
 var count_labels: Dictionary = {}
@@ -46,7 +43,7 @@ func _ready():
 	build_settings_panel()
 	build_team_rows()
 	show_main_menu()
-	
+
 func build_main_menu_extra_buttons() -> void:
 	tutorial_button = Button.new()
 	tutorial_button.text = "Tutorial"
@@ -144,26 +141,6 @@ func build_settings_panel() -> void:
 	GameState.get_speech_to_text_model_options()
 	)
 
-	command_parser_dropdown = add_model_dropdown(
-		root,
-		"Command Parser Model",
-		"command_parser_model",
-		[
-			["Local Command Parser Default", "local_command_parser_default"],
-			["Cloud Command Parser", "cloud_command_parser"]
-		]
-	)
-
-	raid_leader_dropdown = add_model_dropdown(
-		root,
-		"Raid Leader Model",
-		"raid_leader_model",
-		[
-			["Local Raid Leader Default", "local_raid_leader_default"],
-			["Cloud Raid Leader", "cloud_raid_leader"]
-		]
-	)
-
 	var apply_button := Button.new()
 	apply_button.text = "Apply Settings"
 	apply_button.pressed.connect(_on_apply_settings_pressed)
@@ -230,7 +207,7 @@ func position_fullscreen_panel(panel: Control) -> void:
 	panel.offset_top = 0
 	panel.offset_right = 0
 	panel.offset_bottom = 0
-	
+
 func build_team_rows():
 	clear_roster_rows()
 	count_labels.clear()
@@ -297,6 +274,7 @@ func _on_start_fight_pressed():
 		print("Cannot start fight. Team is empty.")
 		return
 
+	GameState.select_default_encounter()
 	print("Starting fight with roster:", GameState.get_roster())
 	print("Loading scene:", combat_scene_path)
 
@@ -331,7 +309,6 @@ func _on_settings_pressed() -> void:
 
 
 func _on_tutorial_boss_selected(boss_id: String) -> void:
-	selected_tutorial_boss_id = boss_id
 	GameState.set_selected_tutorial_boss(boss_id)
 
 	var boss_data: Dictionary = GameState.get_tutorial_boss_data(boss_id)
@@ -357,8 +334,6 @@ func _on_start_tutorial_pressed() -> void:
 
 func _on_apply_settings_pressed() -> void:
 	apply_model_dropdown_setting(speech_to_text_dropdown, "speech_to_text_model")
-	apply_model_dropdown_setting(command_parser_dropdown, "command_parser_model")
-	apply_model_dropdown_setting(raid_leader_dropdown, "raid_leader_model")
 
 	print("Applied model settings:", GameState.get_model_settings())
 
@@ -377,7 +352,7 @@ func apply_model_dropdown_setting(dropdown: OptionButton, setting_name: String) 
 		return
 
 	GameState.set_model_setting(setting_name, String(metadata))
-	
+
 func _on_back_pressed():
 	show_main_menu()
 

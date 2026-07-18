@@ -13,6 +13,7 @@ var affected_ranges: Array[String] = [
 
 
 func _init() -> void:
+	ability_id = "target_region_close_cleave"
 	ability_name = "Northern Cleave"
 	cast_time = 2.5
 	cooldown = 6.0
@@ -21,6 +22,15 @@ func _init() -> void:
 	windup_text = "Face me!"
 	impact_text = "Cleave!"
 	interruptible = true
+
+
+func configure(definition: BossAbilityDefinition) -> void:
+	super.configure(definition)
+
+	if definition is DirectionalCleaveDefinition:
+		var cleave_definition := definition as DirectionalCleaveDefinition
+		region_span_steps = cleave_definition.region_span_steps
+		affected_ranges = cleave_definition.affected_ranges.duplicate()
 
 func on_cast_start(boss: Node, party_members: Array) -> void:
 	locked_region = get_target_region_from_boss(boss)
@@ -46,7 +56,7 @@ func resolve(boss: Node, party_members: Array) -> void:
 
 	if boss.has_method("play_region_impact_effect"):
 		boss.play_region_impact_effect(target_region, affected_ranges)
-	
+
 	if impact_text != "":
 		print(ability_name, "impact:", impact_text)
 
@@ -75,7 +85,7 @@ func resolve(boss: Node, party_members: Array) -> void:
 		if not affected_ranges.has(unit_range):
 			continue
 
-		unit.take_damage(damage)
+		unit.take_damage(damage, boss, ability_id)
 		hit_count += 1
 
 	print(

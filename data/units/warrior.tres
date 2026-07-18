@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="UnitDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/unit_definition.gd" id="1_definition"]
+[ext_resource type="Resource" path="res://data/unit_actions/warrior_attack.tres" id="2_attack"]
+[ext_resource type="Script" path="res://scripts/data/unit_action_definition.gd" id="3_action_type"]
+
+[resource]
+script = ExtResource("1_definition")
+unit_class = "Warrior"
+display_name = "Warrior"
+scene_path = "res://scenes/units/warrior.tscn"
+max_health = 100
+movement_speed_range_units_per_second = 7.0
+actions = Array[ExtResource("3_action_type")]([ExtResource("2_attack")])
+roles = Array[String](["tank", "melee"])
+voice_aliases = Array[String](["warrior", "warriors"])

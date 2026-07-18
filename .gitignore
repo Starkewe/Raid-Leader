@@ -1,3 +1,28 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Godot editor recovery and generated files
+*.tmp
+*.tmp.*
+*.bak
+*.backup
+
+# Export/build output
+/build/
+/dist/
+/exports/
+*.pck
+
+# Local voice assets and native tools
+/models/
+/tools/
+*.wav
+*.bin
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

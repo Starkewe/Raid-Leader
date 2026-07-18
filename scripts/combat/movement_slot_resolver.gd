@@ -104,7 +104,7 @@ static func get_slot_position(boss_node: Node, region: String, range_name: Strin
 	var total_distance: float = boss_radius + range_offset
 
 	return boss_2d.global_position + direction * total_distance
-	
+
 static func get_boss_combat_radius(boss_node: Node) -> float:
 	if boss_node == null or not is_instance_valid(boss_node):
 		return CombatMeasurementsScript.DEFAULT_BOSS_COMBAT_RADIUS_PIXELS
@@ -171,7 +171,7 @@ static func get_nearest_range_from_position(boss_node: Node, unit_position: Vect
 			best_range = range_name
 
 	return best_range
-	
+
 static func get_nearest_region_from_position(boss_position: Vector2, unit_position: Vector2) -> String:
 	var offset: Vector2 = unit_position - boss_position
 
@@ -191,7 +191,7 @@ static func get_nearest_region_from_position(boss_position: Vector2, unit_positi
 			best_region = String(region)
 
 	return best_region
-	
+
 static func get_region_rotation_path(current_region: String, target_region: String) -> Array[String]:
 	var path: Array[String] = []
 
@@ -229,3 +229,53 @@ static func get_region_rotation_path(current_region: String, target_region: Stri
 		path.append(String(REGION_ORDER[index]))
 
 	return path
+
+
+static func get_formation_positions(
+	center_position: Vector2,
+	unit_count: int,
+	outward_direction: Vector2 = Vector2.DOWN,
+	spacing: float = 28.0
+) -> Array[Vector2]:
+	var positions: Array[Vector2] = []
+
+	if unit_count <= 0:
+		return positions
+
+	var columns := mini(5, ceili(sqrt(float(unit_count))))
+	var rows := ceili(float(unit_count) / float(columns))
+	var outward := outward_direction.normalized()
+
+	if outward.is_zero_approx():
+		outward = Vector2.DOWN
+
+	var tangent := Vector2(-outward.y, outward.x)
+
+	for index in range(unit_count):
+		var column := index % columns
+		var row := index / columns
+		var column_offset := float(column) - (float(columns - 1) * 0.5)
+		var row_offset := float(row) - (float(rows - 1) * 0.5)
+
+		positions.append(
+			center_position
+			+ tangent * column_offset * spacing
+			+ outward * row_offset * spacing
+		)
+
+	return positions
+
+
+static func get_slot_formation_positions(
+	boss_node: Node,
+	region: String,
+	range_name: String,
+	unit_count: int,
+	spacing: float = 28.0
+) -> Array[Vector2]:
+	return get_formation_positions(
+		get_slot_position(boss_node, region, range_name),
+		unit_count,
+		get_region_direction(region),
+		spacing
+	)

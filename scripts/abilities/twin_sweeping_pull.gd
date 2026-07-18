@@ -3,25 +3,21 @@ class_name TwinSweepingPull
 
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 
-const PULL_DURATION: float = 1.5
-const FIRST_SWEEP_CAST_DURATION: float = 2.5
-const SECOND_SWEEP_CAST_DURATION: float = 4.0
-
-const FIRST_SWEEP_IMPACT_TIME: float = PULL_DURATION + FIRST_SWEEP_CAST_DURATION
-const SECOND_SWEEP_IMPACT_TIME: float = PULL_DURATION + FIRST_SWEEP_CAST_DURATION + SECOND_SWEEP_CAST_DURATION
-
-const PULL_RANGE: String = MovementSlotResolverScript.RANGE_CLOSE
-
 const PHASE_PULL := "pull"
 const PHASE_FIRST_SWEEP := "first_sweep"
 const PHASE_SECOND_SWEEP := "second_sweep"
 
-const AFFECTED_RANGES: Array[String] = [
+var pull_duration: float = 1.5
+var first_sweep_cast_duration: float = 2.5
+var second_sweep_cast_duration: float = 4.0
+var pull_range: String = MovementSlotResolverScript.RANGE_CLOSE
+
+var affected_ranges: Array[String] = [
 	MovementSlotResolverScript.RANGE_CLOSE,
 	MovementSlotResolverScript.RANGE_MID
 ]
 
-const RANDOM_PULL_REGIONS: Array[String] = [
+var random_pull_regions: Array[String] = [
 	MovementSlotResolverScript.REGION_NORTH,
 	MovementSlotResolverScript.REGION_NORTHEAST,
 	MovementSlotResolverScript.REGION_EAST,
@@ -51,8 +47,9 @@ var last_elapsed_time: float = 0.0
 
 
 func _init() -> void:
+	ability_id = "twin_sweeping_pull"
 	ability_name = "Twin Sweeping Pull"
-	cast_time = SECOND_SWEEP_IMPACT_TIME
+	cast_time = get_second_sweep_impact_time()
 	cooldown = 9.0
 	damage = 75
 
@@ -61,6 +58,22 @@ func _init() -> void:
 	interruptible = false
 
 	rng.randomize()
+
+
+func configure(definition: BossAbilityDefinition) -> void:
+	super.configure(definition)
+
+	if not definition is TwinSweepingPullDefinition:
+		return
+
+	var sweep_definition := definition as TwinSweepingPullDefinition
+	pull_duration = maxf(sweep_definition.pull_duration, 0.01)
+	first_sweep_cast_duration = maxf(sweep_definition.first_sweep_cast_duration, 0.01)
+	second_sweep_cast_duration = maxf(sweep_definition.second_sweep_cast_duration, 0.01)
+	pull_range = sweep_definition.pull_range
+	affected_ranges = sweep_definition.affected_ranges.duplicate()
+	random_pull_regions = sweep_definition.random_pull_regions.duplicate()
+	cast_time = get_second_sweep_impact_time()
 
 
 func can_cast(boss: Node, party_members: Array) -> bool:
@@ -119,25 +132,25 @@ func on_cast_update(
 	if not pull_completed:
 		update_forced_pull(boss, party_members, elapsed_time)
 
-	if not first_sweep_resolved and elapsed_time >= FIRST_SWEEP_IMPACT_TIME:
+	if not first_sweep_resolved and elapsed_time >= get_first_sweep_impact_time():
 		first_sweep_resolved = true
 
 		resolve_sweep(
 			boss,
 			party_members,
 			first_sweep_regions,
-			AFFECTED_RANGES,
+			affected_ranges,
 			"first sweep"
 		)
 
-	if not second_sweep_resolved and elapsed_time >= SECOND_SWEEP_IMPACT_TIME:
+	if not second_sweep_resolved and elapsed_time >= get_second_sweep_impact_time():
 		second_sweep_resolved = true
 
 		resolve_sweep(
 			boss,
 			party_members,
 			second_sweep_regions,
-			AFFECTED_RANGES,
+			affected_ranges,
 			"second sweep"
 		)
 
@@ -156,7 +169,7 @@ func resolve(boss: Node, party_members: Array) -> void:
 			boss,
 			party_members,
 			first_sweep_regions,
-			AFFECTED_RANGES,
+			affected_ranges,
 			"first sweep"
 		)
 
@@ -167,12 +180,16 @@ func resolve(boss: Node, party_members: Array) -> void:
 			boss,
 			party_members,
 			second_sweep_regions,
-			AFFECTED_RANGES,
+			affected_ranges,
 			"second sweep"
 		)
 
 
 func on_interrupted(boss: Node, party_members: Array) -> void:
+	for unit in party_members:
+		if is_valid_living_unit(unit) and unit.has_method("cancel_forced_movement"):
+			unit.cancel_forced_movement()
+
 	pull_start_positions.clear()
 	print(ability_name, "ended early.")
 
@@ -185,12 +202,12 @@ func get_next_pull_region() -> String:
 
 
 func get_random_pull_region() -> String:
-	if RANDOM_PULL_REGIONS.is_empty():
+	if random_pull_regions.is_empty():
 		return MovementSlotResolverScript.REGION_NORTH
 
-	var random_index: int = rng.randi_range(0, RANDOM_PULL_REGIONS.size() - 1)
+	var random_index: int = rng.randi_range(0, random_pull_regions.size() - 1)
 
-	return String(RANDOM_PULL_REGIONS[random_index])
+	return String(random_pull_regions[random_index])
 
 
 func get_relative_sweep_regions(center_region: String, step_direction: int) -> Array[String]:
@@ -223,25 +240,34 @@ func start_forced_pull(boss: Node, party_members: Array) -> void:
 	pull_destination = MovementSlotResolverScript.get_slot_position(
 		boss,
 		selected_pull_region,
-		PULL_RANGE
+		pull_range
 	)
 
-	var pulled_count: int = 0
+	var living_units: Array = []
 
 	for unit in party_members:
-		if not is_valid_living_unit(unit):
-			continue
+		if is_valid_living_unit(unit) and unit is Node2D:
+			living_units.append(unit)
 
-		if not unit is Node2D:
-			continue
+	var destinations := MovementSlotResolverScript.get_slot_formation_positions(
+		boss,
+		selected_pull_region,
+		pull_range,
+		living_units.size()
+	)
+	var pulled_count: int = 0
 
-		if unit.has_method("clear_manual_move_order"):
-			unit.clear_manual_move_order()
+	for unit_index in range(living_units.size()):
+		var unit = living_units[unit_index]
+		var destination: Vector2 = destinations[unit_index]
 
-		if unit.has_method("stop_movement"):
-			unit.stop_movement()
+		pull_start_positions[unit] = destination
 
-		pull_start_positions[unit] = unit.global_position
+		if unit.has_method("start_forced_movement"):
+			unit.start_forced_movement(destination, pull_duration)
+		else:
+			unit.global_position = destination
+
 		pulled_count += 1
 
 	print(
@@ -250,9 +276,9 @@ func start_forced_pull(boss: Node, party_members: Array) -> void:
 		pulled_count,
 		"unit(s) to",
 		selected_pull_region,
-		PULL_RANGE,
+		pull_range,
 		"over",
-		PULL_DURATION,
+		pull_duration,
 		"second(s)."
 	)
 
@@ -261,27 +287,7 @@ func update_forced_pull(boss: Node, party_members: Array, elapsed_time: float) -
 	if pull_completed:
 		return
 
-	var pull_progress: float = clampf(elapsed_time / PULL_DURATION, 0.0, 1.0)
-
-	for unit_key in pull_start_positions.keys():
-		var unit := unit_key as Node
-
-		if not is_valid_living_unit(unit):
-			continue
-
-		if not unit is Node2D:
-			continue
-
-		var unit_2d := unit as Node2D
-		var start_position: Vector2 = pull_start_positions[unit_key]
-
-		unit_2d.global_position = start_position.lerp(pull_destination, pull_progress)
-
-		if unit_2d is CharacterBody2D:
-			var body := unit_2d as CharacterBody2D
-			body.velocity = Vector2.ZERO
-
-	if elapsed_time >= PULL_DURATION:
+	if elapsed_time >= pull_duration:
 		finish_forced_pull()
 
 
@@ -301,7 +307,12 @@ func finish_forced_pull() -> void:
 			continue
 
 		var unit_2d := unit as Node2D
-		unit_2d.global_position = pull_destination
+		var destination: Vector2 = pull_start_positions[unit_key]
+
+		if unit.has_method("finish_forced_movement"):
+			unit.finish_forced_movement()
+		else:
+			unit_2d.global_position = destination
 
 		if unit.has_method("clear_manual_move_order"):
 			unit.clear_manual_move_order()
@@ -369,7 +380,7 @@ func resolve_sweep(
 		if not affected_ranges.has(unit_range):
 			continue
 
-		unit.take_damage(damage)
+		unit.take_damage(damage, boss, ability_id, {"sweep": sweep_label})
 		hit_count += 1
 
 	print(
@@ -400,10 +411,10 @@ func play_sweep_impact_effects(
 
 
 func get_phase_for_elapsed_time(elapsed_time: float) -> String:
-	if elapsed_time < PULL_DURATION:
+	if elapsed_time < pull_duration:
 		return PHASE_PULL
 
-	if elapsed_time < FIRST_SWEEP_IMPACT_TIME:
+	if elapsed_time < get_first_sweep_impact_time():
 		return PHASE_FIRST_SWEEP
 
 	return PHASE_SECOND_SWEEP
@@ -473,13 +484,13 @@ func get_region_path_text(regions: Array[String]) -> String:
 func get_cast_bar_max_time(elapsed_time: float, remaining_time: float) -> float:
 	match get_phase_for_elapsed_time(elapsed_time):
 		PHASE_PULL:
-			return PULL_DURATION
+			return pull_duration
 
 		PHASE_FIRST_SWEEP:
-			return FIRST_SWEEP_CAST_DURATION
+			return first_sweep_cast_duration
 
 		PHASE_SECOND_SWEEP:
-			return SECOND_SWEEP_CAST_DURATION
+			return second_sweep_cast_duration
 
 		_:
 			return cast_time
@@ -488,24 +499,32 @@ func get_cast_bar_max_time(elapsed_time: float, remaining_time: float) -> float:
 func get_cast_bar_value(elapsed_time: float, remaining_time: float) -> float:
 	match get_phase_for_elapsed_time(elapsed_time):
 		PHASE_PULL:
-			return clampf(elapsed_time, 0.0, PULL_DURATION)
+			return clampf(elapsed_time, 0.0, pull_duration)
 
 		PHASE_FIRST_SWEEP:
 			return clampf(
-				elapsed_time - PULL_DURATION,
+				elapsed_time - pull_duration,
 				0.0,
-				FIRST_SWEEP_CAST_DURATION
+				first_sweep_cast_duration
 			)
 
 		PHASE_SECOND_SWEEP:
 			return clampf(
-				elapsed_time - FIRST_SWEEP_IMPACT_TIME,
+				elapsed_time - get_first_sweep_impact_time(),
 				0.0,
-				SECOND_SWEEP_CAST_DURATION
+				second_sweep_cast_duration
 			)
 
 		_:
 			return clampf(elapsed_time, 0.0, cast_time)
+
+
+func get_first_sweep_impact_time() -> float:
+	return pull_duration + first_sweep_cast_duration
+
+
+func get_second_sweep_impact_time() -> float:
+	return pull_duration + first_sweep_cast_duration + second_sweep_cast_duration
 
 
 func is_valid_living_unit(unit: Node) -> bool:

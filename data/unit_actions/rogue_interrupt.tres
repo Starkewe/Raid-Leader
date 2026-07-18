@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="UnitActionDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/unit_action_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+action_id = "interrupt"
+display_name = "Kick"
+range_units = 5.0
+amount = 0
+cooldown = 3.0

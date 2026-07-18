@@ -9,10 +9,12 @@ signal command_panel_submitted(command_data: Dictionary)
 @export var raid_member_frame_scene: PackedScene
 
 @export var raid_panel_margin: Vector2 = Vector2(20, 20)
-@export var raid_panel_size: Vector2 = Vector2(1200, 260)
+@export var raid_panel_size: Vector2 = Vector2(1200, 320)
+@export var command_panel_reserved_width: float = 340.0
 
 @export var boss_panel_top_margin: float = 20.0
 @export var boss_panel_size: Vector2 = Vector2(520, 90)
+@export var show_command_debug_in_development: bool = true
 
 @onready var raid_frames_panel: Control = get_node_or_null("RaidFramesPanel")
 @onready var raid_frame_grid: GridContainer = get_node_or_null("RaidFramesPanel/RaidFrameGrid")
@@ -33,9 +35,7 @@ func _ready():
 	setup_command_debug_panel()
 	position_ui_panels()
 
-	if raid_frame_grid != null:
-		raid_frame_grid.columns = 5
-	else:
+	if raid_frame_grid == null:
 		print("ERROR: UI cannot find RaidFramesPanel/RaidFrameGrid.")
 
 	if boss_health_bar != null:
@@ -57,11 +57,27 @@ func position_raid_frames_panel():
 		return
 
 	var viewport_size := get_viewport().get_visible_rect().size
+	var available_width := maxf(
+		viewport_size.x - raid_panel_margin.x * 2.0 - command_panel_reserved_width,
+		320.0
+	)
+	var responsive_width := minf(raid_panel_size.x, available_width)
+	var column_count := clampi(floori(responsive_width / 220.0), 1, 5)
+	var frame_count := frame_by_unit.size()
+	var row_count := ceili(float(maxi(frame_count, 1)) / float(column_count))
+	var content_height := float(row_count * 72)
+	var responsive_size := Vector2(
+		responsive_width,
+		minf(maxf(raid_panel_size.y, content_height), maxf(viewport_size.y * 0.55, 180.0))
+	)
 
-	raid_frames_panel.size = raid_panel_size
+	if raid_frame_grid != null:
+		raid_frame_grid.columns = column_count
+
+	raid_frames_panel.size = responsive_size
 	raid_frames_panel.position = Vector2(
 		raid_panel_margin.x,
-		viewport_size.y - raid_panel_size.y - raid_panel_margin.y
+		viewport_size.y - responsive_size.y - raid_panel_margin.y
 	)
 
 func position_boss_frame_panel():
@@ -70,9 +86,14 @@ func position_boss_frame_panel():
 
 	var viewport_size := get_viewport().get_visible_rect().size
 
-	boss_frame_panel.size = boss_panel_size
+	var responsive_size := Vector2(
+		minf(boss_panel_size.x, maxf(viewport_size.x - 40.0, 240.0)),
+		boss_panel_size.y
+	)
+
+	boss_frame_panel.size = responsive_size
 	boss_frame_panel.position = Vector2(
-		(viewport_size.x - boss_panel_size.x) / 2.0,
+		(viewport_size.x - responsive_size.x) / 2.0,
 		boss_panel_top_margin
 	)
 
@@ -108,6 +129,8 @@ func setup_raid_frames(units: Array):
 			frame.unhovered.connect(_on_raid_member_frame_unhovered)
 
 		frame_by_unit[unit] = frame
+
+	position_raid_frames_panel()
 
 func clear_raid_frames():
 	if raid_frame_grid == null:
@@ -291,6 +314,8 @@ func setup_command_debug_panel() -> void:
 		command_debug_panel.name = "CommandDebugPanel"
 		add_child(command_debug_panel)
 
+	command_debug_panel.visible = show_command_debug_in_development and OS.is_debug_build()
+
 	position_command_debug_panel()
 
 
@@ -315,3 +340,8 @@ func clear_command_debug_info() -> void:
 
 	if command_debug_panel.has_method("clear_debug_data"):
 		command_debug_panel.clear_debug_data()
+
+
+func set_voice_status(text: String, is_error: bool = false) -> void:
+	if command_panel != null and command_panel.has_method("set_voice_status"):
+		command_panel.set_voice_status(text, is_error)

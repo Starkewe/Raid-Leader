@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="EncounterDefinition" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/encounter_definition.gd" id="1_definition"]
+[ext_resource type="Resource" path="res://data/abilities/close_region_cleave.tres" id="2_ability"]
+[ext_resource type="Resource" path="res://data/phases/default_phase.tres" id="3_phase"]
+[ext_resource type="Script" path="res://scripts/data/boss_ability_definition.gd" id="4_ability_type"]
+[ext_resource type="Script" path="res://scripts/data/boss_phase_definition.gd" id="5_phase_type"]
+
+[resource]
+script = ExtResource("1_definition")
+encounter_id = "cleave_close_region"
+display_name = "Cleave: Close Region"
+description = "A basic tutorial boss that cleaves the close-range region matching its current target."
+scene_path = "res://scenes/combat_scene.tscn"
+boss_display_name = "Cleave Trainer"
+max_health = 3000
+attack_range_units = 5.0
+combat_radius = 128.0
+attack_damage = 20
+attack_cooldown = 1.5
+abilities = Array[ExtResource("4_ability_type")]([ExtResource("2_ability")])
+phases = Array[ExtResource("5_phase_type")]([ExtResource("3_phase")])
+show_debug_region_guides = true
+show_debug_range_rings = true
+debug_max_range_units = 50.0

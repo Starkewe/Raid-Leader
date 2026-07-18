@@ -2,8 +2,9 @@ extends Node
 
 const CombatEventQueueScript := preload("res://scripts/combat/combat_event_queue.gd")
 const CombatStatusPresenterScript := preload("res://scripts/combat/combat_status_presenter.gd")
-const VoiceTranscriberClientScript := preload("res://scripts/voice/voice_transcriber_client.gd")
-const VoiceCommandParserScript := preload("res://scripts/voice/voice_command_parser.gd")
+const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
+const CommandDebugFormatterScript := preload("res://scripts/ui/command_debug_formatter.gd")
+const VoiceCommandCoordinatorScript := preload("res://scripts/voice/voice_command_coordinator.gd")
 
 @onready var raid_spawner: RaidSpawner = get_node_or_null("../RaidSpawner")
 @onready var boss = get_node_or_null("../Boss")
@@ -12,9 +13,9 @@ const VoiceCommandParserScript := preload("res://scripts/voice/voice_command_par
 
 @export var voice_transcriber_path: NodePath
 @export var voice_command_parser_path: NodePath
+@export var max_combat_log_entries: int = 2000
 
-var voice_transcriber: VoiceTranscriberClient = null
-var voice_command_parser: VoiceCommandParser = null
+var voice_coordinator: VoiceCommandCoordinator = null
 
 var boss_alive: bool = true
 var fight_active: bool = false
@@ -27,19 +28,21 @@ var combat_event_queue = null
 var status_presenter = null
 
 var spawn_positions: Dictionary = {}
+var combat_log: Array[Dictionary] = []
+var combat_started_at_msec: int = 0
 
 func _ready():
 	print("CombatManager loaded")
 
 	command_controller = RaidCommandController.new()
 	connect_command_controller_signals()
-	
+
 	combat_event_queue = CombatEventQueueScript.new()
 	combat_event_queue.setup(Callable(self, "handle_combat_event"))
-	
+
 	status_presenter = CombatStatusPresenterScript.new()
 	setup_voice_commands()
-	
+
 	call_deferred("initialize_combat")
 func _on_command_panel_submitted(command_data: Dictionary) -> void:
 	submit_command_data(command_data, "command_panel")
@@ -89,8 +92,12 @@ func submit_command_data(
 	var command_issued: bool = command_controller.execute_panel_command(command_data, boss_alive)
 
 	if command_issued and should_command_start_fight(command_data):
+		if not fight_active:
+			combat_started_at_msec = Time.get_ticks_msec()
+
 		fight_active = true
 		encounter_state = "active"
+		set_boss_encounter_active(true)
 
 	var result_text := "Executed"
 
@@ -106,43 +113,9 @@ func submit_command_data(
 	return command_issued
 
 func validate_command_data(command_data: Dictionary) -> Dictionary:
-	var required_keys := [
-		"who_type",
-		"who_value",
-		"unit",
-		"what",
-		"where",
-		"when"
-	]
-
-	for key in required_keys:
-		if not command_data.has(key):
-			return {
-				"ok": false,
-				"reason": "Missing required key: " + key
-			}
-
-	var what := String(command_data.get("what", "")).strip_edges()
-	var where := String(command_data.get("where", "")).strip_edges()
-
-	if what.is_empty():
-		return {
-			"ok": false,
-			"reason": "Command action is empty."
-		}
-
-	if where.is_empty():
-		return {
-			"ok": false,
-			"reason": "Command destination is empty."
-		}
-
-	return {
-		"ok": true,
-		"reason": ""
-	}
+	return CommandSchemaScript.validate(command_data)
 func should_command_start_fight(command_data: Dictionary) -> bool:
-	return String(command_data.get("what", "")) == "attack"
+	return String(command_data.get("what", "")) in ["attack", "taunt"]
 
 
 func update_command_debug(data: Dictionary) -> void:
@@ -159,185 +132,7 @@ func build_command_debug_data(
 	debug_context: Dictionary,
 	result_text: String
 ) -> Dictionary:
-	return {
-		"source": get_debug_source_text(source),
-		"transcript": String(debug_context.get("transcript", "-")),
-		"normalized": String(debug_context.get("normalized_text", "-")),
-		"who": get_debug_who_text(command_data),
-		"what": get_debug_what_text(command_data),
-		"where": get_debug_where_text(command_data),
-		"result": result_text,
-		"command_data": get_debug_command_data_text(command_data)
-	}
-
-
-func get_debug_source_text(source: String) -> String:
-	match source:
-		"voice":
-			return "Voice"
-
-		"command_panel":
-			return "Command Panel"
-
-		_:
-			return source.capitalize()
-
-
-func get_debug_who_text(command_data: Dictionary) -> String:
-	var selectors: Array = command_data.get("who_selectors", [])
-	var exclude_selectors: Array = command_data.get("who_exclude_selectors", [])
-
-	if not selectors.is_empty():
-		var text := get_debug_selector_list_text(selectors)
-
-		if not exclude_selectors.is_empty():
-			text += " except " + get_debug_selector_list_text(exclude_selectors)
-
-		return text
-
-	var who_type := String(command_data.get("who_type", ""))
-
-	match who_type:
-		"everyone":
-			return "Everyone"
-
-		"class":
-			return "Class: " + String(command_data.get("who_value", ""))
-
-		"group":
-			return "Group: " + str(command_data.get("who_value", ""))
-
-		"role":
-			return "Role: " + String(command_data.get("who_value", ""))
-
-		"unit_identity":
-			return "Unit: " + String(command_data.get("who_value", ""))
-
-		"unit":
-			var unit = command_data.get("unit", null)
-
-			if unit != null and is_instance_valid(unit):
-				if unit.has_method("get_display_name"):
-					return "Unit: " + String(unit.get_display_name())
-
-				return "Unit: " + unit.name
-
-			return "Unit: Missing"
-
-		_:
-			return "Unknown"
-func get_debug_selector_list_text(selectors: Array) -> String:
-	var parts: Array[String] = []
-
-	for selector in selectors:
-		if selector is Dictionary:
-			parts.append(get_debug_selector_text(selector))
-
-	return " and ".join(parts)
-
-
-func get_debug_selector_text(selector: Dictionary) -> String:
-	var selector_type := String(selector.get("type", ""))
-	var selector_value = selector.get("value", "")
-
-	match selector_type:
-		"everyone":
-			return "Everyone"
-
-		"class":
-			return "Class: " + String(selector_value)
-
-		"group":
-			return "Group: " + str(selector_value)
-
-		"role":
-			return "Role: " + String(selector_value)
-
-		"unit_identity":
-			return "Unit: " + String(selector.get("class", "")) + " " + str(selector.get("number", ""))
-
-		"unit":
-			var unit = selector.get("unit", null)
-
-			if unit != null and is_instance_valid(unit):
-				if unit.has_method("get_display_name"):
-					return "Unit: " + String(unit.get_display_name())
-
-				return "Unit: " + unit.name
-
-			return "Unit: Missing"
-
-		_:
-			return "Unknown"
-func get_debug_what_text(command_data: Dictionary) -> String:
-	var what := String(command_data.get("what", ""))
-
-	if what.is_empty():
-		return "-"
-
-	return what.capitalize()
-
-
-func get_debug_where_text(command_data: Dictionary) -> String:
-	var where := String(command_data.get("where", ""))
-
-	match where:
-		"boss":
-			return "Boss"
-
-		"boss_target":
-			return "Boss Target"
-
-		"me":
-			return "Me"
-
-		"movement_range_step":
-			return "Range Step: " + String(command_data.get("movement_direction", ""))
-
-		"movement_range":
-			return "Range: " + String(command_data.get("movement_range", ""))
-
-		"movement_region":
-			return "Region: " + String(command_data.get("movement_region", ""))
-
-		"movement_slot":
-			return (
-				"Slot: "
-				+ String(command_data.get("movement_region", ""))
-				+ " "
-				+ String(command_data.get("movement_range", ""))
-			)
-
-		"movement_rotate_step":
-			return "Rotate Step: " + String(command_data.get("movement_direction", ""))
-
-		"movement_rotate":
-			return "Rotate To: " + String(command_data.get("movement_region", ""))
-
-		_:
-			if where.is_empty():
-				return "-"
-
-			return where
-
-func get_debug_command_data_text(command_data: Dictionary) -> String:
-	if command_data.is_empty():
-		return "-"
-
-	var safe_data := {}
-
-	for key in command_data.keys():
-		var value = command_data[key]
-
-		if value is Node:
-			if value.has_method("get_display_name"):
-				safe_data[key] = value.get_display_name()
-			else:
-				safe_data[key] = value.name
-		else:
-			safe_data[key] = value
-
-	return str(safe_data)
+	return CommandDebugFormatterScript.build_data(source, command_data, debug_context, result_text)
 func connect_command_controller_signals() -> void:
 	if command_controller == null:
 		return
@@ -357,10 +152,10 @@ func initialize_combat():
 
 	if command_controller != null:
 		command_controller.setup(party_members, boss, player)
-	
+
 	if status_presenter != null:
 		status_presenter.setup(ui, boss, Callable(self, "is_unit_alive"))
-	
+
 	connect_unit_signals()
 	connect_boss_signals()
 
@@ -375,7 +170,7 @@ func initialize_combat():
 			ui.setup_command_panel(party_members)
 
 		connect_ui_signals()
-	
+
 	initialize_ui()
 	refresh_all_statuses()
 
@@ -436,6 +231,8 @@ func connect_unit_signals():
 			if not unit.is_connected("defeated", callback):
 				unit.connect("defeated", callback)
 
+		connect_combat_event_signal(unit)
+
 func connect_boss_signals():
 	if boss == null or not is_instance_valid(boss):
 		return
@@ -445,6 +242,55 @@ func connect_boss_signals():
 
 		if not boss.is_connected("defeated", callback):
 			boss.connect("defeated", callback)
+
+	connect_combat_event_signal(boss)
+
+
+func connect_combat_event_signal(combatant: Node) -> void:
+	if combatant == null or not is_instance_valid(combatant):
+		return
+
+	if not combatant.has_signal("combat_event"):
+		return
+
+	var callback := Callable(self, "_on_structured_combat_event")
+
+	if not combatant.is_connected("combat_event", callback):
+		combatant.connect("combat_event", callback)
+
+
+func _on_structured_combat_event(event: Dictionary) -> void:
+	if event.is_empty():
+		return
+
+	var recorded_event := event.duplicate(true)
+	var timestamp_msec := Time.get_ticks_msec()
+
+	if combat_started_at_msec <= 0:
+		combat_started_at_msec = timestamp_msec
+
+	recorded_event["timestamp_msec"] = timestamp_msec
+	recorded_event["encounter_time_seconds"] = (
+		float(timestamp_msec - combat_started_at_msec) / 1000.0
+	)
+	combat_log.append(recorded_event)
+
+	if max_combat_log_entries > 0 and combat_log.size() > max_combat_log_entries:
+		combat_log.pop_front()
+
+
+func get_combat_log() -> Array[Dictionary]:
+	var copied_log: Array[Dictionary] = []
+
+	for event in combat_log:
+		copied_log.append(event.duplicate(true))
+
+	return copied_log
+
+
+func clear_combat_log() -> void:
+	combat_log.clear()
+	combat_started_at_msec = 0
 
 func initialize_ui() -> void:
 	encounter_state = "idle"
@@ -557,7 +403,8 @@ func handle_boss_defeated():
 	boss_alive = false
 	fight_active = false
 	encounter_state = "victory"
-	
+	set_boss_encounter_active(false)
+
 	if status_presenter != null:
 		status_presenter.clear_all_temporary_statuses()
 
@@ -572,6 +419,7 @@ func handle_party_wipe():
 
 	fight_active = false
 	encounter_state = "wipe"
+	set_boss_encounter_active(false)
 
 	if status_presenter != null:
 		status_presenter.clear_all_temporary_statuses()
@@ -589,10 +437,11 @@ func reset_encounter():
 		command_controller.reset_commands()
 	if combat_event_queue != null:
 		combat_event_queue.clear()
-		
+
 	boss_alive = true
 	fight_active = false
 	encounter_state = "idle"
+	set_boss_encounter_active(false)
 
 	if status_presenter != null:
 		status_presenter.clear_all_temporary_statuses()
@@ -609,6 +458,7 @@ func reset_encounter():
 		if spawn_positions.has(boss) and boss.has_method("reset_boss"):
 			boss.reset_boss(spawn_positions[boss])
 
+	clear_combat_log()
 	initialize_ui()
 	if ui != null and is_instance_valid(ui):
 		if ui.has_method("clear_command_debug_info"):
@@ -664,9 +514,18 @@ func command_party_attack() -> void:
 	var command_started := command_controller.command_party_attack(boss_alive)
 
 	if command_started:
+		if not fight_active:
+			combat_started_at_msec = Time.get_ticks_msec()
+
 		fight_active = true
 		encounter_state = "active"
+		set_boss_encounter_active(true)
 		refresh_all_statuses()
+
+
+func set_boss_encounter_active(active: bool) -> void:
+	if boss != null and is_instance_valid(boss) and boss.has_method("set_encounter_active"):
+		boss.set_encounter_active(active)
 
 
 func command_healers_to_heal_boss_target() -> void:
@@ -702,118 +561,19 @@ func get_unit_debug_name(unit: Node) -> String:
 		return "None"
 
 	return command_controller.get_unit_debug_name(unit)
-	
+
 func setup_voice_commands() -> void:
-	setup_voice_transcriber()
-	setup_voice_command_parser()
-
-	if voice_transcriber == null:
-		push_warning("CombatManager could not find VoiceTranscriberClient. Voice commands disabled.")
-		return
-
-	if voice_command_parser == null:
-		push_warning("CombatManager could not find or create VoiceCommandParser. Voice commands disabled.")
-		return
-
-	if not voice_transcriber.transcript_received.is_connected(_on_voice_transcript_received):
-		voice_transcriber.transcript_received.connect(_on_voice_transcript_received)
-
-	if not voice_transcriber.transcription_failed.is_connected(_on_voice_transcription_failed):
-		voice_transcriber.transcription_failed.connect(_on_voice_transcription_failed)
-
-
-func setup_voice_transcriber() -> void:
-	voice_transcriber = null
-
-	if not voice_transcriber_path.is_empty():
-		voice_transcriber = get_node_or_null(voice_transcriber_path) as VoiceTranscriberClient
-
-	if voice_transcriber != null:
-		return
-
-	voice_transcriber = get_node_or_null("../VoicePipeline/VoiceTranscriberClient") as VoiceTranscriberClient
-
-	if voice_transcriber != null:
-		return
-
-	voice_transcriber = get_node_or_null("../VoiceTranscriberClient") as VoiceTranscriberClient
-
-
-func setup_voice_command_parser() -> void:
-	voice_command_parser = null
-
-	if not voice_command_parser_path.is_empty():
-		voice_command_parser = get_node_or_null(voice_command_parser_path) as VoiceCommandParser
-
-	if voice_command_parser != null:
-		return
-
-	voice_command_parser = get_node_or_null("../VoicePipeline/VoiceCommandParser") as VoiceCommandParser
-
-	if voice_command_parser != null:
-		return
-
-	voice_command_parser = get_node_or_null("../VoiceCommandParser") as VoiceCommandParser
-
-	if voice_command_parser != null:
-		return
-
-	voice_command_parser = VoiceCommandParserScript.new()
-
-
-func _on_voice_transcript_received(transcript: String) -> void:
-	if voice_command_parser == null:
-		var parser_missing_result := "Rejected - VoiceCommandParser is missing."
-
-		push_warning(parser_missing_result)
-
-		update_command_debug({
-			"source": "voice",
-			"transcript": transcript,
-			"normalized": "-",
-			"who": "-",
-			"what": "-",
-			"where": "-",
-			"result": parser_missing_result,
-			"command_data": "-"
-		})
-
-		return
-
-	print("Voice transcript received by CombatManager: ", transcript)
-
-	var parse_result: Dictionary = voice_command_parser.parse(transcript)
-	var normalized_text := String(parse_result.get("normalized_text", ""))
-
-	if not bool(parse_result.get("ok", false)):
-		var reason := String(parse_result.get("reason", "Could not parse voice command."))
-		var rejected_result := "Rejected - " + reason
-
-		push_warning("Voice command rejected: " + reason)
-
-		update_command_debug({
-			"source": "voice",
-			"transcript": transcript,
-			"normalized": normalized_text,
-			"who": "-",
-			"what": "-",
-			"where": "-",
-			"result": rejected_result,
-			"command_data": "-"
-		})
-
-		return
-
-	var command_data: Dictionary = parse_result.get("command_data", {})
-
-	submit_command_data(
-		command_data,
-		"voice",
-		{
-			"transcript": transcript,
-			"normalized_text": normalized_text
-		}
+	voice_coordinator = VoiceCommandCoordinatorScript.new()
+	voice_coordinator.setup(
+		self,
+		voice_transcriber_path,
+		voice_command_parser_path,
+		Callable(self, "submit_command_data"),
+		Callable(self, "update_command_debug"),
+		Callable(self, "set_voice_status")
 	)
 
-func _on_voice_transcription_failed(reason: String) -> void:
-	push_warning("Voice transcription failed: " + reason)
+
+func set_voice_status(text: String, is_error: bool = false) -> void:
+	if ui != null and is_instance_valid(ui) and ui.has_method("set_voice_status"):
+		ui.set_voice_status(text, is_error)

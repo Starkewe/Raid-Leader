@@ -7,11 +7,6 @@
 
 [node name="Rogue" type="CharacterBody2D" unique_id=449289016]
 script = ExtResource("1_4sdmq")
-attack_range = 95.0
-stop_distance = 85.0
-attack_damage = 10
-attack_cooldown = 1.0
-speed = 180.0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=392022633]
 texture = ExtResource("2_lc83y")

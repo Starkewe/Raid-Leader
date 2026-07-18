@@ -1,29 +1,16 @@
 extends RefCounted
 class_name CommandTargetResolver
 
+const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
+
 const GROUP_SIZE: int = 5
 
-const SELECTOR_EVERYONE := "everyone"
-const SELECTOR_CLASS := "class"
-const SELECTOR_GROUP := "group"
-const SELECTOR_UNIT := "unit"
-const SELECTOR_UNIT_IDENTITY := "unit_identity"
-const SELECTOR_ROLE := "role"
-
-const CLASS_WARRIOR := "Warrior"
-const CLASS_ROGUE := "Rogue"
-const CLASS_MAGE := "Mage"
-const CLASS_PRIEST := "Priest"
-
-const ROLE_TANK := "tank"
-const ROLE_OFFTANK := "offtank"
-const ROLE_TANK_GROUP := "tank_group"
-const ROLE_MELEE := "melee"
-const ROLE_MELEE_DPS := "melee_dps"
-const ROLE_DPS := "dps"
-const ROLE_RANGED_DPS := "ranged_dps"
-const ROLE_CASTER := "caster"
-const ROLE_HEALER := "healer"
+const SELECTOR_EVERYONE := CommandSchemaScript.SELECTOR_EVERYONE
+const SELECTOR_CLASS := CommandSchemaScript.SELECTOR_CLASS
+const SELECTOR_GROUP := CommandSchemaScript.SELECTOR_GROUP
+const SELECTOR_UNIT := CommandSchemaScript.SELECTOR_UNIT
+const SELECTOR_UNIT_IDENTITY := CommandSchemaScript.SELECTOR_UNIT_IDENTITY
+const SELECTOR_ROLE := CommandSchemaScript.SELECTOR_ROLE
 
 var party_members: Array = []
 
@@ -172,79 +159,46 @@ func get_living_units_by_group(group_number: int) -> Array:
 
 func get_living_units_by_role(role_name: String) -> Array:
 	var normalized_role := normalize_role_name(role_name)
+	var role_data := GameState.get_role_data(normalized_role)
 
-	match normalized_role:
-		ROLE_TANK:
-			return get_single_unit_array(get_living_unit_by_identity(CLASS_WARRIOR, 1))
+	if role_data.is_empty():
+		print("Unknown role:", role_name)
+		return []
 
-		ROLE_OFFTANK:
-			return get_single_unit_array(get_living_unit_by_identity(CLASS_WARRIOR, 2))
+	var match_role := String(role_data.get("match_role", normalized_role))
+	var matching_units: Array = []
 
-		ROLE_TANK_GROUP:
-			return get_living_units_by_class(CLASS_WARRIOR)
+	for unit in party_members:
+		if not is_unit_alive(unit):
+			continue
 
-		ROLE_MELEE:
-			var melee_units: Array = []
-			append_unique_units(melee_units, get_living_units_by_class(CLASS_WARRIOR))
-			append_unique_units(melee_units, get_living_units_by_class(CLASS_ROGUE))
-			return melee_units
+		if unit_has_role(unit, match_role):
+			matching_units.append(unit)
 
-		ROLE_MELEE_DPS:
-			return get_living_units_by_class(CLASS_ROGUE)
+	match String(role_data.get("selection", "all")):
+		"first":
+			return get_single_unit_array(
+				matching_units[0] if matching_units.size() >= 1 else null
+			)
 
-		ROLE_DPS:
-			var dps_units: Array = []
-			append_unique_units(dps_units, get_living_units_by_class(CLASS_ROGUE))
-			append_unique_units(dps_units, get_living_units_by_class(CLASS_MAGE))
-			return dps_units
-
-		ROLE_RANGED_DPS:
-			return get_living_units_by_class(CLASS_MAGE)
-
-		ROLE_CASTER:
-			return get_living_units_by_class(CLASS_MAGE)
-
-		ROLE_HEALER:
-			return get_living_units_by_class(CLASS_PRIEST)
+		"second":
+			return get_single_unit_array(
+				matching_units[1] if matching_units.size() >= 2 else null
+			)
 
 		_:
-			print("Unknown role:", role_name)
-			return []
+			return matching_units
 
 func normalize_role_name(role_name: String) -> String:
-	var role := role_name.to_lower().strip_edges()
-	role = role.replace(" ", "_")
+	return GameState.normalize_role_name(role_name)
 
-	match role:
-		"tank", "main_tank":
-			return ROLE_TANK
 
-		"off_tank", "offtank":
-			return ROLE_OFFTANK
+func unit_has_role(unit: Node, role_name: String) -> bool:
+	if unit.has_method("has_role"):
+		return bool(unit.has_role(role_name))
 
-		"tanks", "tank_group":
-			return ROLE_TANK_GROUP
-
-		"melee":
-			return ROLE_MELEE
-
-		"melee_dps":
-			return ROLE_MELEE_DPS
-
-		"dps":
-			return ROLE_DPS
-
-		"ranged", "ranged_dps", "range_dps":
-			return ROLE_RANGED_DPS
-
-		"caster", "casters":
-			return ROLE_CASTER
-
-		"healer", "healers":
-			return ROLE_HEALER
-
-		_:
-			return role
+	var definition := GameState.get_unit_definition(get_unit_class_name(unit))
+	return definition != null and definition.has_role(role_name)
 
 
 func get_living_unit_by_identity(class_name_value: String, unit_number_value: int) -> Node:

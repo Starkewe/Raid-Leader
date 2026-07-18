@@ -2,17 +2,32 @@ extends BaseCombatUnit
 
 class_name Warrior
 
-@export var attack_range_units: float = 5.0
-@export var stop_distance_units: float = 5.0
-@export var attack_damage: int = 10
-@export var attack_cooldown: float = 1.0
+var attack_range_units: float = 5.0
+var stop_distance_units: float = 5.0
+var attack_damage: int = 10
+var attack_cooldown: float = 1.0
 
 var target: Node2D = null
 var cooldown_timer: float = 0.0
+var attack_ability_id: String = "warrior_attack"
+
+
+func configure_from_definition(definition: UnitDefinition) -> void:
+	super.configure_from_definition(definition)
+
+	if definition == null:
+		return
+
+	var action := definition.get_action(attack_ability_id)
+
+	if action != null:
+		attack_range_units = action.range_units
+		stop_distance_units = action.stop_distance_units
+		attack_damage = action.amount
+		attack_cooldown = action.cooldown
 
 
 func _ready():
-	max_health = 100
 	super._ready()
 	print("Warrior ready. HP:", health)
 
@@ -23,6 +38,10 @@ func _physics_process(delta):
 		return
 
 	update_cooldown(delta)
+
+	if update_forced_movement(delta):
+		move_and_slide()
+		return
 
 	if update_manual_move_order():
 		move_and_slide()
@@ -82,7 +101,22 @@ func attack_target():
 
 	print(get_display_name(), "attacks", get_node_display_name(target))
 
-	target.take_damage(attack_damage)
+	target.take_damage(attack_damage, self, attack_ability_id)
+
+
+func command_taunt(new_target: Node2D) -> bool:
+	if is_dead or not is_valid_living_node(new_target):
+		return false
+
+	if not new_target.has_method("taunt"):
+		return false
+
+	var success := bool(new_target.taunt(self))
+
+	if success:
+		print(get_display_name(), "taunts", get_node_display_name(new_target))
+
+	return success
 
 
 func stop_action():

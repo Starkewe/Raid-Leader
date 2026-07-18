@@ -1,6 +1,7 @@
 extends RefCounted
 class_name BossAbility
 
+var ability_id: String = "unnamed_ability"
 var ability_name: String = "Unnamed Ability"
 var cast_time: float = 1.0
 var cooldown: float = 5.0
@@ -9,6 +10,22 @@ var damage: int = 0
 var windup_text: String = ""
 var impact_text: String = ""
 var interruptible: bool = true
+var requires_active_target: bool = true
+
+
+func configure(definition: BossAbilityDefinition) -> void:
+	if definition == null:
+		return
+
+	ability_id = definition.ability_id
+	ability_name = definition.display_name
+	cast_time = definition.cast_time
+	cooldown = definition.cooldown
+	damage = definition.damage
+	windup_text = definition.windup_text
+	impact_text = definition.impact_text
+	interruptible = definition.interruptible
+	requires_active_target = definition.requires_active_target
 
 
 func can_cast(boss: Node, party_members: Array) -> bool:
@@ -17,6 +34,13 @@ func can_cast(boss: Node, party_members: Array) -> bool:
 
 	if not is_instance_valid(boss):
 		return false
+
+	if requires_active_target:
+		if not boss.has_method("get_current_target"):
+			return false
+
+		if boss.get_current_target() == null:
+			return false
 
 	return true
 

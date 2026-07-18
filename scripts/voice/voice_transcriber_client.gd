@@ -4,17 +4,46 @@ class_name VoiceTranscriberClient
 signal transcript_received(text: String)
 signal transcription_failed(reason: String)
 
-@export_file("*.exe") var whisper_cli_path: String = "E:/Raid Leader/tools/whisper.cpp/build/bin/Release/whisper-cli.exe"
+@export_file var whisper_cli_path_override: String = ""
 
 @export var use_settings_menu_model: bool = true
-@export_file("*.bin") var fallback_model_path: String = "E:/Raid Leader/tools/whisper.cpp/models/ggml-base.en.bin"
+@export_file("*.bin") var fallback_model_path: String = "res://tools/whisper.cpp/models/ggml-base.en.bin"
 
 @export var max_queued_transcriptions: int = 3
+@export var transcription_ttl_seconds: float = 8.0
+@export var transcription_process_timeout_seconds: float = 15.0
 
-var _thread: Thread = null
 var _is_transcribing: bool = false
-var _pending_wav_paths: Array[String] = []
+var _pending_transcriptions: Array[Dictionary] = []
 var _active_wav_path: String = ""
+var _active_queued_at_msec: int = 0
+var _active_process_started_at_msec: int = 0
+var _active_process_id: int = 0
+var _active_output_txt_path: String = ""
+
+
+func _process(_delta: float) -> void:
+	if _active_process_id <= 0:
+		return
+
+	if OS.is_process_running(_active_process_id):
+		var process_age := float(
+			Time.get_ticks_msec() - _active_process_started_at_msec
+		) / 1000.0
+
+		if transcription_process_timeout_seconds > 0.0 and process_age > transcription_process_timeout_seconds:
+			OS.kill(_active_process_id)
+			_finish_transcription(-1, "", "Whisper process timed out.")
+
+		return
+
+	var transcript := ""
+
+	if FileAccess.file_exists(_active_output_txt_path):
+		transcript = _read_text_file(_active_output_txt_path)
+
+	var result_code := 0 if not transcript.strip_edges().is_empty() else 1
+	_finish_transcription(result_code, transcript, "Whisper did not create a transcript file.")
 
 
 func is_busy() -> bool:
@@ -22,13 +51,21 @@ func is_busy() -> bool:
 func is_transcribing() -> bool:
 	return _is_transcribing
 func can_accept_transcription() -> bool:
-	return _pending_wav_paths.size() < max_queued_transcriptions
-	
+	_prune_stale_transcriptions()
+	return _pending_transcriptions.size() < max_queued_transcriptions
+
 func get_active_model_path() -> String:
 	if use_settings_menu_model:
 		return GameState.get_selected_speech_to_text_model_path()
 
 	return fallback_model_path
+
+
+func get_active_cli_path() -> String:
+	if not whisper_cli_path_override.strip_edges().is_empty():
+		return whisper_cli_path_override
+
+	return GameState.get_whisper_cli_path()
 
 func transcribe_wav(wav_path: String) -> void:
 	if wav_path.is_empty():
@@ -39,11 +76,15 @@ func transcribe_wav(wav_path: String) -> void:
 		transcription_failed.emit("WAV file does not exist: %s" % wav_path)
 		return
 
-	if not FileAccess.file_exists(whisper_cli_path):
-		transcription_failed.emit("whisper-cli.exe was not found: %s" % whisper_cli_path)
+	var active_cli_path := get_active_cli_path()
+
+	if not FileAccess.file_exists(active_cli_path):
+		transcription_failed.emit("Whisper CLI was not found: %s" % active_cli_path)
 		return
 
-	if _pending_wav_paths.size() >= max_queued_transcriptions:
+	_prune_stale_transcriptions()
+
+	if _pending_transcriptions.size() >= max_queued_transcriptions:
 		transcription_failed.emit("Transcription queue is full.")
 		return
 
@@ -53,19 +94,26 @@ func transcribe_wav(wav_path: String) -> void:
 		transcription_failed.emit("Failed to copy WAV into transcription queue.")
 		return
 
-	_pending_wav_paths.append(queued_wav_path)
+	_pending_transcriptions.append({
+		"wav_path": queued_wav_path,
+		"queued_at_msec": Time.get_ticks_msec()
+	})
 
-	print("Queued voice transcription:", queued_wav_path, "Queue size:", _pending_wav_paths.size())
+	print("Queued voice transcription:", queued_wav_path, "Queue size:", _pending_transcriptions.size())
 
 	_start_next_transcription_if_needed()
 func _start_next_transcription_if_needed() -> void:
 	if _is_transcribing:
 		return
 
-	if _pending_wav_paths.is_empty():
+	_prune_stale_transcriptions()
+
+	if _pending_transcriptions.is_empty():
 		return
 
-	var next_wav_path := String(_pending_wav_paths.pop_front())
+	var next_request: Dictionary = _pending_transcriptions.pop_front()
+	var next_wav_path := String(next_request.get("wav_path", ""))
+	var queued_at_msec := int(next_request.get("queued_at_msec", 0))
 
 	if not FileAccess.file_exists(next_wav_path):
 		transcription_failed.emit("Queued WAV file does not exist: %s" % next_wav_path)
@@ -76,14 +124,29 @@ func _start_next_transcription_if_needed() -> void:
 
 	if not FileAccess.file_exists(active_model_path):
 		transcription_failed.emit("Whisper model was not found: %s" % active_model_path)
+		_delete_file_if_exists(next_wav_path)
+		call_deferred("_start_next_transcription_if_needed")
+		return
+
+	var process_id := _start_whisper_process(
+		next_wav_path,
+		active_model_path,
+		get_active_cli_path()
+	)
+
+	if process_id <= 0:
+		_delete_file_if_exists(next_wav_path)
+		_delete_file_if_exists(_active_output_txt_path)
+		_active_output_txt_path = ""
+		transcription_failed.emit("Could not start the Whisper process.")
 		call_deferred("_start_next_transcription_if_needed")
 		return
 
 	_is_transcribing = true
 	_active_wav_path = next_wav_path
-
-	_thread = Thread.new()
-	_thread.start(_run_whisper.bind(next_wav_path, active_model_path))
+	_active_queued_at_msec = queued_at_msec
+	_active_process_started_at_msec = Time.get_ticks_msec()
+	_active_process_id = process_id
 func _copy_wav_to_queue_file(wav_path: String) -> String:
 	var global_source_path := _globalize_if_needed(wav_path)
 
@@ -115,25 +178,30 @@ func _copy_wav_to_queue_file(wav_path: String) -> String:
 	queued_file.close()
 
 	return queued_path
-func _run_whisper(wav_path: String, active_model_path: String) -> void:
+func _start_whisper_process(
+	wav_path: String,
+	active_model_path: String,
+	active_cli_path: String
+) -> int:
 	var global_wav_path := _globalize_if_needed(wav_path)
+	var global_model_path := _globalize_if_needed(active_model_path)
+	var global_cli_path := _globalize_if_needed(active_cli_path)
 
 	var output_dir := "user://voice"
 	var global_output_dir := ProjectSettings.globalize_path(output_dir)
 
 	DirAccess.make_dir_recursive_absolute(global_output_dir)
 
-	var output_prefix := output_dir + "/last_transcription"
+	var output_prefix := output_dir + "/transcription_%d" % Time.get_ticks_usec()
 	var global_output_prefix := ProjectSettings.globalize_path(output_prefix)
 	var global_output_txt := global_output_prefix + ".txt"
+	_active_output_txt_path = global_output_txt
 
 	if FileAccess.file_exists(global_output_txt):
 		DirAccess.remove_absolute(global_output_txt)
 
-	var output: Array = []
-
 	var args := PackedStringArray([
-		"-m", active_model_path,
+		"-m", global_model_path,
 		"-f", global_wav_path,
 		"-l", "en",
 		"-nt",
@@ -142,34 +210,30 @@ func _run_whisper(wav_path: String, active_model_path: String) -> void:
 		"-of", global_output_prefix
 	])
 	print("Running Whisper model: ", active_model_path)
-	var exit_code := OS.execute(whisper_cli_path, args, output, true, false)
-	var raw_output := "\n".join(output)
-
-	var transcript := ""
-
-	if exit_code == 0 and FileAccess.file_exists(global_output_txt):
-		transcript = _read_text_file(global_output_txt)
-
-	if transcript.strip_edges().is_empty():
-		transcript = _clean_whisper_output(raw_output)
-
-	call_deferred("_finish_transcription", exit_code, transcript, raw_output)
+	return OS.create_process(global_cli_path, args, false)
 
 
 func _finish_transcription(exit_code: int, transcript: String, raw_output: String) -> void:
-	if _thread != null:
-		_thread.wait_to_finish()
-		_thread = null
-
 	var finished_wav_path := _active_wav_path
+	var active_age_seconds := float(Time.get_ticks_msec() - _active_queued_at_msec) / 1000.0
 
 	_active_wav_path = ""
+	_active_queued_at_msec = 0
+	_active_process_started_at_msec = 0
+	_active_process_id = 0
 	_is_transcribing = false
 
 	_delete_file_if_exists(finished_wav_path)
+	_delete_file_if_exists(_active_output_txt_path)
+	_active_output_txt_path = ""
 
 	if exit_code != 0:
-		transcription_failed.emit("whisper-cli failed with exit code %d: %s" % [exit_code, raw_output])
+		transcription_failed.emit("Whisper transcription failed: " + raw_output)
+		_start_next_transcription_if_needed()
+		return
+
+	if active_age_seconds > transcription_ttl_seconds:
+		transcription_failed.emit("Discarded stale voice command after %.1f seconds." % active_age_seconds)
 		_start_next_transcription_if_needed()
 		return
 
@@ -197,84 +261,12 @@ func _read_text_file(path: String) -> String:
 	return text
 
 
-func _clean_whisper_output(raw_output: String) -> String:
-	var text := raw_output.strip_edges()
-
-	text = text.replace("\r", "\n")
-	text = _strip_read_audio_data_prefix(text)
-
-	var lines := text.split("\n", false)
-	var transcript_parts: Array[String] = []
-
-	for line in lines:
-		var cleaned := line.strip_edges()
-
-		if cleaned.is_empty():
-			continue
-
-		if _is_whisper_diagnostic_line(cleaned):
-			continue
-
-		transcript_parts.append(cleaned)
-
-	return " ".join(transcript_parts).strip_edges()
-
-
-func _strip_read_audio_data_prefix(text: String) -> String:
-	var marker := "read_audio_data: trying to decode with miniaudio"
-	var marker_index := text.rfind(marker)
-
-	if marker_index == -1:
-		return text
-
-	var transcript_start := marker_index + marker.length()
-
-	if transcript_start >= text.length():
-		return ""
-
-	return text.substr(transcript_start).strip_edges()
-
-
-func _is_whisper_diagnostic_line(line: String) -> bool:
-	if line.begins_with("whisper_"):
-		return true
-
-	if line.begins_with("system_info"):
-		return true
-
-	if line.begins_with("main:"):
-		return true
-
-	if line.begins_with("read_audio_data:"):
-		return true
-
-	if line.begins_with("ggml_"):
-		return true
-
-	if line.contains("load time"):
-		return true
-
-	if line.contains("sample time"):
-		return true
-
-	if line.contains("encode time"):
-		return true
-
-	if line.contains("decode time"):
-		return true
-
-	if line.contains("total time"):
-		return true
-
-	return false
-
-
 func _globalize_if_needed(path: String) -> String:
 	if path.begins_with("res://") or path.begins_with("user://"):
 		return ProjectSettings.globalize_path(path)
 
 	return path
-	
+
 func _delete_file_if_exists(path: String) -> void:
 	if path.is_empty():
 		return
@@ -284,16 +276,38 @@ func _delete_file_if_exists(path: String) -> void:
 	if FileAccess.file_exists(global_path):
 		DirAccess.remove_absolute(global_path)
 
+
+func _prune_stale_transcriptions() -> void:
+	if transcription_ttl_seconds <= 0.0:
+		return
+
+	var now_msec := Time.get_ticks_msec()
+	var fresh_requests: Array[Dictionary] = []
+
+	for request in _pending_transcriptions:
+		var age_seconds := float(now_msec - int(request.get("queued_at_msec", 0))) / 1000.0
+
+		if age_seconds > transcription_ttl_seconds:
+			_delete_file_if_exists(String(request.get("wav_path", "")))
+			continue
+
+		fresh_requests.append(request)
+
+	_pending_transcriptions = fresh_requests
+
 func _exit_tree() -> void:
-	if _thread != null:
-		_thread.wait_to_finish()
-		_thread = null
+	if _active_process_id > 0 and OS.is_process_running(_active_process_id):
+		OS.kill(_active_process_id)
+
+	_active_process_id = 0
 
 	_delete_file_if_exists(_active_wav_path)
+	_delete_file_if_exists(_active_output_txt_path)
 	_active_wav_path = ""
+	_active_output_txt_path = ""
 
-	for queued_wav_path in _pending_wav_paths:
-		_delete_file_if_exists(String(queued_wav_path))
+	for request in _pending_transcriptions:
+		_delete_file_if_exists(String(request.get("wav_path", "")))
 
-	_pending_wav_paths.clear()
+	_pending_transcriptions.clear()
 	_is_transcribing = false

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="DirectionalCleaveDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/directional_cleave_definition.gd" id="2_definition"]
+
+[resource]
+script = ExtResource("2_definition")
+ability_id = "target_region_full_cone"
+display_name = "Full Region Cone"
+windup_text = "The boss lines up a long cone!"
+impact_text = "The cone tears through the full region!"
+cast_time = 2.5
+cooldown = 6.0
+damage = 75
+interruptible = true
+requires_active_target = true
+region_span_steps = 0
+affected_ranges = Array[String](["close", "mid", "far"])

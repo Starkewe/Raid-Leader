@@ -7,7 +7,6 @@
 
 [node name="Mage" type="CharacterBody2D" unique_id=1612081048]
 script = ExtResource("1_yh3ei")
-speed = 180.0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1491856982]
 texture = ExtResource("2_6o071")

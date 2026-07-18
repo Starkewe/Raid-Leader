@@ -2,6 +2,9 @@ extends PanelContainer
 
 class_name CommandPanel
 
+const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
+const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
+
 signal command_submitted(command_data: Dictionary)
 
 var who_dropdown: OptionButton = null
@@ -9,6 +12,7 @@ var what_dropdown: OptionButton = null
 var where_dropdown: OptionButton = null
 var when_dropdown: OptionButton = null
 var execute_button: Button = null
+var voice_status_label: Label = null
 
 var party_members: Array = []
 
@@ -49,6 +53,14 @@ func build_panel() -> void:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 8)
 	margin.add_child(root)
+
+	voice_status_label = Label.new()
+	voice_status_label.text = "Voice: Ready (hold V)"
+	voice_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	voice_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	root.add_child(voice_status_label)
+
+	add_separator(root)
 
 	add_section_label(root, "Who")
 	who_dropdown = OptionButton.new()
@@ -103,27 +115,21 @@ func populate_who_options() -> void:
 		"who_value": ""
 	})
 
-	add_option(who_dropdown, "Class: Warrior", {
-		"who_type": "class",
-		"who_value": "Warrior"
-	})
+	for unit_class in GameState.get_available_classes():
+		add_option(who_dropdown, "Class: " + unit_class, {
+			"who_type": CommandSchemaScript.SELECTOR_CLASS,
+			"who_value": unit_class
+		})
 
-	add_option(who_dropdown, "Class: Rogue", {
-		"who_type": "class",
-		"who_value": "Rogue"
-	})
+	for role_data in GameState.get_role_options():
+		add_option(who_dropdown, "Role: " + String(role_data.get("display_name", "Role")), {
+			"who_type": CommandSchemaScript.SELECTOR_ROLE,
+			"who_value": String(role_data.get("role", ""))
+		})
 
-	add_option(who_dropdown, "Class: Mage", {
-		"who_type": "class",
-		"who_value": "Mage"
-	})
+	var group_count := ceili(float(GameState.MAX_RAID_SIZE) / 5.0)
 
-	add_option(who_dropdown, "Class: Priest", {
-		"who_type": "class",
-		"who_value": "Priest"
-	})
-
-	for group_number in range(1, 5):
+	for group_number in range(1, group_count + 1):
 		add_option(who_dropdown, "Group " + str(group_number), {
 			"who_type": "group",
 			"who_value": group_number
@@ -164,6 +170,10 @@ func populate_what_options() -> void:
 
 	add_option(what_dropdown, "Heal", {
 		"what": "heal"
+	})
+
+	add_option(what_dropdown, "Taunt", {
+		"what": CommandSchemaScript.ACTION_TAUNT
 	})
 
 	what_dropdown.select(0)
@@ -216,7 +226,7 @@ func populate_where_options_for_current_action() -> void:
 			add_movement_region_options()
 			add_movement_slot_options()
 
-		"interrupt":
+		"interrupt", "taunt":
 			add_option(where_dropdown, "Boss", {
 				"where": "boss"
 			})
@@ -323,17 +333,17 @@ func _on_execute_pressed() -> void:
 	print("CommandPanel submitted:", command_data)
 
 	command_submitted.emit(command_data)
+
+
+func set_voice_status(text: String, is_error: bool = false) -> void:
+	if voice_status_label == null:
+		return
+
+	voice_status_label.text = "Voice: " + text
+	voice_status_label.modulate = Color(1.0, 0.55, 0.55) if is_error else Color.WHITE
+
 func add_movement_region_options() -> void:
-	var regions := [
-		["North", "north"],
-		["Northeast", "northeast"],
-		["East", "east"],
-		["Southeast", "southeast"],
-		["South", "south"],
-		["Southwest", "southwest"],
-		["West", "west"],
-		["Northwest", "northwest"]
-	]
+	var regions := get_region_options()
 
 	for region_data in regions:
 		add_option(where_dropdown, "Move " + region_data[0] + " - Current Range", {
@@ -359,22 +369,11 @@ func add_movement_region_options() -> void:
 
 
 func add_movement_slot_options() -> void:
-	var regions := [
-		["North", "north"],
-		["Northeast", "northeast"],
-		["East", "east"],
-		["Southeast", "southeast"],
-		["South", "south"],
-		["Southwest", "southwest"],
-		["West", "west"],
-		["Northwest", "northwest"]
-	]
+	var regions := get_region_options()
+	var ranges: Array = []
 
-	var ranges := [
-		["Close", "close"],
-		["Mid", "mid"],
-		["Far", "far"]
-	]
+	for range_name in MovementSlotResolverScript.RANGE_ORDER:
+		ranges.append([String(range_name).capitalize(), range_name])
 
 	for region_data in regions:
 		for range_data in ranges:
@@ -383,3 +382,12 @@ func add_movement_slot_options() -> void:
 				"movement_region": region_data[1],
 				"movement_range": range_data[1]
 			})
+
+
+func get_region_options() -> Array:
+	var options: Array = []
+
+	for region in MovementSlotResolverScript.REGION_ORDER:
+		options.append([String(region).capitalize(), region])
+
+	return options
