@@ -3,8 +3,8 @@ class_name TwinSweepingPull
 
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 
-const PULL_DURATION: float = 1.0
-const FIRST_SWEEP_CAST_DURATION: float = 2.0
+const PULL_DURATION: float = 1.5
+const FIRST_SWEEP_CAST_DURATION: float = 2.5
 const SECOND_SWEEP_CAST_DURATION: float = 4.0
 
 const FIRST_SWEEP_IMPACT_TIME: float = PULL_DURATION + FIRST_SWEEP_CAST_DURATION
