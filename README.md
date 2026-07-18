@@ -90,6 +90,22 @@ Current encounter work includes:
 * Impact feedback when an ability resolves.
 * Movement mechanics that interact with the existing combat-region system.
 
+### Twin Sweeping Pull
+
+The Twin Sweeping Pull tutorial boss runs a seven-second scripted mechanic:
+
+1. Pull the living raid into a random close-range region over one second.
+2. Telegraph for two seconds, then sweep the pull region and the next two counterclockwise regions.
+3. Telegraph for four seconds, then sweep the pull region and the next two clockwise regions.
+
+Both sweeps damage close and mid range; far range remains safe. The boss status and cast name expose the active phase and sweep direction, while impact effects resolve once per affected region.
+
+Run the focused mechanic and boss-lifecycle checks with Godot 4.6:
+
+```text
+godot --headless --path . res://tests/twin_sweeping_pull_test.tscn
+```
+
 ## Current Status
 
 Raid Leader is an active prototype. Core systems are being developed iteratively, with a focus on clean command architecture before expanding encounter complexity.

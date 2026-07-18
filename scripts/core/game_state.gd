@@ -57,7 +57,7 @@ var tutorial_boss_catalog: Dictionary = {
 
 	TUTORIAL_BOSS_TWIN_SWEEPING_PULL: {
 		"display_name": "Sweep: Random Pull",
-		"description": "A tutorial boss that pulls the raid into a random close region, then sweeps counterclockwise and clockwise from that region.",
+		"description": "A seven-second tutorial mechanic: a one-second random close-range pull, a two-second counterclockwise sweep, then a four-second clockwise sweep.",
 		"scene_path": "res://scenes/combat_scene.tscn",
 
 		"boss_display_name": "Sweep Trainer",

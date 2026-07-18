@@ -3,8 +3,8 @@ class_name TwinSweepingPull
 
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 
-const PULL_DURATION: float = 1.5
-const FIRST_SWEEP_CAST_DURATION: float = 4.0
+const PULL_DURATION: float = 1.0
+const FIRST_SWEEP_CAST_DURATION: float = 2.0
 const SECOND_SWEEP_CAST_DURATION: float = 4.0
 
 const FIRST_SWEEP_IMPACT_TIME: float = PULL_DURATION + FIRST_SWEEP_CAST_DURATION
@@ -33,6 +33,7 @@ const RANDOM_PULL_REGIONS: Array[String] = [
 ]
 
 var rng := RandomNumberGenerator.new()
+var pull_region_override: String = ""
 
 var pull_start_positions: Dictionary = {}
 var pull_destination: Vector2 = Vector2.ZERO
@@ -50,7 +51,7 @@ var last_elapsed_time: float = 0.0
 
 
 func _init() -> void:
-	ability_name = "Twin Sweep"
+	ability_name = "Twin Sweeping Pull"
 	cast_time = SECOND_SWEEP_IMPACT_TIME
 	cooldown = 9.0
 	damage = 75
@@ -86,7 +87,7 @@ func on_cast_start(boss: Node, party_members: Array) -> void:
 	current_phase = PHASE_PULL
 	last_elapsed_time = 0.0
 
-	selected_pull_region = get_random_pull_region()
+	selected_pull_region = get_next_pull_region()
 	first_sweep_regions = get_relative_sweep_regions(selected_pull_region, -1)
 	second_sweep_regions = get_relative_sweep_regions(selected_pull_region, 1)
 
@@ -113,7 +114,7 @@ func on_cast_update(
 	remaining_time: float
 ) -> void:
 	last_elapsed_time = elapsed_time
-	current_phase = get_phase_for_elapsed_time(elapsed_time)
+	set_current_phase(get_phase_for_elapsed_time(elapsed_time))
 
 	if not pull_completed:
 		update_forced_pull(boss, party_members, elapsed_time)
@@ -143,7 +144,22 @@ func on_cast_update(
 
 func resolve(boss: Node, party_members: Array) -> void:
 	# Timed impacts happen inside on_cast_update().
-	# This fallback protects against tests or future code that directly calls resolve().
+	# These fallbacks protect against a large final frame or future callers that
+	# finish a cast without delivering every intermediate update.
+	if not pull_completed:
+		finish_forced_pull()
+
+	if not first_sweep_resolved:
+		first_sweep_resolved = true
+
+		resolve_sweep(
+			boss,
+			party_members,
+			first_sweep_regions,
+			AFFECTED_RANGES,
+			"first sweep"
+		)
+
 	if not second_sweep_resolved:
 		second_sweep_resolved = true
 
@@ -159,6 +175,13 @@ func resolve(boss: Node, party_members: Array) -> void:
 func on_interrupted(boss: Node, party_members: Array) -> void:
 	pull_start_positions.clear()
 	print(ability_name, "ended early.")
+
+
+func get_next_pull_region() -> String:
+	if MovementSlotResolverScript.REGION_ORDER.has(pull_region_override):
+		return pull_region_override
+
+	return get_random_pull_region()
 
 
 func get_random_pull_region() -> String:
@@ -386,16 +409,38 @@ func get_phase_for_elapsed_time(elapsed_time: float) -> String:
 	return PHASE_SECOND_SWEEP
 
 
+func set_current_phase(next_phase: String) -> void:
+	if next_phase == current_phase:
+		return
+
+	current_phase = next_phase
+
+	match current_phase:
+		PHASE_FIRST_SWEEP:
+			print(
+				ability_name,
+				"telegraph: first sweep travels counterclockwise through",
+				first_sweep_regions
+			)
+
+		PHASE_SECOND_SWEEP:
+			print(
+				ability_name,
+				"telegraph: second sweep travels clockwise through",
+				second_sweep_regions
+			)
+
+
 func get_status_text() -> String:
 	match current_phase:
 		PHASE_PULL:
 			return "Pulling Raid " + selected_pull_region.capitalize()
 
 		PHASE_FIRST_SWEEP:
-			return "Casting First Sweep"
+			return "First Sweep: " + get_region_path_text(first_sweep_regions)
 
 		PHASE_SECOND_SWEEP:
-			return "Casting Second Sweep"
+			return "Second Sweep: " + get_region_path_text(second_sweep_regions)
 
 		_:
 			return "Casting " + ability_name
@@ -407,13 +452,22 @@ func get_cast_name() -> String:
 			return selected_pull_region.capitalize() + " Pull"
 
 		PHASE_FIRST_SWEEP:
-			return "First Sweep"
+			return "First Sweep (Counterclockwise)"
 
 		PHASE_SECOND_SWEEP:
-			return "Second Sweep"
+			return "Second Sweep (Clockwise)"
 
 		_:
 			return ability_name
+
+
+func get_region_path_text(regions: Array[String]) -> String:
+	var labels: Array[String] = []
+
+	for region in regions:
+		labels.append(region.capitalize())
+
+	return " -> ".join(labels)
 
 
 func get_cast_bar_max_time(elapsed_time: float, remaining_time: float) -> float:
