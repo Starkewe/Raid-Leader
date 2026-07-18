@@ -7,7 +7,6 @@
 
 [node name="Priest" type="CharacterBody2D" unique_id=2039238404]
 script = ExtResource("1_qoljh")
-speed = 180.0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1850325140]
 texture = ExtResource("2_o4ce8")

@@ -2,11 +2,11 @@ extends BaseCombatUnit
 
 class_name Mage
 
-@export var cast_range_units: float = 40.0
+var cast_range_units: float = 40.0
 
-@export var spell_damage: int = 18
-@export var spell_cooldown: float = 1.0
-@export var spell_cast_time: float = 1.5
+var spell_damage: int = 18
+var spell_cooldown: float = 1.0
+var spell_cast_time: float = 1.5
 @export var show_world_cast_bar: bool = false
 
 @onready var cast_bar = get_node_or_null("CastBar")
@@ -16,10 +16,27 @@ var target: Node2D = null
 var cooldown_timer: float = 0.0
 var cast_timer: float = 0.0
 var is_casting: bool = false
+var spell_ability_id: String = "fireball"
+var spell_display_name: String = "Fireball"
+
+
+func configure_from_definition(definition: UnitDefinition) -> void:
+	super.configure_from_definition(definition)
+
+	if definition == null:
+		return
+
+	var action := definition.get_action(spell_ability_id)
+
+	if action != null:
+		spell_display_name = action.display_name
+		cast_range_units = action.range_units
+		spell_damage = action.amount
+		spell_cooldown = action.cooldown
+		spell_cast_time = action.cast_time
 
 
 func _ready():
-	max_health = 70
 	super._ready()
 	update_cast_bar()
 	print("Mage ready. HP:", health)
@@ -31,6 +48,10 @@ func _physics_process(delta):
 		return
 
 	update_cooldown(delta)
+
+	if update_forced_movement(delta):
+		move_and_slide()
+		return
 
 	if update_manual_move_order():
 		move_and_slide()
@@ -109,7 +130,7 @@ func try_start_cast():
 
 	update_cast_bar()
 
-	print(get_display_name(), "begins casting Fireball")
+	print(get_display_name(), "begins casting ", spell_display_name)
 
 
 func update_cast(delta: float):
@@ -128,12 +149,12 @@ func finish_cast():
 	update_cast_bar()
 
 	if not has_valid_cast_target():
-		print(get_display_name(), "finishes Fireball, but the target is no longer valid.")
+		print(get_display_name(), "finishes ", spell_display_name, ", but the target is no longer valid.")
 		return
 
-	print(get_display_name(), "finishes Fireball and deals damage to", get_node_display_name(target))
+	print(get_display_name(), "finishes ", spell_display_name, " and deals damage to ", get_node_display_name(target))
 
-	target.take_damage(spell_damage)
+	target.take_damage(spell_damage, self, spell_ability_id)
 
 
 func cancel_current_cast():
@@ -145,7 +166,7 @@ func cancel_current_cast():
 
 	update_cast_bar()
 
-	print(get_display_name(), "cancels Fireball")
+	print(get_display_name(), "cancels ", spell_display_name)
 
 
 func on_manual_move_started():
@@ -202,7 +223,7 @@ func get_cast_progress_percent() -> float:
 
 func get_cast_name() -> String:
 	if is_casting:
-		return "Fireball"
+		return spell_display_name
 
 	return ""
 
@@ -214,7 +235,7 @@ func get_status_text() -> String:
 		return shared_status
 
 	if is_casting:
-		return "Casting Fireball"
+		return "Casting " + spell_display_name
 
 	if has_valid_cast_target():
 		var distance_units: float = get_range_units_to_node(target)

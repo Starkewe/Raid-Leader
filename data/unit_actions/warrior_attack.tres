@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="UnitActionDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/unit_action_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+action_id = "warrior_attack"
+display_name = "Warrior Attack"
+range_units = 5.0
+stop_distance_units = 5.0
+amount = 10
+cooldown = 1.0

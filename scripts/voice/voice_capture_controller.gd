@@ -20,7 +20,7 @@ signal recording_failed(reason: String)
 @export var normalize_output: bool = true
 @export var target_peak: float = 0.85
 
-@export var trim_silence: bool = true
+@export var trim_silence: bool = false
 @export var silence_threshold: float = 0.0025
 @export var keep_silence_seconds: float = 0.15
 
@@ -180,6 +180,7 @@ func _finish_recording_and_transcribe() -> void:
 	print("Voice inferred capture rate: ", inferred_capture_rate)
 
 	var frames_to_save: PackedVector2Array = _recorded_frames
+	frames_to_save = _trim_to_elapsed_duration(frames_to_save, elapsed_seconds, sample_rate)
 
 	if remove_capture_padding:
 		var padded_frame_count: int = frames_to_save.size()
@@ -190,7 +191,8 @@ func _finish_recording_and_transcribe() -> void:
 		print("Voice padding cleanup seconds after: ", float(cleaned_frames.size()) / float(sample_rate))
 
 		if cleaned_frames.is_empty():
-			print("Voice padding cleanup removed all frames. Keeping original recording instead.")
+			recording_failed.emit("Captured audio was silent.")
+			return
 		else:
 			frames_to_save = cleaned_frames
 
@@ -225,34 +227,28 @@ func _finish_recording_and_transcribe() -> void:
 
 	_transcriber.transcribe_wav(wav_path)
 func _remove_hard_zero_padding(frames: PackedVector2Array) -> PackedVector2Array:
-	var cleaned_frames := PackedVector2Array()
-	var zero_run := PackedVector2Array()
+	if frames.is_empty():
+		return frames
 
-	for i in range(frames.size()):
-		var frame: Vector2 = frames[i]
+	var first_nonzero := -1
+	var last_nonzero := -1
+
+	for frame_index in range(frames.size()):
+		var frame: Vector2 = frames[frame_index]
 		var mono_abs: float = absf((frame.x + frame.y) * 0.5)
 
-		if mono_abs <= hard_zero_threshold:
-			zero_run.append(frame)
-			continue
+		if mono_abs > hard_zero_threshold:
+			if first_nonzero == -1:
+				first_nonzero = frame_index
 
-		if zero_run.size() > 0:
-			if zero_run.size() <= max_hard_zero_run_kept:
-				cleaned_frames.append_array(zero_run)
-			else:
-				var kept_zero_count: int = mini(max_hard_zero_run_kept, zero_run.size())
+			last_nonzero = frame_index
 
-				for zero_index in range(kept_zero_count):
-					cleaned_frames.append(zero_run[zero_index])
+	if first_nonzero == -1:
+		return PackedVector2Array()
 
-			zero_run.clear()
-
-		cleaned_frames.append(frame)
-
-	if zero_run.size() > 0 and zero_run.size() <= max_hard_zero_run_kept:
-		cleaned_frames.append_array(zero_run)
-
-	return cleaned_frames
+	var start_index := maxi(first_nonzero - max_hard_zero_run_kept, 0)
+	var end_index := mini(last_nonzero + max_hard_zero_run_kept + 1, frames.size())
+	return _copy_frame_range(frames, start_index, end_index)
 
 func _discard_capture_buffer() -> void:
 	if _capture_effect == null:

@@ -11,7 +11,7 @@ var party_members: Array = []
 var boss: Node = null
 var player: Node = null
 
-var priest_follow_boss_target: bool = false
+var healers_follow_boss_target: bool = false
 var boss_target_healers: Array = []
 var hovered_unit: Node = null
 
@@ -61,13 +61,13 @@ func _on_movement_temporary_status_requested(unit: Node, text: String, duration:
 
 
 func reset_commands() -> void:
-	priest_follow_boss_target = false
+	healers_follow_boss_target = false
 	boss_target_healers.clear()
 	hovered_unit = null
 
 
 func is_following_boss_target() -> bool:
-	return priest_follow_boss_target
+	return healers_follow_boss_target
 
 
 func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
@@ -89,6 +89,9 @@ func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
 
 		"heal":
 			return execute_panel_heal(selected_units, where)
+
+		"taunt":
+			return execute_panel_taunt(selected_units, where, boss_alive)
 
 		_:
 			print("Unknown panel command:", what)
@@ -187,13 +190,34 @@ func execute_panel_heal(selected_units: Array, where: String) -> bool:
 		print("No selected living healers available.")
 		return false
 
-	priest_follow_boss_target = true
+	healers_follow_boss_target = true
 	boss_target_healers = selected_healers
 
 	assign_healers_to_target(heal_target, boss_target_healers)
 	refresh_requested.emit()
 
 	return true
+
+
+func execute_panel_taunt(selected_units: Array, where: String, boss_alive: bool) -> bool:
+	if where != "boss" or not boss_alive or not is_valid_node(boss):
+		print("Taunt requires a living boss target.")
+		return false
+
+	for unit in selected_units:
+		if not is_unit_alive(unit) or not unit.has_method("command_taunt"):
+			continue
+
+		if bool(unit.command_taunt(boss)):
+			if healers_follow_boss_target:
+				assign_healers_to_target(unit, boss_target_healers)
+
+			temporary_status_requested.emit(unit, "Taunted Boss", 0.75)
+			refresh_requested.emit()
+			return true
+
+	print("No selected living unit can taunt.")
+	return false
 
 
 func command_party_attack(boss_alive: bool) -> bool:
@@ -236,7 +260,7 @@ func command_healers_to_heal_boss_target() -> void:
 		heal_target = get_first_living_party_member()
 
 	boss_target_healers = get_living_healer_units_from_units(party_members)
-	priest_follow_boss_target = boss_target_healers.size() > 0
+	healers_follow_boss_target = boss_target_healers.size() > 0
 
 	assign_healers_to_target(heal_target, boss_target_healers)
 	refresh_requested.emit()
@@ -316,7 +340,7 @@ func assign_boss_target(new_target: Node) -> void:
 	if new_target == null or not is_unit_alive(new_target):
 		clear_boss_target()
 
-		if priest_follow_boss_target:
+		if healers_follow_boss_target:
 			assign_healers_to_target(null, boss_target_healers)
 
 		refresh_requested.emit()
@@ -325,7 +349,7 @@ func assign_boss_target(new_target: Node) -> void:
 	if boss.has_method("set_target"):
 		boss.set_target(new_target)
 
-	if priest_follow_boss_target:
+	if healers_follow_boss_target:
 		assign_healers_to_target(new_target, boss_target_healers)
 
 	refresh_requested.emit()

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="BossPhaseDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/boss_phase_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+phase_id = "phase_1"
+display_name = "Phase 1"
+starts_at_health_percent = 100.0
+attack_speed_multiplier = 1.0
+ability_speed_multiplier = 1.0

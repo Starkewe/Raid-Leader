@@ -2,11 +2,11 @@ extends BaseCombatUnit
 
 class_name Priest
 
-@export var cast_range_units: float = 40.0
+var cast_range_units: float = 40.0
 
-@export var heal_amount: int = 15
-@export var heal_cooldown: float = 1.0
-@export var heal_cast_time: float = 1.5
+var heal_amount: int = 15
+var heal_cooldown: float = 1.0
+var heal_cast_time: float = 1.5
 @export var show_world_cast_bar: bool = false
 
 @onready var cast_bar = get_node_or_null("CastBar")
@@ -16,10 +16,27 @@ var heal_target: Node2D = null
 var cooldown_timer: float = 0.0
 var cast_timer: float = 0.0
 var is_casting: bool = false
+var heal_ability_id: String = "heal"
+var heal_display_name: String = "Heal"
+
+
+func configure_from_definition(definition: UnitDefinition) -> void:
+	super.configure_from_definition(definition)
+
+	if definition == null:
+		return
+
+	var action := definition.get_action(heal_ability_id)
+
+	if action != null:
+		heal_display_name = action.display_name
+		cast_range_units = action.range_units
+		heal_amount = action.amount
+		heal_cooldown = action.cooldown
+		heal_cast_time = action.cast_time
 
 
 func _ready():
-	max_health = 80
 	super._ready()
 	update_cast_bar()
 	print("Priest ready. HP:", health)
@@ -32,6 +49,10 @@ func _physics_process(delta):
 		return
 
 	update_cooldown(delta)
+
+	if update_forced_movement(delta):
+		move_and_slide()
+		return
 
 	if update_manual_move_order():
 		move_and_slide()
@@ -121,7 +142,7 @@ func try_start_cast():
 
 	update_cast_bar()
 
-	print(get_display_name(), "begins casting Heal")
+	print(get_display_name(), "begins casting ", heal_display_name)
 
 
 func update_cast(delta: float):
@@ -139,13 +160,13 @@ func finish_cast():
 
 	update_cast_bar()
 
-	print(get_display_name(), "finishes Heal")
+	print(get_display_name(), "finishes ", heal_display_name)
 
 	if not has_valid_heal_target():
-		print(get_display_name(), "finished Heal, but the target is no longer valid.")
+		print(get_display_name(), "finished ", heal_display_name, ", but the target is no longer valid.")
 		return
 
-	heal_target.receive_heal(heal_amount)
+	heal_target.receive_heal(heal_amount, self, heal_ability_id)
 
 
 func cancel_current_cast():
@@ -157,7 +178,7 @@ func cancel_current_cast():
 
 	update_cast_bar()
 
-	print(get_display_name(), "cancels Heal")
+	print(get_display_name(), "cancels ", heal_display_name)
 
 
 func on_manual_move_started():
@@ -214,7 +235,7 @@ func get_cast_progress_percent() -> float:
 
 func get_cast_name() -> String:
 	if is_casting:
-		return "Heal"
+		return heal_display_name
 
 	return ""
 
@@ -226,7 +247,7 @@ func get_status_text() -> String:
 		return shared_status
 
 	if is_casting:
-		return "Casting Heal"
+		return "Casting " + heal_display_name
 
 	if has_valid_heal_target():
 		if heal_target.has_method("is_full_health") and heal_target.is_full_health():

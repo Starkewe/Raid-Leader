@@ -77,11 +77,17 @@ func execute_move_to_slot(selected_units: Array, region: String, range_name: Str
 		print("Boss is missing. Cannot resolve movement slot.")
 		return false
 
-	var slot_position := MovementSlotResolverScript.get_slot_position(boss, region, range_name)
+	var living_units := get_living_movable_units(selected_units)
+	var destinations := MovementSlotResolverScript.get_slot_formation_positions(
+		boss,
+		region,
+		range_name,
+		living_units.size()
+	)
 
-	return command_units_to_shared_position(
-		selected_units,
-		slot_position,
+	return command_units_to_positions(
+		living_units,
+		destinations,
 		"Moving " + region.capitalize() + " " + range_name.capitalize()
 	)
 
@@ -95,7 +101,8 @@ func execute_move_to_region(selected_units: Array, region: String) -> bool:
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
 
-	for unit in living_units:
+	for unit_index in range(living_units.size()):
+		var unit = living_units[unit_index]
 		var unit_2d := unit as Node2D
 
 		var current_range: String = MovementSlotResolverScript.get_nearest_range_from_position(
@@ -103,10 +110,16 @@ func execute_move_to_region(selected_units: Array, region: String) -> bool:
 			unit_2d.global_position
 		)
 
-		var destination: Vector2 = MovementSlotResolverScript.get_slot_position(
+		var slot_center: Vector2 = MovementSlotResolverScript.get_slot_position(
 			boss,
 			region,
 			current_range
+		)
+		var destination := get_formation_destination(
+			slot_center,
+			unit_index,
+			living_units.size(),
+			region
 		)
 
 		unit.command_move_to_position(destination)
@@ -136,7 +149,8 @@ func execute_rotate_step(selected_units: Array, rotation_direction: String) -> b
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
 
-	for unit in living_units:
+	for unit_index in range(living_units.size()):
+		var unit = living_units[unit_index]
 		var unit_2d := unit as Node2D
 
 		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
@@ -154,10 +168,16 @@ func execute_rotate_step(selected_units: Array, rotation_direction: String) -> b
 			rotation_direction
 		)
 
-		var destination: Vector2 = MovementSlotResolverScript.get_slot_position(
+		var slot_center: Vector2 = MovementSlotResolverScript.get_slot_position(
 			boss,
 			next_region,
 			current_range
+		)
+		var destination := get_formation_destination(
+			slot_center,
+			unit_index,
+			living_units.size(),
+			next_region
 		)
 
 		unit.command_move_to_position(destination)
@@ -187,7 +207,8 @@ func execute_rotate_to_region(selected_units: Array, region: String) -> bool:
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
 
-	for unit in living_units:
+	for unit_index in range(living_units.size()):
+		var unit = living_units[unit_index]
 		var unit_2d := unit as Node2D
 
 		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
@@ -208,10 +229,16 @@ func execute_rotate_to_region(selected_units: Array, region: String) -> bool:
 		var destinations: Array[Vector2] = []
 
 		for path_region in region_path:
-			var destination: Vector2 = MovementSlotResolverScript.get_slot_position(
+			var slot_center: Vector2 = MovementSlotResolverScript.get_slot_position(
 				boss,
 				path_region,
 				current_range
+			)
+			var destination := get_formation_destination(
+				slot_center,
+				unit_index,
+				living_units.size(),
+				path_region
 			)
 
 			destinations.append(destination)
@@ -249,7 +276,8 @@ func execute_move_to_range(selected_units: Array, range_name: String) -> bool:
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
 
-	for unit in living_units:
+	for unit_index in range(living_units.size()):
+		var unit = living_units[unit_index]
 		var unit_2d := unit as Node2D
 
 		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
@@ -257,10 +285,16 @@ func execute_move_to_range(selected_units: Array, range_name: String) -> bool:
 			unit_2d.global_position
 		)
 
-		var destination: Vector2 = MovementSlotResolverScript.get_slot_position(
+		var slot_center: Vector2 = MovementSlotResolverScript.get_slot_position(
 			boss,
 			current_region,
 			range_name
+		)
+		var destination := get_formation_destination(
+			slot_center,
+			unit_index,
+			living_units.size(),
+			current_region
 		)
 
 		unit.command_move_to_position(destination)
@@ -290,7 +324,8 @@ func execute_range_step(selected_units: Array, range_direction: String) -> bool:
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
 
-	for unit in living_units:
+	for unit_index in range(living_units.size()):
+		var unit = living_units[unit_index]
 		var unit_2d := unit as Node2D
 
 		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
@@ -319,10 +354,16 @@ func execute_range_step(selected_units: Array, range_direction: String) -> bool:
 			temporary_status_requested.emit(unit, boundary_text, 0.75)
 			continue
 
-		var destination: Vector2 = MovementSlotResolverScript.get_slot_position(
+		var slot_center: Vector2 = MovementSlotResolverScript.get_slot_position(
 			boss,
 			current_region,
 			next_range
+		)
+		var destination := get_formation_destination(
+			slot_center,
+			unit_index,
+			living_units.size(),
+			current_region
 		)
 
 		unit.command_move_to_position(destination)
@@ -347,16 +388,41 @@ func execute_range_step(selected_units: Array, range_direction: String) -> bool:
 
 
 func command_units_to_shared_position(selected_units: Array, destination: Vector2, status_text: String) -> bool:
+	var living_units := get_living_movable_units(selected_units)
+	var outward_direction := Vector2.DOWN
+
+	if is_valid_node(boss) and boss is Node2D:
+		outward_direction = (destination - (boss as Node2D).global_position).normalized()
+
+	var destinations := MovementSlotResolverScript.get_formation_positions(
+		destination,
+		living_units.size(),
+		outward_direction
+	)
+
+	return command_units_to_positions(living_units, destinations, status_text)
+
+
+func command_units_to_positions(
+	selected_units: Array,
+	destinations: Array[Vector2],
+	status_text: String
+) -> bool:
 	var issued_command := false
 
-	for unit in selected_units:
+	for unit_index in range(selected_units.size()):
+		var unit = selected_units[unit_index]
+
 		if not is_unit_alive(unit):
 			continue
 
 		if not unit.has_method("command_move_to_position"):
 			continue
 
-		unit.command_move_to_position(destination)
+		if unit_index >= destinations.size():
+			continue
+
+		unit.command_move_to_position(destinations[unit_index])
 		temporary_status_requested.emit(unit, status_text, 0.75)
 		issued_command = true
 
@@ -366,6 +432,24 @@ func command_units_to_shared_position(selected_units: Array, destination: Vector
 
 	refresh_requested.emit()
 	return true
+
+
+func get_formation_destination(
+	center: Vector2,
+	unit_index: int,
+	unit_count: int,
+	region: String
+) -> Vector2:
+	var positions := MovementSlotResolverScript.get_formation_positions(
+		center,
+		unit_count,
+		MovementSlotResolverScript.get_region_direction(region)
+	)
+
+	if unit_index < 0 or unit_index >= positions.size():
+		return center
+
+	return positions[unit_index]
 
 
 func get_living_movable_units(source_units: Array) -> Array:

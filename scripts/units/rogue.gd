@@ -2,22 +2,43 @@ extends BaseCombatUnit
 
 class_name Rogue
 
-@export var attack_range_units: float = 5.0
-@export var stop_distance_units: float = 5.0
-@export var attack_damage: int = 8
-@export var attack_cooldown: float = 0.8
-@export var interrupt_range_units: float = 5.0
-@export var interrupt_cooldown: float = 3.0
+var attack_range_units: float = 5.0
+var stop_distance_units: float = 5.0
+var attack_damage: int = 8
+var attack_cooldown: float = 0.8
+var interrupt_range_units: float = 5.0
+var interrupt_cooldown: float = 3.0
 
 var attack_target_node: Node2D = null
 var interrupt_target: Node2D = null
 
 var attack_timer: float = 0.0
 var interrupt_timer: float = 0.0
+var attack_ability_id: String = "rogue_attack"
+var interrupt_ability_id: String = "interrupt"
+
+
+func configure_from_definition(definition: UnitDefinition) -> void:
+	super.configure_from_definition(definition)
+
+	if definition == null:
+		return
+
+	var attack_action := definition.get_action(attack_ability_id)
+	var interrupt_action := definition.get_action(interrupt_ability_id)
+
+	if attack_action != null:
+		attack_range_units = attack_action.range_units
+		stop_distance_units = attack_action.stop_distance_units
+		attack_damage = attack_action.amount
+		attack_cooldown = attack_action.cooldown
+
+	if interrupt_action != null:
+		interrupt_range_units = interrupt_action.range_units
+		interrupt_cooldown = interrupt_action.cooldown
 
 
 func _ready():
-	max_health = 85
 	super._ready()
 	print("Rogue ready. HP:", health)
 
@@ -28,6 +49,10 @@ func _physics_process(delta):
 		return
 
 	update_cooldowns(delta)
+
+	if update_forced_movement(delta):
+		move_and_slide()
+		return
 
 	if update_manual_move_order():
 		move_and_slide()
@@ -110,7 +135,7 @@ func attack_target():
 
 	print(get_display_name(), "attacks", get_node_display_name(attack_target_node))
 
-	attack_target_node.take_damage(attack_damage)
+	attack_target_node.take_damage(attack_damage, self, attack_ability_id)
 
 
 func try_interrupt():
@@ -132,7 +157,7 @@ func try_interrupt():
 
 	interrupt_timer = interrupt_cooldown
 
-	var success: bool = interrupt_target.interrupt_cast()
+	var success: bool = interrupt_target.interrupt_cast(self, interrupt_ability_id)
 
 	if success:
 		print(get_display_name(), "successfully interrupted the cast!")

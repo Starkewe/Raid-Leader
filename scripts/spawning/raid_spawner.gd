@@ -66,6 +66,11 @@ func spawn_unit(unit_class: String, unit_number: int, spawn_index: int) -> Node2
 		unit.queue_free()
 		return null
 
+	var definition := GameState.get_unit_definition(unit_class)
+
+	if unit.has_method("configure_from_definition"):
+		unit.configure_from_definition(definition)
+
 	spawn_parent.add_child(unit)
 
 	unit.name = unit_class + "_" + str(unit_number)

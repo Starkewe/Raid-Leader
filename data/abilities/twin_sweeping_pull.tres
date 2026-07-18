@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="TwinSweepingPullDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/twin_sweeping_pull_definition.gd" id="2_definition"]
+
+[resource]
+script = ExtResource("2_definition")
+ability_id = "twin_sweeping_pull"
+display_name = "Twin Sweeping Pull"
+windup_text = "The boss drags everyone into position!"
+impact_text = "The boss sweeps the nearby lanes!"
+cooldown = 9.0
+damage = 75
+interruptible = false
+requires_active_target = false
+pull_duration = 1.5
+first_sweep_cast_duration = 2.5
+second_sweep_cast_duration = 4.0
+pull_range = "close"
+affected_ranges = Array[String](["close", "mid"])
+random_pull_regions = Array[String](["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"])
