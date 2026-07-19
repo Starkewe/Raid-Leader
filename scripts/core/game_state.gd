@@ -7,6 +7,7 @@ const TUTORIAL_BOSS_CLEAVE_CLOSE_REGION := "cleave_close_region"
 const TUTORIAL_BOSS_LONG_REGION_CONE := "long_region_cone"
 const TUTORIAL_BOSS_TWIN_SWEEPING_PULL := "twin_sweeping_pull"
 const ENCOUNTER_OGRE := "ogre"
+const ENCOUNTER_CHAINMASTER := "chainmaster"
 const DEFAULT_ENCOUNTER_ID := ENCOUNTER_OGRE
 
 const ABILITY_TARGET_REGION_CLOSE_CLEAVE := "target_region_close_cleave"
@@ -26,8 +27,15 @@ const ENCOUNTER_CLEAVE: EncounterDefinition = preload("res://data/encounters/cle
 const ENCOUNTER_CONE: EncounterDefinition = preload("res://data/encounters/full_region_cone.tres")
 const ENCOUNTER_TWIN_SWEEP: EncounterDefinition = preload("res://data/encounters/twin_sweeping_pull.tres")
 const ENCOUNTER_OGRE_DEFINITION: EncounterDefinition = preload("res://data/encounters/ogre.tres")
+const ENCOUNTER_CHAINMASTER_DEFINITION: EncounterDefinition = preload("res://data/encounters/chainmaster.tres")
 
 var selected_tutorial_boss_id: String = DEFAULT_ENCOUNTER_ID
+var selected_normal_encounter_id: String = DEFAULT_ENCOUNTER_ID
+
+var normal_encounter_order: Array[String] = [
+	ENCOUNTER_OGRE,
+	ENCOUNTER_CHAINMASTER
+]
 
 var encounter_order: Array[String] = [
 	TUTORIAL_BOSS_CLEAVE_CLOSE_REGION,
@@ -37,6 +45,7 @@ var encounter_order: Array[String] = [
 
 var encounter_catalog: Dictionary = {
 	ENCOUNTER_OGRE: ENCOUNTER_OGRE_DEFINITION,
+	ENCOUNTER_CHAINMASTER: ENCOUNTER_CHAINMASTER_DEFINITION,
 	TUTORIAL_BOSS_CLEAVE_CLOSE_REGION: ENCOUNTER_CLEAVE,
 	TUTORIAL_BOSS_LONG_REGION_CONE: ENCOUNTER_CONE,
 	TUTORIAL_BOSS_TWIN_SWEEPING_PULL: ENCOUNTER_TWIN_SWEEP
@@ -289,12 +298,16 @@ func get_tutorial_boss_ids() -> Array[String]:
 	return encounter_order.duplicate()
 
 
+func get_normal_encounter_ids() -> Array[String]:
+	return normal_encounter_order.duplicate()
+
+
 func get_encounter_definition(encounter_id: String) -> EncounterDefinition:
 	return encounter_catalog.get(encounter_id) as EncounterDefinition
 
 
-func get_tutorial_boss_data(boss_id: String) -> Dictionary:
-	var definition := get_encounter_definition(boss_id)
+func get_encounter_data(encounter_id: String) -> Dictionary:
+	var definition := get_encounter_definition(encounter_id)
 
 	if definition == null:
 		return {}
@@ -316,6 +329,10 @@ func get_tutorial_boss_data(boss_id: String) -> Dictionary:
 	}
 
 
+func get_tutorial_boss_data(boss_id: String) -> Dictionary:
+	return get_encounter_data(boss_id)
+
+
 func set_selected_tutorial_boss(boss_id: String) -> void:
 	if get_encounter_definition(boss_id) == null:
 		push_warning("Unknown encounter id: " + boss_id)
@@ -325,7 +342,19 @@ func set_selected_tutorial_boss(boss_id: String) -> void:
 
 
 func select_default_encounter() -> void:
-	selected_tutorial_boss_id = DEFAULT_ENCOUNTER_ID
+	selected_tutorial_boss_id = selected_normal_encounter_id
+
+
+func set_selected_normal_encounter(encounter_id: String) -> void:
+	if not normal_encounter_order.has(encounter_id):
+		push_warning("Unknown normal encounter id: " + encounter_id)
+		return
+
+	selected_normal_encounter_id = encounter_id
+
+
+func get_selected_normal_encounter_id() -> String:
+	return selected_normal_encounter_id
 
 
 func get_selected_tutorial_boss_id() -> String:

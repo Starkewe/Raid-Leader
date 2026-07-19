@@ -16,6 +16,7 @@ extends Control
 
 var tutorial_button: Button = null
 var settings_button: Button = null
+var encounter_dropdown: OptionButton = null
 
 var tutorial_panel: PanelContainer = null
 var tutorial_grid: GridContainer = null
@@ -39,6 +40,7 @@ func _ready():
 	back_button.pressed.connect(_on_back_pressed)
 
 	build_main_menu_extra_buttons()
+	build_normal_encounter_selector()
 	build_tutorial_panel()
 	build_settings_panel()
 	build_team_rows()
@@ -58,6 +60,42 @@ func build_main_menu_extra_buttons() -> void:
 
 	main_menu_vbox.move_child(tutorial_button, 2)
 	main_menu_vbox.move_child(settings_button, 3)
+
+
+func build_normal_encounter_selector() -> void:
+	var label := Label.new()
+	label.text = "Beast Crucible Encounter"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	main_menu_vbox.add_child(label)
+	main_menu_vbox.move_child(label, 1)
+
+	encounter_dropdown = OptionButton.new()
+	main_menu_vbox.add_child(encounter_dropdown)
+	main_menu_vbox.move_child(encounter_dropdown, 2)
+
+	var selected_id := GameState.get_selected_normal_encounter_id()
+
+	for encounter_id in GameState.get_normal_encounter_ids():
+		var encounter_data: Dictionary = GameState.get_encounter_data(encounter_id)
+		var option_index := encounter_dropdown.item_count
+		encounter_dropdown.add_item(String(encounter_data.get("display_name", encounter_id)))
+		encounter_dropdown.set_item_metadata(option_index, encounter_id)
+
+		if encounter_id == selected_id:
+			encounter_dropdown.select(option_index)
+
+	encounter_dropdown.item_selected.connect(_on_normal_encounter_selected)
+
+
+func _on_normal_encounter_selected(index: int) -> void:
+	if encounter_dropdown == null or index < 0 or index >= encounter_dropdown.item_count:
+		return
+
+	GameState.set_selected_normal_encounter(
+		String(encounter_dropdown.get_item_metadata(index))
+	)
+
+
 func build_tutorial_panel() -> void:
 	tutorial_panel = PanelContainer.new()
 	tutorial_panel.visible = false
@@ -275,13 +313,14 @@ func _on_start_fight_pressed():
 		return
 
 	GameState.select_default_encounter()
+	var selected_scene_path := GameState.get_selected_tutorial_scene_path()
 	print("Starting fight with roster:", GameState.get_roster())
-	print("Loading scene:", combat_scene_path)
+	print("Loading scene:", selected_scene_path)
 
-	var result = get_tree().change_scene_to_file(combat_scene_path)
+	var result = get_tree().change_scene_to_file(selected_scene_path)
 
 	if result != OK:
-		print("Failed to load combat scene. Check combat_scene_path:", combat_scene_path)
+		print("Failed to load combat scene:", selected_scene_path)
 
 func _on_manage_team_pressed():
 	print("Opening team management")

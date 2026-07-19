@@ -6,6 +6,9 @@ const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_
 
 @export var duration: float = 0.35
 @export var particle_count: int = 48
+@export var fill_color: Color = Color(0.85, 0.95, 1.0, 0.20)
+@export var edge_color: Color = Color(0.95, 1.0, 1.0, 0.75)
+@export var particle_color: Color = Color(0.95, 1.0, 1.0, 0.90)
 
 var elapsed: float = 0.0
 
@@ -70,7 +73,7 @@ func draw_region_flash(fade: float) -> void:
 
 		draw_colored_polygon(
 			polygon,
-			Color(0.85, 0.95, 1.0, 0.20 * fade)
+			Color(fill_color.r, fill_color.g, fill_color.b, fill_color.a * fade)
 		)
 
 		var closed_polygon := PackedVector2Array(polygon)
@@ -78,7 +81,7 @@ func draw_region_flash(fade: float) -> void:
 
 		draw_polyline(
 			closed_polygon,
-			Color(0.95, 1.0, 1.0, 0.75 * fade),
+			Color(edge_color.r, edge_color.g, edge_color.b, edge_color.a * fade),
 			3.0,
 			true
 		)
@@ -96,14 +99,19 @@ func draw_impact_particles(fade: float) -> void:
 		draw_circle(
 			position,
 			current_radius,
-			Color(0.95, 1.0, 1.0, 0.90 * fade)
+			Color(
+				particle_color.r,
+				particle_color.g,
+				particle_color.b,
+				particle_color.a * fade
+			)
 		)
 
 
 func generate_particles() -> void:
 	particles.clear()
 
-	if affected_ranges.is_empty():
+	if affected_ranges.is_empty() or particle_count <= 0:
 		return
 
 	var particles_per_range: int = max(1, int(particle_count / affected_ranges.size()))

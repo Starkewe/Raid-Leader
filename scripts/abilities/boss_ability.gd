@@ -6,22 +6,26 @@ var ability_name: String = "Unnamed Ability"
 var cast_time: float = 1.0
 var cooldown: float = 5.0
 var damage: int = 0
+var damage_type: String = "physical"
 
 var windup_text: String = ""
 var impact_text: String = ""
 var interruptible: bool = true
 var requires_active_target: bool = true
+var configured_definition: BossAbilityDefinition = null
 
 
 func configure(definition: BossAbilityDefinition) -> void:
 	if definition == null:
 		return
 
+	configured_definition = definition
 	ability_id = definition.ability_id
 	ability_name = definition.display_name
 	cast_time = definition.cast_time
 	cooldown = definition.cooldown
 	damage = definition.damage
+	damage_type = definition.damage_type
 	windup_text = definition.windup_text
 	impact_text = definition.impact_text
 	interruptible = definition.interruptible
@@ -119,6 +123,12 @@ func get_target_count_with_phase_bonus(boss: Node, base_target_count: int) -> in
 		bonus = int(boss.get_ability_target_count_bonus())
 
 	return maxi(base_target_count + bonus, 0)
+
+
+func get_damage_metadata(extra: Dictionary = {}) -> Dictionary:
+	var metadata := extra.duplicate(true)
+	metadata["damage_type"] = damage_type
+	return metadata
 
 
 func debug_log(boss: Node, message: String) -> void:

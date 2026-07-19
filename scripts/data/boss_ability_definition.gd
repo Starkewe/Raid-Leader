@@ -11,6 +11,7 @@ class_name BossAbilityDefinition
 @export var cast_time: float = 1.0
 @export var cooldown: float = 5.0
 @export var damage: int = 0
+@export_enum("physical", "magic", "environmental") var damage_type: String = "physical"
 
 @export_group("Cast Rules")
 @export var interruptible: bool = true

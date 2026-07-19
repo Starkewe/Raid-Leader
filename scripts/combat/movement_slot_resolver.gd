@@ -38,6 +38,25 @@ const REGION_ORDER := [
 	REGION_NORTHWEST
 ]
 
+const AXIS_NORTH_SOUTH := "north_south"
+const AXIS_NORTHEAST_SOUTHWEST := "northeast_southwest"
+const AXIS_EAST_WEST := "east_west"
+const AXIS_SOUTHEAST_NORTHWEST := "southeast_northwest"
+
+const AXIS_ORDER := [
+	AXIS_NORTH_SOUTH,
+	AXIS_NORTHEAST_SOUTHWEST,
+	AXIS_EAST_WEST,
+	AXIS_SOUTHEAST_NORTHWEST
+]
+
+const AXIS_REGIONS := {
+	AXIS_NORTH_SOUTH: [REGION_NORTH, REGION_SOUTH],
+	AXIS_NORTHEAST_SOUTHWEST: [REGION_NORTHEAST, REGION_SOUTHWEST],
+	AXIS_EAST_WEST: [REGION_EAST, REGION_WEST],
+	AXIS_SOUTHEAST_NORTHWEST: [REGION_SOUTHEAST, REGION_NORTHWEST]
+}
+
 const REGION_DIRECTIONS := {
 	REGION_NORTH: Vector2(0, -1),
 	REGION_NORTHEAST: Vector2(1, -1),
@@ -148,6 +167,25 @@ static func get_adjacent_mini_regions(region: String, range_name: String) -> Arr
 			})
 
 	return neighbors
+
+
+static func get_axis_regions(axis_id: String) -> Array[String]:
+	var regions: Array[String] = []
+
+	for region_value in AXIS_REGIONS.get(axis_id, []):
+		regions.append(String(region_value))
+
+	return regions
+
+
+static func get_axis_for_region(region: String) -> String:
+	for axis_value in AXIS_ORDER:
+		var axis_id := String(axis_value)
+
+		if get_axis_regions(axis_id).has(region):
+			return axis_id
+
+	return ""
 static func get_slot_position(boss_node: Node, region: String, range_name: String) -> Vector2:
 	if boss_node == null or not is_instance_valid(boss_node):
 		return Vector2.ZERO
