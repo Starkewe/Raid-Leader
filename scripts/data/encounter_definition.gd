@@ -15,11 +15,19 @@ class_name EncounterDefinition
 @export var attack_damage: int = 20
 @export var attack_cooldown: float = 1.5
 
+@export_group("Basic Attack")
+@export var basic_attack_id: String = "boss_auto_attack"
+@export var basic_attack_display_name: String = "Attack"
+@export var basic_attack_status_effect: StatusEffectDefinition = null
+
 @export_group("Loadout")
 @export var abilities: Array[BossAbilityDefinition] = []
 @export var phases: Array[BossPhaseDefinition] = []
+## Negative values retain the existing behavior of using the first ability's cooldown.
+@export var initial_ability_delay: float = -1.0
 
 @export_group("Development Display")
+@export var debug_logging_enabled: bool = true
 @export var show_debug_region_guides: bool = true
 @export var show_debug_range_rings: bool = true
 @export var debug_max_range_units: float = 50.0

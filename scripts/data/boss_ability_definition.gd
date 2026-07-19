@@ -1,6 +1,7 @@
 extends Resource
 class_name BossAbilityDefinition
 
+@export var runtime_script: Script = null
 @export var ability_id: String = ""
 @export var display_name: String = "Unnamed Ability"
 @export_multiline var windup_text: String = ""

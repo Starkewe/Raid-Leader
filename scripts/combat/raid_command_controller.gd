@@ -93,6 +93,9 @@ func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
 		"taunt":
 			return execute_panel_taunt(selected_units, where, boss_alive)
 
+		"cure":
+			return execute_panel_cure(selected_units, where)
+
 		_:
 			print("Unknown panel command:", what)
 			return false
@@ -218,6 +221,50 @@ func execute_panel_taunt(selected_units: Array, where: String, boss_alive: bool)
 
 	print("No selected living unit can taunt.")
 	return false
+
+
+func execute_panel_cure(selected_units: Array, where: String) -> bool:
+	if where != "curable_allies":
+		print("Cure requires Where = Curable Allies.")
+		return false
+
+	var curers: Array = []
+
+	for unit in selected_units:
+		if is_unit_alive(unit) and unit.has_method("command_cure"):
+			curers.append(unit)
+
+	if curers.is_empty():
+		print("No selected living unit can cure.")
+		return false
+
+	var curable_targets: Array = []
+
+	for party_member in party_members:
+		if not is_unit_alive(party_member):
+			continue
+
+		if party_member.has_method("has_dispellable_status"):
+			if bool(party_member.has_dispellable_status("cure")):
+				curable_targets.append(party_member)
+
+	if curable_targets.is_empty():
+		print("No living ally has a curable status.")
+		return false
+
+	var issued_count := 0
+
+	for curer_index in range(mini(curers.size(), curable_targets.size())):
+		var curer = curers[curer_index]
+		var cure_target = curable_targets[curer_index]
+
+		if bool(curer.command_cure(cure_target)):
+			temporary_status_requested.emit(curer, "Curing " + get_unit_debug_name(cure_target), 0.75)
+			issued_count += 1
+
+	refresh_requested.emit()
+	print("Cure assigned", issued_count, "curer(s) to slowed allies.")
+	return issued_count > 0
 
 
 func command_party_attack(boss_alive: bool) -> bool:

@@ -71,13 +71,21 @@ func take_damage(
 	if is_dead:
 		return
 
+	var incoming_multiplier := status_effect_controller.get_incoming_damage_multiplier()
+	var adjusted_amount := int(round(float(maxi(amount, 0)) * incoming_multiplier))
+	var event_metadata := metadata.duplicate(true)
+
+	if not is_equal_approx(incoming_multiplier, 1.0):
+		event_metadata["base_amount"] = maxi(amount, 0)
+		event_metadata["incoming_damage_multiplier"] = incoming_multiplier
+
 	var previous_health := health
-	health -= maxi(amount, 0)
+	health -= adjusted_amount
 	health = max(health, 0)
 	var actual_amount := previous_health - health
 
 	update_health_bar()
-	emit_combat_event("damage", source, ability_id, actual_amount, metadata)
+	emit_combat_event("damage", source, ability_id, actual_amount, event_metadata)
 
 	print(get_display_name(), "took", actual_amount, "damage. HP:", health)
 
@@ -398,6 +406,11 @@ func get_shared_status_text() -> String:
 	if is_forced_moving():
 		return "Forced Movement"
 
+	var active_status_text := status_effect_controller.get_display_text()
+
+	if not active_status_text.is_empty():
+		return active_status_text
+
 	if has_manual_move_order:
 		return "Moving"
 
@@ -476,12 +489,27 @@ func clear_status_effect(effect_id: String) -> void:
 	status_effect_controller.clear(effect_id)
 
 
+func clear_status_effect_from_source(effect_id: String, source: Node) -> void:
+	status_effect_controller.clear_from_source(effect_id, source)
+
+
 func clear_all_status_effects() -> void:
 	status_effect_controller.clear_all()
 
 
 func get_status_effect_stacks(effect_id: String) -> int:
 	return status_effect_controller.get_stacks(effect_id)
+
+
+func has_dispellable_status(dispel_category: String = "") -> bool:
+	return status_effect_controller.has_dispellable(dispel_category)
+
+
+func clear_dispellable_statuses(
+	dispel_category: String = "",
+	maximum_effects: int = 1
+) -> Array[String]:
+	return status_effect_controller.clear_dispellable(dispel_category, maximum_effects)
 
 
 func update_status_effects(delta: float) -> void:

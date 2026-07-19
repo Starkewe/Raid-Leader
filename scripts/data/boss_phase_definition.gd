@@ -8,6 +8,12 @@ class_name BossPhaseDefinition
 @export_group("Pacing")
 @export_range(0.01, 10.0, 0.01) var attack_speed_multiplier: float = 1.0
 @export_range(0.01, 10.0, 0.01) var ability_speed_multiplier: float = 1.0
+@export_range(0.01, 10.0, 0.01) var ability_cooldown_multiplier: float = 1.0
+
+@export_group("Power")
+@export_range(0.0, 10.0, 0.01) var attack_damage_multiplier: float = 1.0
+@export_range(0.0, 10.0, 0.01) var ability_damage_multiplier: float = 1.0
+@export var ability_target_count_bonus: int = 0
 
 @export_group("Ability Rules")
 @export var enabled_ability_ids: Array[String] = []

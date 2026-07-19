@@ -51,7 +51,14 @@ static func create_ability_from_definition(definition: BossAbilityDefinition) ->
 
 	var ability: BossAbility = null
 
-	if definition is TwinSweepingPullDefinition:
+	if definition.runtime_script != null:
+		var runtime_instance = definition.runtime_script.new()
+
+		if runtime_instance is BossAbility:
+			ability = runtime_instance as BossAbility
+		else:
+			push_warning("Ability runtime script does not extend BossAbility: " + definition.ability_id)
+	elif definition is TwinSweepingPullDefinition:
 		ability = TwinSweepingPullScript.new()
 	elif definition is DirectionalCleaveDefinition:
 		ability = DirectionalRegionCleaveScript.new()

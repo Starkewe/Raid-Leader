@@ -14,6 +14,7 @@ signal phase_changed(phase_id: String, display_name: String)
 var show_debug_region_guides: bool = true
 var show_debug_range_rings: bool = true
 var debug_max_range_units: float = 50.0
+var debug_logging_enabled: bool = true
 
 @export var impact_effect_max_range_units: float = 50.0
 
@@ -24,6 +25,10 @@ var combat_radius: float = 128.0
 var attack_damage: int = 20
 var attack_cooldown: float = 1.5
 var special_cast_time: float = 2.5
+var basic_attack_id: String = "boss_auto_attack"
+var basic_attack_display_name: String = "Attack"
+var basic_attack_status_effect: StatusEffectDefinition = null
+var initial_ability_delay: float = -1.0
 
 @onready var health_bar = get_node_or_null("HealthBar")
 @onready var cast_bar = get_node_or_null("CastBar")
@@ -51,6 +56,8 @@ var current_cast_speed_multiplier: float = 1.0
 var is_casting: bool = false
 var is_dead: bool = false
 var encounter_active: bool = false
+var encounter_objects: Array[Node] = []
+var mechanic_state: Dictionary = {}
 
 func _ready():
 	target_controller = BossTargetControllerScript.new()
@@ -63,7 +70,7 @@ func _ready():
 	if next_ability == null:
 		next_ability = create_next_ability()
 
-	special_timer = get_next_ability_cooldown()
+	special_timer = get_initial_ability_delay()
 	setup_debug_visuals()
 
 
@@ -99,6 +106,11 @@ func apply_selected_boss_profile() -> void:
 	combat_radius = encounter_definition.combat_radius
 	attack_damage = encounter_definition.attack_damage
 	attack_cooldown = encounter_definition.attack_cooldown
+	basic_attack_id = encounter_definition.basic_attack_id
+	basic_attack_display_name = encounter_definition.basic_attack_display_name
+	basic_attack_status_effect = encounter_definition.basic_attack_status_effect
+	initial_ability_delay = encounter_definition.initial_ability_delay
+	debug_logging_enabled = encounter_definition.debug_logging_enabled
 
 	show_debug_region_guides = encounter_definition.show_debug_region_guides and OS.is_debug_build()
 	show_debug_range_rings = encounter_definition.show_debug_range_rings and OS.is_debug_build()
@@ -258,6 +270,7 @@ func set_encounter_active(active: bool) -> void:
 		current_cast_elapsed = 0.0
 		current_cast_speed_multiplier = 1.0
 		update_cast_bar()
+		clear_encounter_objects()
 func chase_target():
 	var target := get_current_target()
 
@@ -277,10 +290,37 @@ func auto_attack():
 		return
 
 	attack_timer = get_effective_attack_cooldown()
-	print("Boss auto attacks:", target.name)
+	var resolved_damage := maxi(
+		int(round(float(attack_damage) * get_attack_damage_multiplier())),
+		0
+	)
+	var existing_stacks := 0
+
+	if basic_attack_status_effect != null and target.has_method("get_status_effect_stacks"):
+		existing_stacks = int(target.get_status_effect_stacks(basic_attack_status_effect.effect_id))
 
 	if target.has_method("take_damage"):
-		target.take_damage(attack_damage, self, "boss_auto_attack")
+		target.take_damage(
+			resolved_damage,
+			self,
+			basic_attack_id,
+			{"repeated_target_stacks": existing_stacks}
+		)
+
+	if basic_attack_status_effect != null and target.has_method("apply_status_effect"):
+		target.apply_status_effect(basic_attack_status_effect, self)
+
+	var updated_stacks := existing_stacks
+
+	if basic_attack_status_effect != null and target.has_method("get_status_effect_stacks"):
+		updated_stacks = int(target.get_status_effect_stacks(basic_attack_status_effect.effect_id))
+
+	debug_log(
+		basic_attack_display_name + " hit " + target.name
+		+ " for base damage " + str(resolved_damage)
+		+ "; repeated-target stacks " + str(existing_stacks)
+		+ " -> " + str(updated_stacks) + "."
+	)
 
 func start_special_cast():
 	if is_casting:
@@ -340,7 +380,7 @@ func finish_special_cast():
 	is_casting = false
 
 	if current_ability != null:
-		special_timer = current_ability.cooldown / get_ability_speed_multiplier()
+		special_timer = get_ability_recovery_time(current_ability)
 		print("Boss finishes", current_ability.get_cast_name())
 		current_ability.resolve(self, party_members)
 		emit_combat_event("cast_resolved", self, current_ability.ability_id, 0)
@@ -361,7 +401,7 @@ func cancel_current_cast_due_to_missing_target() -> void:
 
 	if current_ability != null:
 		current_ability.on_interrupted(self, party_members)
-		special_timer = current_ability.cooldown / get_ability_speed_multiplier()
+		special_timer = get_ability_recovery_time(current_ability)
 		emit_combat_event("cast_cancelled", self, current_ability.ability_id, 0, {
 			"reason": "missing_target"
 		})
@@ -388,7 +428,7 @@ func interrupt_cast(source: Node = null, interrupt_ability_id: String = "interru
 
 		if current_ability != null:
 			current_ability.on_interrupted(self, party_members)
-			special_timer = current_ability.cooldown / get_ability_speed_multiplier()
+			special_timer = get_ability_recovery_time(current_ability)
 			emit_combat_event("cast_interrupted", source, current_ability.ability_id, 0, {
 				"interrupt_ability_id": interrupt_ability_id
 			})
@@ -447,6 +487,7 @@ func die():
 	current_cast_speed_multiplier = 1.0
 	current_ability = null
 	update_cast_bar()
+	clear_encounter_objects()
 	clear_target()
 
 	print("Boss defeated!")
@@ -483,6 +524,8 @@ func update_cast_bar():
 		cast_bar.visible = false
 		cast_bar.value = 0
 func reset_boss(new_position: Vector2):
+	clear_encounter_objects()
+	mechanic_state.clear()
 	is_dead = false
 	encounter_active = false
 	health = max_health
@@ -499,7 +542,7 @@ func reset_boss(new_position: Vector2):
 		next_ability = create_next_ability()
 
 	attack_timer = get_effective_attack_cooldown()
-	special_timer = get_next_ability_cooldown()
+	special_timer = get_initial_ability_delay()
 	cast_timer = 0.0
 	current_cast_elapsed = 0.0
 	current_cast_speed_multiplier = 1.0
@@ -552,7 +595,7 @@ func get_cast_name() -> String:
 	return ""
 func get_next_ability_cooldown() -> float:
 	if next_ability != null:
-		return next_ability.cooldown / get_ability_speed_multiplier()
+		return get_ability_recovery_time(next_ability)
 
 	return 6.0
 func get_display_name() -> String:
@@ -607,6 +650,52 @@ func get_ability_speed_multiplier() -> float:
 	return maxf(current_phase.ability_speed_multiplier, 0.01)
 
 
+func get_ability_cooldown_multiplier() -> float:
+	if current_phase == null:
+		return 1.0
+
+	return maxf(current_phase.ability_cooldown_multiplier, 0.01)
+
+
+func get_attack_damage_multiplier() -> float:
+	if current_phase == null:
+		return 1.0
+
+	return maxf(current_phase.attack_damage_multiplier, 0.0)
+
+
+func get_ability_damage_multiplier() -> float:
+	if current_phase == null:
+		return 1.0
+
+	return maxf(current_phase.ability_damage_multiplier, 0.0)
+
+
+func get_ability_target_count_bonus() -> int:
+	if current_phase == null:
+		return 0
+
+	return current_phase.ability_target_count_bonus
+
+
+func get_ability_recovery_time(ability: BossAbility) -> float:
+	if ability == null:
+		return 1.0
+
+	return (
+		ability.cooldown
+		* get_ability_cooldown_multiplier()
+		/ get_ability_speed_multiplier()
+	)
+
+
+func get_initial_ability_delay() -> float:
+	if initial_ability_delay >= 0.0:
+		return initial_ability_delay
+
+	return get_next_ability_cooldown()
+
+
 func update_current_phase(emit_change_event: bool = true) -> void:
 	if phase_definitions.is_empty() or max_health <= 0:
 		return
@@ -628,6 +717,11 @@ func update_current_phase(emit_change_event: bool = true) -> void:
 	if not emit_change_event:
 		return
 
+	debug_log(
+		"Phase changed to " + current_phase.display_name
+		+ " at " + str(snappedf(health_percent, 0.1)) + "% health."
+	)
+
 	phase_changed.emit(current_phase.phase_id, current_phase.display_name)
 	emit_combat_event(
 		"phase_changed",
@@ -640,6 +734,50 @@ func update_current_phase(emit_change_event: bool = true) -> void:
 
 func get_current_phase_id() -> String:
 	return "" if current_phase == null else current_phase.phase_id
+
+
+func register_encounter_object(encounter_object: Node) -> void:
+	if encounter_object == null or not is_instance_valid(encounter_object):
+		return
+
+	if not encounter_objects.has(encounter_object):
+		encounter_objects.append(encounter_object)
+
+
+func clear_encounter_objects() -> void:
+	var cleaned_count := 0
+
+	for encounter_object in encounter_objects:
+		if encounter_object == null or not is_instance_valid(encounter_object):
+			continue
+
+		if encounter_object.has_method("cleanup"):
+			encounter_object.cleanup()
+		else:
+			encounter_object.queue_free()
+
+		cleaned_count += 1
+
+	encounter_objects.clear()
+	mechanic_state.clear()
+
+	if cleaned_count > 0:
+		debug_log("Cleaned up " + str(cleaned_count) + " encounter object(s).")
+
+
+func get_mechanic_state(state_key: String, default_value: Variant = null) -> Variant:
+	return mechanic_state.get(state_key, default_value)
+
+
+func set_mechanic_state(state_key: String, value: Variant) -> void:
+	mechanic_state[state_key] = value
+
+
+func debug_log(message: String) -> void:
+	if not debug_logging_enabled:
+		return
+
+	print("[Boss: " + boss_display_name + "] " + message)
 
 
 func emit_combat_event(

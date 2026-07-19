@@ -8,6 +8,7 @@ const ACTION_MOVE := "move"
 const ACTION_INTERRUPT := "interrupt"
 const ACTION_HEAL := "heal"
 const ACTION_TAUNT := "taunt"
+const ACTION_CURE := "cure"
 
 const SELECTOR_EVERYONE := "everyone"
 const SELECTOR_CLASS := "class"
@@ -18,6 +19,7 @@ const SELECTOR_ROLE := "role"
 
 const DESTINATION_BOSS := "boss"
 const DESTINATION_BOSS_TARGET := "boss_target"
+const DESTINATION_CURABLE_ALLIES := "curable_allies"
 const DESTINATION_PLAYER := "me"
 const DESTINATION_MOVEMENT_SLOT := "movement_slot"
 const DESTINATION_MOVEMENT_REGION := "movement_region"
@@ -31,7 +33,8 @@ const ACTIONS: Array[String] = [
 	ACTION_MOVE,
 	ACTION_INTERRUPT,
 	ACTION_HEAL,
-	ACTION_TAUNT
+	ACTION_TAUNT,
+	ACTION_CURE
 ]
 
 const SELECTOR_TYPES: Array[String] = [
@@ -78,6 +81,10 @@ static func validate(command_data: Dictionary) -> Dictionary:
 		ACTION_HEAL:
 			if destination != DESTINATION_BOSS_TARGET:
 				return _failure("Heal requires the boss-target destination.")
+
+		ACTION_CURE:
+			if destination != DESTINATION_CURABLE_ALLIES:
+				return _failure("Cure requires the curable-allies destination.")
 
 		ACTION_MOVE:
 			if not MOVEMENT_DESTINATIONS.has(destination):

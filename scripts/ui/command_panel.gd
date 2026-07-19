@@ -172,6 +172,10 @@ func populate_what_options() -> void:
 		"what": "heal"
 	})
 
+	add_option(what_dropdown, "Cure", {
+		"what": CommandSchemaScript.ACTION_CURE
+	})
+
 	add_option(what_dropdown, "Taunt", {
 		"what": CommandSchemaScript.ACTION_TAUNT
 	})
@@ -234,6 +238,11 @@ func populate_where_options_for_current_action() -> void:
 		"heal":
 			add_option(where_dropdown, "Boss Target", {
 				"where": "boss_target"
+			})
+
+		"cure":
+			add_option(where_dropdown, "Curable Allies", {
+				"where": CommandSchemaScript.DESTINATION_CURABLE_ALLIES
 			})
 
 		_:

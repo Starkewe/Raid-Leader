@@ -6,7 +6,8 @@ const SETTINGS_PATH := "user://raid_leader_settings.cfg"
 const TUTORIAL_BOSS_CLEAVE_CLOSE_REGION := "cleave_close_region"
 const TUTORIAL_BOSS_LONG_REGION_CONE := "long_region_cone"
 const TUTORIAL_BOSS_TWIN_SWEEPING_PULL := "twin_sweeping_pull"
-const DEFAULT_ENCOUNTER_ID := TUTORIAL_BOSS_CLEAVE_CLOSE_REGION
+const ENCOUNTER_OGRE := "ogre"
+const DEFAULT_ENCOUNTER_ID := ENCOUNTER_OGRE
 
 const ABILITY_TARGET_REGION_CLOSE_CLEAVE := "target_region_close_cleave"
 const ABILITY_TARGET_REGION_FULL_CONE := "target_region_full_cone"
@@ -24,6 +25,7 @@ const UNIT_PRIEST: UnitDefinition = preload("res://data/units/priest.tres")
 const ENCOUNTER_CLEAVE: EncounterDefinition = preload("res://data/encounters/cleave_close_region.tres")
 const ENCOUNTER_CONE: EncounterDefinition = preload("res://data/encounters/full_region_cone.tres")
 const ENCOUNTER_TWIN_SWEEP: EncounterDefinition = preload("res://data/encounters/twin_sweeping_pull.tres")
+const ENCOUNTER_OGRE_DEFINITION: EncounterDefinition = preload("res://data/encounters/ogre.tres")
 
 var selected_tutorial_boss_id: String = DEFAULT_ENCOUNTER_ID
 
@@ -34,6 +36,7 @@ var encounter_order: Array[String] = [
 ]
 
 var encounter_catalog: Dictionary = {
+	ENCOUNTER_OGRE: ENCOUNTER_OGRE_DEFINITION,
 	TUTORIAL_BOSS_CLEAVE_CLOSE_REGION: ENCOUNTER_CLEAVE,
 	TUTORIAL_BOSS_LONG_REGION_CONE: ENCOUNTER_CONE,
 	TUTORIAL_BOSS_TWIN_SWEEPING_PULL: ENCOUNTER_TWIN_SWEEP

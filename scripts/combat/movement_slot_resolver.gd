@@ -90,6 +90,64 @@ static func get_adjacent_range(current_range: String, range_direction: String) -
 	)
 
 	return String(RANGE_ORDER[next_index])
+
+
+static func get_mini_region_key(region: String, range_name: String) -> String:
+	return region + ":" + range_name
+
+
+static func get_mini_region_from_position(
+	boss_node: Node,
+	unit_position: Vector2
+) -> Dictionary:
+	if boss_node == null or not is_instance_valid(boss_node) or not boss_node is Node2D:
+		return {
+			"region": REGION_SOUTH,
+			"range": RANGE_MID,
+			"key": get_mini_region_key(REGION_SOUTH, RANGE_MID)
+		}
+
+	var boss_2d := boss_node as Node2D
+	var region := get_nearest_region_from_position(boss_2d.global_position, unit_position)
+	var range_name := get_nearest_range_from_position(boss_node, unit_position)
+
+	return {
+		"region": region,
+		"range": range_name,
+		"key": get_mini_region_key(region, range_name)
+	}
+
+
+static func get_adjacent_mini_regions(region: String, range_name: String) -> Array[Dictionary]:
+	var neighbors: Array[Dictionary] = []
+	var region_index := REGION_ORDER.find(region)
+	var range_index := RANGE_ORDER.find(range_name)
+
+	if region_index == -1 or range_index == -1:
+		return neighbors
+
+	var region_count := REGION_ORDER.size()
+	var minimum_range_index := maxi(range_index - 1, 0)
+	var maximum_range_index := mini(range_index + 1, RANGE_ORDER.size() - 1)
+
+	for neighbor_range_index in range(minimum_range_index, maximum_range_index + 1):
+		for region_step in range(-1, 2):
+			if neighbor_range_index == range_index and region_step == 0:
+				continue
+
+			var neighbor_region_index := (
+				region_index + region_step + region_count
+			) % region_count
+			var neighbor_region := String(REGION_ORDER[neighbor_region_index])
+			var neighbor_range := String(RANGE_ORDER[neighbor_range_index])
+
+			neighbors.append({
+				"region": neighbor_region,
+				"range": neighbor_range,
+				"key": get_mini_region_key(neighbor_region, neighbor_range)
+			})
+
+	return neighbors
 static func get_slot_position(boss_node: Node, region: String, range_name: String) -> Vector2:
 	if boss_node == null or not is_instance_valid(boss_node):
 		return Vector2.ZERO
