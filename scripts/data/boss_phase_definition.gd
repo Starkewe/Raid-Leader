@@ -19,6 +19,10 @@ class_name BossPhaseDefinition
 @export var enabled_ability_ids: Array[String] = []
 @export var disabled_ability_ids: Array[String] = []
 
+@export_group("Transition")
+## Runs once when this phase begins. Phase 1 normally leaves this empty.
+@export var transition_ability: BossAbilityDefinition = null
+
 
 func allows_ability(ability_id: String) -> bool:
 	if disabled_ability_ids.has(ability_id):

@@ -11,6 +11,9 @@ class_name EncounterDefinition
 @export var max_health: int = 3000
 @export var movement_speed_range_units_per_second: float = 7.0
 @export var attack_range_units: float = 5.0
+## Negative values stop movement at attack range. Smaller values let a boss
+## attack while continuing to close distance, without adding backpedaling.
+@export var movement_stop_range_units: float = -1.0
 @export var combat_radius: float = 128.0
 @export var attack_damage: int = 20
 @export var attack_cooldown: float = 1.5
@@ -19,6 +22,22 @@ class_name EncounterDefinition
 @export var basic_attack_id: String = "boss_auto_attack"
 @export var basic_attack_display_name: String = "Attack"
 @export var basic_attack_status_effect: StatusEffectDefinition = null
+@export_enum("physical", "magic", "environmental") var basic_attack_damage_type: String = "physical"
+
+@export_group("Basic Attack Chain")
+@export var basic_attack_secondary_target_count: int = 0
+@export_range(0.0, 10.0, 0.01) var basic_attack_secondary_damage_multiplier: float = 1.0
+## The next target is chosen by distance from the primary target.
+@export var basic_attack_secondary_closest_to_primary: bool = true
+
+@export_group("Basic Attack Raid Pulse")
+## Zero disables the attack-count raid pulse.
+@export var basic_attack_raidwide_every_n_attacks: int = 0
+@export var basic_attack_raidwide_damage: int = 0
+@export var basic_attack_raidwide_ability_id: String = ""
+@export var basic_attack_raidwide_display_name: String = ""
+@export_enum("physical", "magic", "environmental") var basic_attack_raidwide_damage_type: String = "physical"
+@export var basic_attack_raidwide_delay: float = 0.0
 
 @export_group("Loadout")
 @export var abilities: Array[BossAbilityDefinition] = []

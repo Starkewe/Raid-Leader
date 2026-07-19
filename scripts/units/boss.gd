@@ -21,6 +21,7 @@ var debug_logging_enabled: bool = true
 var max_health: int = 3000
 var speed: float = 140.0
 var attack_range_units: float = 5.0
+var movement_stop_range_units: float = -1.0
 var combat_radius: float = 128.0
 var attack_damage: int = 20
 var attack_cooldown: float = 1.5
@@ -28,6 +29,16 @@ var special_cast_time: float = 2.5
 var basic_attack_id: String = "boss_auto_attack"
 var basic_attack_display_name: String = "Attack"
 var basic_attack_status_effect: StatusEffectDefinition = null
+var basic_attack_damage_type: String = "physical"
+var basic_attack_secondary_target_count: int = 0
+var basic_attack_secondary_damage_multiplier: float = 1.0
+var basic_attack_secondary_closest_to_primary: bool = true
+var basic_attack_raidwide_every_n_attacks: int = 0
+var basic_attack_raidwide_damage: int = 0
+var basic_attack_raidwide_ability_id: String = ""
+var basic_attack_raidwide_display_name: String = ""
+var basic_attack_raidwide_damage_type: String = "physical"
+var basic_attack_raidwide_delay: float = 0.0
 var initial_ability_delay: float = -1.0
 
 @onready var health_bar = get_node_or_null("HealthBar")
@@ -58,8 +69,15 @@ var is_dead: bool = false
 var encounter_active: bool = false
 var encounter_objects: Array[Node] = []
 var mechanic_state: Dictionary = {}
+var encounter_origin_position: Vector2 = Vector2.ZERO
+var basic_attack_sequence_count: int = 0
+var pending_basic_raidwide_timer: float = -1.0
+var pending_phase_transition_definition: BossAbilityDefinition = null
+var phase_transition_pending: bool = false
+var current_ability_is_phase_transition: bool = false
 
 func _ready():
+	encounter_origin_position = global_position
 	target_controller = BossTargetControllerScript.new()
 	apply_selected_boss_profile()
 
@@ -103,12 +121,23 @@ func apply_selected_boss_profile() -> void:
 		encounter_definition.movement_speed_range_units_per_second
 	)
 	attack_range_units = encounter_definition.attack_range_units
+	movement_stop_range_units = encounter_definition.movement_stop_range_units
 	combat_radius = encounter_definition.combat_radius
 	attack_damage = encounter_definition.attack_damage
 	attack_cooldown = encounter_definition.attack_cooldown
 	basic_attack_id = encounter_definition.basic_attack_id
 	basic_attack_display_name = encounter_definition.basic_attack_display_name
 	basic_attack_status_effect = encounter_definition.basic_attack_status_effect
+	basic_attack_damage_type = encounter_definition.basic_attack_damage_type
+	basic_attack_secondary_target_count = encounter_definition.basic_attack_secondary_target_count
+	basic_attack_secondary_damage_multiplier = encounter_definition.basic_attack_secondary_damage_multiplier
+	basic_attack_secondary_closest_to_primary = encounter_definition.basic_attack_secondary_closest_to_primary
+	basic_attack_raidwide_every_n_attacks = encounter_definition.basic_attack_raidwide_every_n_attacks
+	basic_attack_raidwide_damage = encounter_definition.basic_attack_raidwide_damage
+	basic_attack_raidwide_ability_id = encounter_definition.basic_attack_raidwide_ability_id
+	basic_attack_raidwide_display_name = encounter_definition.basic_attack_raidwide_display_name
+	basic_attack_raidwide_damage_type = encounter_definition.basic_attack_raidwide_damage_type
+	basic_attack_raidwide_delay = encounter_definition.basic_attack_raidwide_delay
 	initial_ability_delay = encounter_definition.initial_ability_delay
 	debug_logging_enabled = encounter_definition.debug_logging_enabled
 
@@ -129,6 +158,8 @@ func _physics_process(delta):
 	if not encounter_active:
 		velocity = Vector2.ZERO
 		return
+
+	update_pending_basic_raidwide(delta)
 
 	if is_casting:
 		if current_ability != null and current_ability.requires_active_target and not has_valid_target():
@@ -161,10 +192,12 @@ func _physics_process(delta):
 
 	var distance_units: float = get_range_units_to_target(target)
 
-	if distance_units > attack_range_units:
+	if distance_units > get_movement_stop_range_units():
 		chase_target()
 	else:
 		velocity = Vector2.ZERO
+
+	if distance_units <= attack_range_units:
 		auto_attack()
 
 	move_and_slide()
@@ -269,6 +302,10 @@ func set_encounter_active(active: bool) -> void:
 		cast_timer = 0.0
 		current_cast_elapsed = 0.0
 		current_cast_speed_multiplier = 1.0
+		pending_phase_transition_definition = null
+		phase_transition_pending = false
+		current_ability_is_phase_transition = false
+		reset_basic_attack_sequence(false)
 		update_cast_bar()
 		clear_encounter_objects()
 func chase_target():
@@ -290,6 +327,7 @@ func auto_attack():
 		return
 
 	attack_timer = get_effective_attack_cooldown()
+	var secondary_targets := get_basic_attack_secondary_targets(target)
 	var resolved_damage := maxi(
 		int(round(float(attack_damage) * get_attack_damage_multiplier())),
 		0
@@ -304,8 +342,37 @@ func auto_attack():
 			resolved_damage,
 			self,
 			basic_attack_id,
-			{"repeated_target_stacks": existing_stacks}
+			{
+				"repeated_target_stacks": existing_stacks,
+				"damage_type": basic_attack_damage_type,
+				"chain_index": 0
+			}
 		)
+
+	var secondary_damage := maxi(
+		int(round(float(resolved_damage) * basic_attack_secondary_damage_multiplier)),
+		0
+	)
+	var secondary_labels: Array[String] = []
+
+	for secondary_index in range(secondary_targets.size()):
+		var secondary_target = secondary_targets[secondary_index]
+
+		if not is_valid_living_party_member(secondary_target):
+			continue
+
+		if secondary_target.has_method("take_damage"):
+			secondary_target.take_damage(
+				secondary_damage,
+				self,
+				basic_attack_id,
+				{
+					"damage_type": basic_attack_damage_type,
+					"chain_index": secondary_index + 1,
+					"primary_target": target
+				}
+			)
+			secondary_labels.append(get_unit_debug_name(secondary_target))
 
 	if basic_attack_status_effect != null and target.has_method("apply_status_effect"):
 		target.apply_status_effect(basic_attack_status_effect, self)
@@ -315,33 +382,160 @@ func auto_attack():
 	if basic_attack_status_effect != null and target.has_method("get_status_effect_stacks"):
 		updated_stacks = int(target.get_status_effect_stacks(basic_attack_status_effect.effect_id))
 
-	debug_log(
-		basic_attack_display_name + " hit " + target.name
-		+ " for base damage " + str(resolved_damage)
-		+ "; repeated-target stacks " + str(existing_stacks)
-		+ " -> " + str(updated_stacks) + "."
+	var attack_message := (
+		basic_attack_display_name + " hit " + get_unit_debug_name(target)
+		+ " for " + str(resolved_damage)
 	)
+
+	if not secondary_labels.is_empty():
+		attack_message += (
+			"; chained for " + str(secondary_damage) + " to "
+			+ ", ".join(secondary_labels)
+		)
+
+	if basic_attack_status_effect != null:
+		attack_message += (
+			"; repeated-target stacks " + str(existing_stacks)
+			+ " -> " + str(updated_stacks)
+		)
+
+	debug_log(attack_message + ".")
+
+	advance_basic_attack_sequence()
+
+
+func get_basic_attack_secondary_targets(primary_target: Node2D) -> Array:
+	if basic_attack_secondary_target_count <= 0 or primary_target == null:
+		return []
+
+	var candidates: Array = []
+
+	for party_member in party_members:
+		if party_member == primary_target or not is_valid_living_party_member(party_member):
+			continue
+
+		if party_member is Node2D:
+			candidates.append(party_member)
+
+	var distance_origin: Vector2 = (
+		primary_target.global_position
+		if basic_attack_secondary_closest_to_primary
+		else global_position
+	)
+	candidates.sort_custom(func(a: Node2D, b: Node2D):
+		return distance_origin.distance_squared_to(a.global_position) < distance_origin.distance_squared_to(b.global_position)
+	)
+
+	return candidates.slice(0, mini(basic_attack_secondary_target_count, candidates.size()))
+
+
+func advance_basic_attack_sequence() -> void:
+	if basic_attack_raidwide_every_n_attacks <= 0 or basic_attack_raidwide_damage <= 0:
+		return
+
+	basic_attack_sequence_count += 1
+
+	if basic_attack_sequence_count < basic_attack_raidwide_every_n_attacks:
+		return
+
+	basic_attack_sequence_count = 0
+	pending_basic_raidwide_timer = maxf(basic_attack_raidwide_delay, 0.0)
+	debug_log(
+		basic_attack_raidwide_display_name + " primed after "
+		+ str(basic_attack_raidwide_every_n_attacks) + " attacks."
+	)
+
+	if pending_basic_raidwide_timer <= 0.0:
+		resolve_basic_attack_raidwide()
+
+
+func update_pending_basic_raidwide(delta: float) -> void:
+	if pending_basic_raidwide_timer < 0.0:
+		return
+
+	pending_basic_raidwide_timer = maxf(pending_basic_raidwide_timer - delta, 0.0)
+
+	if pending_basic_raidwide_timer <= 0.0:
+		resolve_basic_attack_raidwide()
+
+
+func resolve_basic_attack_raidwide() -> void:
+	pending_basic_raidwide_timer = -1.0
+	var resolved_damage := maxi(
+		int(round(float(basic_attack_raidwide_damage) * get_attack_damage_multiplier())),
+		0
+	)
+	var hit_count := 0
+
+	for party_member in party_members:
+		if not is_valid_living_party_member(party_member):
+			continue
+
+		if party_member.has_method("take_damage"):
+			party_member.take_damage(
+				resolved_damage,
+				self,
+				basic_attack_raidwide_ability_id,
+				{"damage_type": basic_attack_raidwide_damage_type, "raid_wide": true}
+			)
+			hit_count += 1
+
+	debug_log(
+		basic_attack_raidwide_display_name + " dealt " + str(resolved_damage)
+		+ " " + basic_attack_raidwide_damage_type + " damage to "
+		+ str(hit_count) + " unit(s)."
+	)
+
+
+func reset_basic_attack_sequence(should_log: bool = true) -> void:
+	basic_attack_sequence_count = 0
+	pending_basic_raidwide_timer = -1.0
+
+	if should_log and basic_attack_raidwide_every_n_attacks > 0:
+		debug_log("Reset the basic-attack raid-pulse counter.")
 
 func start_special_cast():
 	if is_casting:
 		return
 
-	if next_ability == null:
-		next_ability = create_next_ability()
+	var ability_to_cast: BossAbility = null
+	var starts_phase_transition := pending_phase_transition_definition != null
 
-	if next_ability == null:
+	if starts_phase_transition:
+		ability_to_cast = BossAbilityFactoryScript.create_ability_from_definition(
+			pending_phase_transition_definition
+		)
+	else:
+		if next_ability == null:
+			next_ability = create_next_ability()
+
+		ability_to_cast = next_ability
+
+	if ability_to_cast == null:
+		pending_phase_transition_definition = null
+		phase_transition_pending = false
 		special_timer = 1.0
 		return
 
-	if not next_ability.can_cast(self, party_members):
+	if not ability_to_cast.can_cast(self, party_members):
+		if starts_phase_transition:
+			pending_phase_transition_definition = null
+			phase_transition_pending = false
 		special_timer = get_next_ability_cooldown()
 		return
 
-	current_ability = next_ability
-	next_ability = create_next_ability()
+	current_ability = ability_to_cast
+	current_ability_is_phase_transition = starts_phase_transition
+
+	if starts_phase_transition:
+		pending_phase_transition_definition = null
+		phase_transition_pending = false
+		reset_basic_attack_sequence(false)
+	else:
+		next_ability = create_next_ability()
 
 	is_casting = true
-	current_cast_speed_multiplier = get_ability_speed_multiplier()
+	current_cast_speed_multiplier = 1.0 if starts_phase_transition else get_ability_speed_multiplier()
 	cast_timer = current_ability.cast_time / current_cast_speed_multiplier
 	current_cast_elapsed = 0.0
 
@@ -378,9 +572,14 @@ func update_special_cast(delta):
 
 func finish_special_cast():
 	is_casting = false
+	var finished_phase_transition := current_ability_is_phase_transition
 
 	if current_ability != null:
-		special_timer = get_ability_recovery_time(current_ability)
+		special_timer = (
+			maxf(current_ability.cooldown, 0.0)
+			if finished_phase_transition
+			else get_ability_recovery_time(current_ability)
+		)
 		print("Boss finishes", current_ability.get_cast_name())
 		current_ability.resolve(self, party_members)
 		emit_combat_event("cast_resolved", self, current_ability.ability_id, 0)
@@ -388,6 +587,12 @@ func finish_special_cast():
 		special_timer = get_next_ability_cooldown()
 
 	current_ability = null
+	current_ability_is_phase_transition = false
+
+	if finished_phase_transition:
+		attack_timer = get_effective_attack_cooldown()
+		reset_basic_attack_sequence(false)
+		debug_log("Phase transition complete; normal attack rhythm resumed.")
 	current_cast_elapsed = 0.0
 	current_cast_speed_multiplier = 1.0
 	update_cast_bar()
@@ -450,7 +655,7 @@ func take_damage(
 	ability_id: String = "",
 	metadata: Dictionary = {}
 ) -> void:
-	if is_dead:
+	if is_dead or phase_transition_pending or current_ability_is_phase_transition:
 		return
 
 	var previous_health := health
@@ -486,6 +691,10 @@ func die():
 	current_cast_elapsed = 0.0
 	current_cast_speed_multiplier = 1.0
 	current_ability = null
+	current_ability_is_phase_transition = false
+	phase_transition_pending = false
+	pending_phase_transition_definition = null
+	reset_basic_attack_sequence(false)
 	update_cast_bar()
 	clear_encounter_objects()
 	clear_target()
@@ -537,6 +746,10 @@ func reset_boss(new_position: Vector2):
 
 	is_casting = false
 	current_ability = null
+	current_ability_is_phase_transition = false
+	phase_transition_pending = false
+	pending_phase_transition_definition = null
+	reset_basic_attack_sequence(false)
 
 	if next_ability == null:
 		next_ability = create_next_ability()
@@ -548,6 +761,7 @@ func reset_boss(new_position: Vector2):
 	current_cast_speed_multiplier = 1.0
 
 	global_position = new_position
+	encounter_origin_position = new_position
 
 	update_health_bar()
 	update_cast_bar()
@@ -565,7 +779,14 @@ func get_status_text() -> String:
 	var target := get_current_target()
 
 	if target != null:
-		return "Attacking " + target.name
+		var attack_status := "Attacking " + target.name
+
+		if basic_attack_raidwide_every_n_attacks > 0:
+			attack_status += " | " + basic_attack_raidwide_display_name + " "
+			attack_status += str(basic_attack_sequence_count) + "/"
+			attack_status += str(basic_attack_raidwide_every_n_attacks)
+
+		return attack_status
 
 	return "Idle"
 func get_current_health() -> int:
@@ -632,6 +853,25 @@ func play_region_impact_effect(region: String, ranges: Array[String]) -> void:
 		combat_radius,
 		impact_effect_max_range_units
 	)
+	register_encounter_object(effect)
+
+
+func play_region_telegraph(
+	region: String,
+	ranges: Array[String],
+	duration: float,
+	fill_color: Color = Color(0.75, 0.08, 0.04, 0.28),
+	edge_color: Color = Color(1.0, 0.25, 0.08, 0.95)
+) -> void:
+	var effect := CleaveImpactEffectScript.new()
+	effect.z_index = 80
+	effect.duration = maxf(duration, 0.05)
+	effect.particle_count = 0
+	effect.fill_color = fill_color
+	effect.edge_color = edge_color
+	add_child(effect)
+	effect.setup(region, ranges, combat_radius, impact_effect_max_range_units)
+	register_encounter_object(effect)
 
 
 func get_effective_attack_cooldown() -> float:
@@ -641,6 +881,13 @@ func get_effective_attack_cooldown() -> float:
 		multiplier = current_phase.attack_speed_multiplier
 
 	return attack_cooldown / maxf(multiplier, 0.01)
+
+
+func get_movement_stop_range_units() -> float:
+	if movement_stop_range_units < 0.0:
+		return attack_range_units
+
+	return minf(movement_stop_range_units, attack_range_units)
 
 
 func get_ability_speed_multiplier() -> float:
@@ -731,9 +978,66 @@ func update_current_phase(emit_change_event: bool = true) -> void:
 		{"display_name": current_phase.display_name}
 	)
 
+	if health > 0 and current_phase.transition_ability != null:
+		queue_phase_transition(current_phase.transition_ability)
+
+
+func queue_phase_transition(transition_definition: BossAbilityDefinition) -> void:
+	if transition_definition == null or is_dead:
+		return
+
+	if is_casting and current_ability != null:
+		current_ability.on_interrupted(self, party_members)
+		emit_combat_event("cast_cancelled", self, current_ability.ability_id, 0, {
+			"reason": "phase_transition"
+		})
+
+	is_casting = false
+	current_ability = null
+	current_ability_is_phase_transition = false
+	cast_timer = 0.0
+	current_cast_elapsed = 0.0
+	current_cast_speed_multiplier = 1.0
+	pending_phase_transition_definition = transition_definition
+	phase_transition_pending = true
+	special_timer = 0.0
+	velocity = Vector2.ZERO
+	reset_basic_attack_sequence(false)
+	update_cast_bar()
+	debug_log("Queued phase transition: " + transition_definition.display_name + ".")
+
 
 func get_current_phase_id() -> String:
 	return "" if current_phase == null else current_phase.phase_id
+
+
+func get_encounter_origin_position() -> Vector2:
+	return encounter_origin_position
+
+
+func move_to_encounter_origin() -> void:
+	global_position = encounter_origin_position
+	velocity = Vector2.ZERO
+
+
+func is_valid_living_party_member(party_member: Node) -> bool:
+	if party_member == null or not is_instance_valid(party_member):
+		return false
+
+	if party_member.has_method("is_alive"):
+		return bool(party_member.is_alive())
+
+	return true
+
+
+func get_unit_debug_name(unit: Node) -> String:
+	if unit == null or not is_instance_valid(unit):
+		return "Invalid target"
+
+	if unit.has_method("get_display_name"):
+		return String(unit.get_display_name())
+
+	return String(unit.name)
 
 
 func register_encounter_object(encounter_object: Node) -> void:
