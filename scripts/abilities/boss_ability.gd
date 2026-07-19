@@ -81,3 +81,46 @@ func get_cast_bar_max_time(elapsed_time: float, remaining_time: float) -> float:
 
 func get_cast_bar_value(elapsed_time: float, remaining_time: float) -> float:
 	return clampf(elapsed_time, 0.0, get_cast_bar_max_time(elapsed_time, remaining_time))
+
+
+func get_living_units(party_members: Array) -> Array:
+	var living_units: Array = []
+
+	for unit in party_members:
+		if is_valid_living_unit(unit):
+			living_units.append(unit)
+
+	return living_units
+
+
+func is_valid_living_unit(unit: Node) -> bool:
+	if unit == null or not is_instance_valid(unit):
+		return false
+
+	if unit.has_method("is_alive"):
+		return bool(unit.is_alive())
+
+	return true
+
+
+func get_scaled_damage(boss: Node, base_damage: int) -> int:
+	var multiplier := 1.0
+
+	if boss != null and is_instance_valid(boss) and boss.has_method("get_ability_damage_multiplier"):
+		multiplier = float(boss.get_ability_damage_multiplier())
+
+	return maxi(int(round(float(base_damage) * multiplier)), 0)
+
+
+func get_target_count_with_phase_bonus(boss: Node, base_target_count: int) -> int:
+	var bonus := 0
+
+	if boss != null and is_instance_valid(boss) and boss.has_method("get_ability_target_count_bonus"):
+		bonus = int(boss.get_ability_target_count_bonus())
+
+	return maxi(base_target_count + bonus, 0)
+
+
+func debug_log(boss: Node, message: String) -> void:
+	if boss != null and is_instance_valid(boss) and boss.has_method("debug_log"):
+		boss.debug_log(message)

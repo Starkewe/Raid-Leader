@@ -105,16 +105,11 @@ func on_cast_start(boss: Node, party_members: Array) -> void:
 	second_sweep_regions = get_relative_sweep_regions(selected_pull_region, 1)
 
 	if windup_text != "":
-		print(
-			ability_name,
-			"windup:",
-			windup_text,
-			"Pull region:",
-			selected_pull_region,
-			"First sweep:",
-			first_sweep_regions,
-			"Second sweep:",
-			second_sweep_regions
+		debug_log(
+			boss,
+			ability_name + " started. Pull region: " + selected_pull_region
+			+ "; first sweep: " + str(first_sweep_regions)
+			+ "; second sweep: " + str(second_sweep_regions) + "."
 		)
 
 	start_forced_pull(boss, party_members)
@@ -191,7 +186,7 @@ func on_interrupted(boss: Node, party_members: Array) -> void:
 			unit.cancel_forced_movement()
 
 	pull_start_positions.clear()
-	print(ability_name, "ended early.")
+	debug_log(boss, ability_name + " ended early and cleared forced movement.")
 
 
 func get_next_pull_region() -> String:
@@ -270,16 +265,11 @@ func start_forced_pull(boss: Node, party_members: Array) -> void:
 
 		pulled_count += 1
 
-	print(
-		ability_name,
-		"starts pulling",
-		pulled_count,
-		"unit(s) to",
-		selected_pull_region,
-		pull_range,
-		"over",
-		pull_duration,
-		"second(s)."
+	debug_log(
+		boss,
+		ability_name + " is pulling " + str(pulled_count) + " unit(s) to "
+		+ selected_pull_region + " " + pull_range + " over "
+		+ str(pull_duration) + " second(s)."
 	)
 
 
@@ -322,12 +312,7 @@ func finish_forced_pull() -> void:
 
 	pull_start_positions.clear()
 
-	print(
-		ability_name,
-		"pull complete.",
-		"First sweep cast begins from",
-		selected_pull_region
-	)
+	# The boss argument is unavailable here; the next phase transition logs the sweep path.
 
 
 func resolve_sweep(
@@ -345,15 +330,12 @@ func resolve_sweep(
 
 	play_sweep_impact_effects(boss, affected_regions, affected_ranges)
 
-	print(
-		ability_name,
-		"impact:",
-		sweep_label,
-		"regions:",
-		affected_regions,
-		"ranges:",
-		affected_ranges
+	debug_log(
+		boss,
+		ability_name + " " + sweep_label + " impacted regions "
+		+ str(affected_regions) + " at ranges " + str(affected_ranges) + "."
 	)
+	var resolved_damage := get_scaled_damage(boss, damage)
 
 	for unit in party_members:
 		if not is_valid_living_damageable_unit(unit):
@@ -380,16 +362,10 @@ func resolve_sweep(
 		if not affected_ranges.has(unit_range):
 			continue
 
-		unit.take_damage(damage, boss, ability_id, {"sweep": sweep_label})
+		unit.take_damage(resolved_damage, boss, ability_id, {"sweep": sweep_label})
 		hit_count += 1
 
-	print(
-		ability_name,
-		sweep_label,
-		"hit",
-		hit_count,
-		"unit(s)."
-	)
+	debug_log(boss, ability_name + " " + sweep_label + " hit " + str(hit_count) + " unit(s).")
 
 
 func play_sweep_impact_effects(
@@ -428,18 +404,10 @@ func set_current_phase(next_phase: String) -> void:
 
 	match current_phase:
 		PHASE_FIRST_SWEEP:
-			print(
-				ability_name,
-				"telegraph: first sweep travels counterclockwise through",
-				first_sweep_regions
-			)
+			pass
 
 		PHASE_SECOND_SWEEP:
-			print(
-				ability_name,
-				"telegraph: second sweep travels clockwise through",
-				second_sweep_regions
-			)
+			pass
 
 
 func get_status_text() -> String:

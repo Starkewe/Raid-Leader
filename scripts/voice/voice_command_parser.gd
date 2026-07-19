@@ -17,6 +17,7 @@ const ACTION_ALIASES := {
 	CommandSchemaScript.ACTION_TAUNT: ["taunt", "provoke"],
 	CommandSchemaScript.ACTION_ATTACK: ["attack", "damage", "burn", "focus", "engage"],
 	CommandSchemaScript.ACTION_HEAL: ["heal", "healing"],
+	CommandSchemaScript.ACTION_CURE: ["cure", "dispel", "cleanse"],
 	CommandSchemaScript.ACTION_MOVE: ["move", "moves", "moving", "go", "come", "rotate", "turn", "spread", "stack"]
 }
 
@@ -118,6 +119,9 @@ func _parse_action(text: String) -> Dictionary:
 
 		CommandSchemaScript.ACTION_HEAL:
 			return _action(action, CommandSchemaScript.DESTINATION_BOSS_TARGET, {}, matched_alias)
+
+		CommandSchemaScript.ACTION_CURE:
+			return _action(action, CommandSchemaScript.DESTINATION_CURABLE_ALLIES, {}, matched_alias)
 
 		CommandSchemaScript.ACTION_MOVE:
 			return _parse_movement_action(text, matched_alias)
@@ -282,6 +286,9 @@ func _default_selectors_for_action(action: String) -> Array:
 
 	if action == CommandSchemaScript.ACTION_TAUNT:
 		return [{"type": CommandSchemaScript.SELECTOR_ROLE, "value": "tank"}]
+
+	if action == CommandSchemaScript.ACTION_CURE:
+		return [{"type": CommandSchemaScript.SELECTOR_ROLE, "value": "healer"}]
 
 	return []
 
