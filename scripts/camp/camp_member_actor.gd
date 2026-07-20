@@ -46,10 +46,9 @@ func configure(member_data: Dictionary, spawn_position: Vector2, start_delay: fl
 
 	if label != null:
 		label.text = (
-			"%s · %s · %s"
+			"%s · %s"
 			% [
-				String(member.get("display_name", "Unknown")),
-				String(member.get("unit_class", "")),
+				CampaignState.format_member_label(member),
 				"Active" if bool(member.get("active", false)) else "Reserve"
 			]
 		)

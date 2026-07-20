@@ -89,7 +89,6 @@ func _draw_paths() -> void:
 	draw_rect(Rect2(760, 720, 170, 480), mud)
 	draw_rect(Rect2(2050, 680, 160, 470), mud)
 	draw_rect(Rect2(610, 1160, 120, 520), mud)
-	draw_rect(Rect2(2290, 1160, 120, 480), mud)
 
 
 func _draw_perimeter() -> void:

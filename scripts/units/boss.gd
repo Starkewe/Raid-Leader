@@ -245,7 +245,7 @@ func set_target(new_target: Node2D):
 		return
 
 	if target_controller != null and target_controller.set_target(new_target):
-		print("Boss target set to:", new_target.name)
+		print("Boss target set to:", get_unit_debug_name(new_target))
 
 func clear_target():
 	if target_controller != null:
@@ -779,7 +779,7 @@ func get_status_text() -> String:
 	var target := get_current_target()
 
 	if target != null:
-		var attack_status := "Attacking " + target.name
+		var attack_status := "Attacking " + get_unit_debug_name(target)
 
 		if basic_attack_raidwide_every_n_attacks > 0:
 			attack_status += " | " + basic_attack_raidwide_display_name + " "

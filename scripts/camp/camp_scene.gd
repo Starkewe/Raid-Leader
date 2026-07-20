@@ -42,12 +42,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		and not journal.is_open()
 	):
 		journal.open_facility(nearest_facility.facility_id)
-		get_viewport().set_input_as_handled()
+		_mark_input_handled()
 		return
 
 	if event.is_action_pressed("ui_cancel") and not journal.is_open():
+		_mark_input_handled()
 		SceneFlow.go_to_main_menu()
-		get_viewport().set_input_as_handled()
+
+
+func _mark_input_handled() -> void:
+	var viewport := get_viewport()
+
+	if viewport != null:
+		viewport.set_input_as_handled()
 
 
 func get_facility(facility_id: String) -> CampFacility:

@@ -44,9 +44,12 @@ static func validate(
 		if not roster_by_id.has(member_id):
 			errors.append("Active member %s is missing from the campaign roster." % member_id)
 
-	var formations: Dictionary = plan.get("formations", {})
-	var encounter_formation: Dictionary = formations.get(encounter_id, {})
-	var placements: Dictionary = encounter_formation.get("placements", {})
+	var formation_value: Variant = plan.get("formation", {})
+	var formation: Dictionary = Dictionary(formation_value) if formation_value is Dictionary else {}
+	var placements_value: Variant = formation.get("placements", {})
+	var placements: Dictionary = (
+		Dictionary(placements_value) if placements_value is Dictionary else {}
+	)
 
 	for member_id_value in active_ids:
 		var member_id := String(member_id_value)
@@ -83,4 +86,7 @@ static func _member_name(roster_by_id: Dictionary, member_id: String) -> String:
 	if not roster_by_id.has(member_id):
 		return member_id
 
-	return String(roster_by_id[member_id].get("display_name", member_id))
+	var member: Dictionary = roster_by_id[member_id]
+	var member_name := String(member.get("display_name", member_id))
+	var unit_class := String(member.get("unit_class", ""))
+	return member_name if unit_class.is_empty() else "%s (%s)" % [member_name, unit_class]

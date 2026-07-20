@@ -274,10 +274,9 @@ func _refresh_formation_members() -> void:
 	for member in CampaignState.get_active_members():
 		formation_member_list.add_item(
 			(
-				"%-12s  %-8s  %s"
+				"%-24s  %s"
 				% [
-					String(member.get("display_name", "Unknown")),
-					String(member.get("unit_class", "")),
+					CampaignState.format_member_label(member),
 					_humanize(String(member.get("role", "")))
 				]
 			)

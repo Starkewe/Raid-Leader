@@ -1,6 +1,9 @@
 extends Control
 class_name CampJournal
 
+const FormationMapScript := preload("res://scripts/ui/formation_map.gd")
+const FormationMemberCardScript := preload("res://scripts/ui/formation_member_card.gd")
+
 signal journal_visibility_changed(visible_now: bool)
 signal embark_requested
 
@@ -10,9 +13,6 @@ var body: VBoxContainer = null
 var active_list: ItemList = null
 var reserve_list: ItemList = null
 var member_detail_label: Label = null
-var selected_formation_member_id: String = ""
-var selected_formation_region: String = "south"
-var formation_range_dropdown: OptionButton = null
 var refresh_queued: bool = false
 var archive_view_encounter_id: String = ""
 
@@ -260,7 +260,7 @@ func _build_command_tent() -> void:
 	attempt_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	intelligence_row.add_child(attempt_panel)
 
-	var formation := CampaignState.get_formation(selected_encounter)
+	var formation := CampaignState.get_formation()
 	var placed_count := 0
 	var placements: Dictionary = formation.get("placements", {})
 
@@ -270,7 +270,7 @@ func _build_command_tent() -> void:
 
 	var plan_summary := Label.new()
 	plan_summary.text = (
-		"RAID PLAN · Beast Crucible · Formation: %s · %d/20 placed · Supports: none unlocked"
+		"RAID PLAN · Beast Crucible · Global formation: %s · %d/20 placed · Supports: none unlocked"
 		% [String(formation.get("preset_name", "Custom")), placed_count]
 	)
 	plan_summary.add_theme_color_override("font_color", Color("c9b37b"))
@@ -307,110 +307,129 @@ func _build_command_tent() -> void:
 
 
 func _build_formation_yard() -> void:
-	header_title.text = "Formation Yard — Starting Placement"
+	header_title.text = "Formation Yard — Raid Formation"
 	_add_muted_label(
-		"This formation is saved for the selected boss. The ground markers outside echo the current arrangement."
+		(
+			"Formations apply to every target. Drag a roster row onto any mini-region to place it; "
+			+ "drop one roster row onto another to choose the active order."
+		)
 	)
 
-	var encounter_id := CampaignState.get_selected_encounter_id()
-	var definition := GameState.get_encounter_definition(encounter_id)
-	_add_section_label(
-		"Target: %s" % (encounter_id if definition == null else definition.display_name)
+	var formation := CampaignState.get_formation()
+	var current_name := String(formation.get("preset_name", "Custom"))
+	var preset_row := HBoxContainer.new()
+	preset_row.add_theme_constant_override("separation", 10)
+	body.add_child(preset_row)
+	_add_section_label_to(preset_row, "Saved formations")
+
+	var current_label := Label.new()
+	current_label.text = "Current: %s" % current_name
+	current_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	current_label.add_theme_color_override("font_color", Color("d7c38f"))
+	preset_row.add_child(current_label)
+
+	var preset_dropdown := OptionButton.new()
+	preset_dropdown.custom_minimum_size = Vector2(230, 42)
+	preset_dropdown.add_item(CampaignState.DEFAULT_FORMATION_NAME)
+	preset_dropdown.set_item_metadata(0, CampaignState.DEFAULT_FORMATION_NAME)
+
+	for formation_name in CampaignState.get_saved_formation_names():
+		var option_index := preset_dropdown.item_count
+		preset_dropdown.add_item(formation_name)
+		preset_dropdown.set_item_metadata(option_index, formation_name)
+
+		if formation_name == current_name:
+			preset_dropdown.select(option_index)
+
+	var load_button := Button.new()
+	load_button.text = "Load"
+	load_button.custom_minimum_size = Vector2(90, 42)
+	load_button.pressed.connect(_on_load_formation_pressed.bind(preset_dropdown))
+	preset_row.add_child(preset_dropdown)
+	preset_row.add_child(load_button)
+
+	var delete_button := Button.new()
+	delete_button.text = "Delete save"
+	delete_button.custom_minimum_size = Vector2(120, 42)
+	delete_button.disabled = (
+		String(preset_dropdown.get_item_metadata(preset_dropdown.selected))
+		== CampaignState.DEFAULT_FORMATION_NAME
 	)
+	delete_button.pressed.connect(_on_delete_formation_pressed.bind(preset_dropdown))
+	preset_dropdown.item_selected.connect(
+		_on_saved_formation_selected.bind(preset_dropdown, delete_button)
+	)
+	preset_row.add_child(delete_button)
+
+	var name_input := LineEdit.new()
+	name_input.placeholder_text = "New formation name"
+	name_input.custom_minimum_size = Vector2(235, 42)
+	name_input.tooltip_text = "Saving an existing name overwrites that saved formation."
+	preset_row.add_child(name_input)
+
+	var save_button := Button.new()
+	save_button.text = "Save current"
+	save_button.custom_minimum_size = Vector2(130, 42)
+	save_button.pressed.connect(_on_save_formation_pressed.bind(name_input))
+	preset_row.add_child(save_button)
 
 	var editor_row := HBoxContainer.new()
-	editor_row.add_theme_constant_override("separation", 18)
+	editor_row.add_theme_constant_override("separation", 22)
 	body.add_child(editor_row)
 
 	var member_column := VBoxContainer.new()
-	member_column.custom_minimum_size = Vector2(410, 550)
+	member_column.custom_minimum_size = Vector2(540, 610)
 	editor_row.add_child(member_column)
 	var member_heading := Label.new()
-	member_heading.text = "Active roster"
+	member_heading.text = "Active roster and placements · drag to sort"
 	member_column.add_child(member_heading)
 
-	var formation_member_list := ItemList.new()
-	formation_member_list.custom_minimum_size = Vector2(400, 500)
-	member_column.add_child(formation_member_list)
-	_fill_member_list(formation_member_list, CampaignState.get_active_members(), true)
-	formation_member_list.item_selected.connect(
-		_on_formation_member_selected.bind(formation_member_list)
-	)
+	var roster_scroll := ScrollContainer.new()
+	roster_scroll.custom_minimum_size = Vector2(530, 570)
+	roster_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	member_column.add_child(roster_scroll)
+	var roster_cards := VBoxContainer.new()
+	roster_cards.custom_minimum_size = Vector2(500, 0)
+	roster_cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	roster_cards.add_theme_constant_override("separation", 4)
+	roster_scroll.add_child(roster_cards)
+	var placements: Dictionary = formation.get("placements", {})
+	var active_members := CampaignState.get_active_members()
+
+	for member_index in range(active_members.size()):
+		var member: Dictionary = active_members[member_index]
+		var member_id := String(member.get("member_id", ""))
+		var placement: Dictionary = placements.get(member_id, {})
+		var card := FormationMemberCardScript.new() as FormationMemberCard
+		card.configure(
+			member_id,
+			(
+				"%02d  %-24s  %s / %s"
+				% [
+					member_index + 1,
+					CampaignState.format_member_label(member),
+					_humanize(String(placement.get("region", "unassigned"))),
+					_humanize(String(placement.get("range", "unassigned")))
+				]
+			)
+		)
+		card.member_reorder_requested.connect(_on_formation_member_reorder_requested)
+		roster_cards.add_child(card)
 
 	var map_column := VBoxContainer.new()
-	map_column.custom_minimum_size = Vector2(470, 550)
+	map_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	map_column.custom_minimum_size = Vector2(780, 610)
 	editor_row.add_child(map_column)
 	var map_heading := Label.new()
-	map_heading.text = "Starting region"
+	map_heading.text = "All 24 mini-regions · C close · M mid · F far"
 	map_column.add_child(map_heading)
 
-	var region_grid := GridContainer.new()
-	region_grid.columns = 3
-	region_grid.add_theme_constant_override("h_separation", 8)
-	region_grid.add_theme_constant_override("v_separation", 8)
-	map_column.add_child(region_grid)
-	var region_grid_values := [
-		"northwest", "north", "northeast", "west", "boss", "east", "southwest", "south", "southeast"
-	]
-
-	for region in region_grid_values:
-		if region == "boss":
-			var boss_label := Label.new()
-			boss_label.text = "BOSS"
-			boss_label.custom_minimum_size = Vector2(140, 72)
-			boss_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			boss_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			boss_label.add_theme_color_override("font_color", Color("bc6d63"))
-			region_grid.add_child(boss_label)
-			continue
-
-		var region_button := Button.new()
-		region_button.text = _humanize(String(region))
-		region_button.custom_minimum_size = Vector2(140, 72)
-		region_button.pressed.connect(_on_formation_region_selected.bind(String(region)))
-		region_grid.add_child(region_button)
-
-	var range_row := HBoxContainer.new()
-	range_row.add_theme_constant_override("separation", 12)
-	map_column.add_child(range_row)
-	var range_label := Label.new()
-	range_label.text = "Range ring"
-	range_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	range_row.add_child(range_label)
-
-	formation_range_dropdown = OptionButton.new()
-	for range_name in ["close", "mid", "far"]:
-		formation_range_dropdown.add_item(_humanize(range_name))
-		formation_range_dropdown.set_item_metadata(
-			formation_range_dropdown.item_count - 1, range_name
-		)
-	range_row.add_child(formation_range_dropdown)
-
-	if formation_member_list.item_count > 0:
-		formation_member_list.select(0)
-		_on_formation_member_selected(0, formation_member_list)
-
-	var assign_button := Button.new()
-	assign_button.text = "Assign selected member"
-	assign_button.custom_minimum_size = Vector2(0, 48)
-	assign_button.pressed.connect(_on_assign_formation_member)
-	map_column.add_child(assign_button)
-
-	var default_button := Button.new()
-	default_button.text = "Restore Balanced Writ formation"
-	default_button.pressed.connect(_on_restore_default_formation)
-	map_column.add_child(default_button)
-
-	var placement_column := VBoxContainer.new()
-	placement_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	editor_row.add_child(placement_column)
-	var placement_heading := Label.new()
-	placement_heading.text = "Saved placements"
-	placement_column.add_child(placement_heading)
-	var placement_list := ItemList.new()
-	placement_list.custom_minimum_size = Vector2(460, 500)
-	placement_column.add_child(placement_list)
-	_fill_placement_list(placement_list, encounter_id)
+	var formation_map := FormationMapScript.new() as FormationMap
+	formation_map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	formation_map.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	formation_map.configure(active_members, formation)
+	formation_map.member_dropped.connect(_on_formation_member_dropped)
+	map_column.add_child(formation_map)
 
 	var validation := CampaignState.validate_raid_plan()
 	var validation_label := Label.new()
@@ -462,11 +481,10 @@ func _fill_member_list(list: ItemList, members: Array[Dictionary], active: bool)
 		var marker := "●" if active else "○"
 		list.add_item(
 			(
-				"%s  %-12s  %-8s  %s"
+				"%s  %-24s  %s"
 				% [
 					marker,
-					String(member.get("display_name", "Unknown")),
-					String(member.get("unit_class", "")),
+					CampaignState.format_member_label(member),
 					_humanize(String(member.get("role", "")))
 				]
 			)
@@ -476,26 +494,6 @@ func _fill_member_list(list: ItemList, members: Array[Dictionary], active: bool)
 	if members.is_empty():
 		list.add_item("No reserve members yet.")
 		list.set_item_disabled(0, true)
-
-
-func _fill_placement_list(list: ItemList, encounter_id: String) -> void:
-	var formation := CampaignState.get_formation(encounter_id)
-	var placements: Dictionary = formation.get("placements", {})
-
-	for member in CampaignState.get_active_members():
-		var member_id := String(member.get("member_id", ""))
-		var placement: Dictionary = placements.get(member_id, {})
-		list.add_item(
-			(
-				"%-12s  %-8s  %s / %s"
-				% [
-					String(member.get("display_name", member_id)),
-					String(member.get("unit_class", "")),
-					_humanize(String(placement.get("region", "unassigned"))),
-					_humanize(String(placement.get("range", "unassigned")))
-				]
-			)
-		)
 
 
 func _on_command_target_selected(index: int, dropdown: OptionButton) -> void:
@@ -513,10 +511,9 @@ func _on_member_list_selected(index: int, source_list: ItemList) -> void:
 		return
 
 	member_detail_label.text = (
-		"%s · %s · %s\nAttributes: %s\n%s"
+		"%s · %s\nAttributes: %s\n%s"
 		% [
-			String(member.get("display_name", "Unknown")),
-			String(member.get("unit_class", "")),
+			CampaignState.format_member_label(member),
 			_humanize(String(member.get("role", ""))),
 			", ".join(member.get("attributes", [])),
 			String(member.get("description", ""))
@@ -547,40 +544,41 @@ func _on_embark_pressed() -> void:
 	embark_requested.emit()
 
 
-func _on_formation_member_selected(index: int, source_list: ItemList) -> void:
-	selected_formation_member_id = String(source_list.get_item_metadata(index))
-	var formation := CampaignState.get_formation()
-	var placement: Dictionary = formation.get("placements", {}).get(
-		selected_formation_member_id, {}
-	)
-	selected_formation_region = String(placement.get("region", "south"))
-	var range_name := String(placement.get("range", "mid"))
-
-	if formation_range_dropdown != null:
-		for item_index in range(formation_range_dropdown.item_count):
-			if String(formation_range_dropdown.get_item_metadata(item_index)) == range_name:
-				formation_range_dropdown.select(item_index)
-				break
+func _on_formation_member_dropped(member_id: String, region: String, range_name: String) -> void:
+	CampaignState.set_member_placement(member_id, region, range_name)
 
 
-func _on_formation_region_selected(region: String) -> void:
-	selected_formation_region = region
+func _on_formation_member_reorder_requested(
+	moving_member_id: String, target_member_id: String, place_after_target: bool
+) -> void:
+	CampaignState.reorder_active_member(moving_member_id, target_member_id, place_after_target)
 
 
-func _on_assign_formation_member() -> void:
-	if selected_formation_member_id.is_empty() or formation_range_dropdown == null:
+func _on_load_formation_pressed(dropdown: OptionButton) -> void:
+	if dropdown.selected < 0:
 		return
 
-	var range_name := String(
-		formation_range_dropdown.get_item_metadata(formation_range_dropdown.selected)
-	)
-	CampaignState.set_member_placement(
-		selected_formation_member_id, selected_formation_region, range_name
-	)
+	CampaignState.load_formation(String(dropdown.get_item_metadata(dropdown.selected)))
 
 
-func _on_restore_default_formation() -> void:
-	CampaignState.apply_default_formation()
+func _on_delete_formation_pressed(dropdown: OptionButton) -> void:
+	if dropdown.selected < 0:
+		return
+
+	CampaignState.delete_saved_formation(String(dropdown.get_item_metadata(dropdown.selected)))
+
+
+func _on_save_formation_pressed(name_input: LineEdit) -> void:
+	if CampaignState.save_current_formation(name_input.text):
+		name_input.clear()
+
+
+func _on_saved_formation_selected(
+	index: int, dropdown: OptionButton, delete_button: Button
+) -> void:
+	delete_button.disabled = (
+		String(dropdown.get_item_metadata(index)) == CampaignState.DEFAULT_FORMATION_NAME
+	)
 
 
 func _on_archive_target_selected(encounter_id: String) -> void:
@@ -744,7 +742,7 @@ func _archive_history_text(encounter_id: String) -> String:
 
 func _validation_text(validation: Dictionary) -> String:
 	if bool(validation.get("valid", false)):
-		return "READY · Target, active twenty, and all starting placements are valid. No support choices are currently unlocked."
+		return "READY · Target, active twenty, and the global starting formation are valid. No support choices are currently unlocked."
 
 	return "NOT READY · " + "  ".join(validation.get("errors", []))
 
