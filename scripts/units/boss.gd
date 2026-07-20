@@ -1011,6 +1011,10 @@ func get_current_phase_id() -> String:
 	return "" if current_phase == null else current_phase.phase_id
 
 
+func get_current_phase_name() -> String:
+	return "" if current_phase == null else current_phase.display_name
+
+
 func get_encounter_origin_position() -> Vector2:
 	return encounter_origin_position
 

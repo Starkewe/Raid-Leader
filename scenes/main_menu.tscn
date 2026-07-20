@@ -29,12 +29,11 @@ text = "Raid Leader
 
 [node name="StartFightButton" type="Button" parent="CenterContainer/VBoxContainer" unique_id=817950661]
 layout_mode = 2
-text = "Start Fight
-"
+text = "Enter Camp"
 
 [node name="ManageTeamButton" type="Button" parent="CenterContainer/VBoxContainer" unique_id=2004324727]
 layout_mode = 2
-text = "Manage Team"
+text = "Tutorial Test Roster"
 
 [node name="QuitButton" type="Button" parent="CenterContainer/VBoxContainer" unique_id=1909463640]
 layout_mode = 2
@@ -66,8 +65,7 @@ layout_mode = 2
 
 [node name="StartFightFromTeamButton" type="Button" parent="TeamPanel/CenterContainer/VBoxContainer" unique_id=992481956]
 layout_mode = 2
-text = "Start Fight
-"
+text = "Done"
 
 [node name="BackButton" type="Button" parent="TeamPanel/CenterContainer/VBoxContainer" unique_id=1655549643]
 layout_mode = 2

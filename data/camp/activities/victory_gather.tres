@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CampActivityDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/camp_activity_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+activity_id = "victory_gather"
+display_name = "Inspecting the latest trophy"
+facility_id = "victory_spike"
+base_weight = 2.2
+active_multiplier = 1.3
+reserve_multiplier = 1.1
+minimum_duration = 6.0
+maximum_duration = 11.0
+cooldown = 15.0
+favored_classes = Array[String]([])
+favored_attributes = Array[String](["bold", "curious", "sociable"])
+eligible_visit_contexts = Array[String](["first_victory", "repeat_victory", "apex_victory"])
+feedback_lines = Array[String](["The reward is already secured.", "Only the latest victory stands here.", "The archive keeps the older names."])

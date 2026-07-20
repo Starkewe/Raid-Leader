@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CampActivityDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/camp_activity_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+activity_id = "study_target"
+display_name = "Studying the latest records"
+facility_id = "archive"
+base_weight = 1.4
+active_multiplier = 2.0
+reserve_multiplier = 0.8
+minimum_duration = 8.0
+maximum_duration = 14.0
+cooldown = 14.0
+favored_classes = Array[String](["Mage", "Priest"])
+favored_attributes = Array[String](["curious", "observant", "scholarly", "precise"])
+feedback_lines = Array[String](["That timing happened twice.", "Mark the phase change.", "Only write down what we saw."])

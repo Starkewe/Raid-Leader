@@ -23,6 +23,8 @@ var unit_roles: Array[String] = []
 var unit_class: String = ""
 var unit_number: int = 0
 var display_name: String = ""
+var member_id: String = ""
+var member_description: String = ""
 
 var has_manual_move_order: bool = false
 var manual_move_destination: Vector2 = Vector2.ZERO
@@ -350,6 +352,23 @@ func setup_unit_identity(new_unit_class: String, new_unit_number: int):
 	unit_class = new_unit_class
 	unit_number = new_unit_number
 	display_name = new_unit_class + " " + str(new_unit_number)
+	member_id = ""
+	member_description = ""
+
+
+func setup_campaign_identity(member_data: Dictionary, class_ordinal: int) -> void:
+	setup_unit_identity(String(member_data.get("unit_class", "")), class_ordinal)
+	member_id = String(member_data.get("member_id", ""))
+	display_name = String(member_data.get("display_name", display_name))
+	member_description = String(member_data.get("description", ""))
+
+
+func get_member_id() -> String:
+	return member_id
+
+
+func get_class_ordinal() -> int:
+	return unit_number
 
 
 func has_role(role_name: String) -> bool:

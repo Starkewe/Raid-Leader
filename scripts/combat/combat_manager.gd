@@ -5,15 +5,17 @@ const CombatStatusPresenterScript := preload("res://scripts/combat/combat_status
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 const CommandDebugFormatterScript := preload("res://scripts/ui/command_debug_formatter.gd")
 const VoiceCommandCoordinatorScript := preload("res://scripts/voice/voice_command_coordinator.gd")
+const AttemptRecorderScript := preload("res://scripts/combat/attempt_recorder.gd")
 
 @onready var raid_spawner: RaidSpawner = get_node_or_null("../RaidSpawner")
 @onready var boss = get_node_or_null("../Boss")
 @onready var ui = get_node_or_null("../UI")
 @onready var player = get_node_or_null("../Player")
+@onready var fail_screen: FailScreen = get_node_or_null("../UI/FailScreen")
 
 @export var voice_transcriber_path: NodePath
 @export var voice_command_parser_path: NodePath
-@export var max_combat_log_entries: int = 2000
+@export var max_combat_log_entries: int = 10000
 
 var voice_coordinator: VoiceCommandCoordinator = null
 
@@ -30,6 +32,9 @@ var status_presenter = null
 var spawn_positions: Dictionary = {}
 var combat_log: Array[Dictionary] = []
 var combat_started_at_msec: int = 0
+var attempt_recorder: AttemptRecorder = null
+var last_attempt_summary: Dictionary = {}
+var formation_changed_after_failure: bool = false
 
 func _ready():
 	print("CombatManager loaded")
@@ -51,6 +56,17 @@ func submit_command_data(
 	source: String = "unknown",
 	debug_context: Dictionary = {}
 ) -> bool:
+	if encounter_state in ["wipe", "victory"]:
+		update_command_debug(
+			build_command_debug_data(
+				source,
+				command_data,
+				debug_context,
+				"Rejected - the attempt has ended. Retry or return before issuing commands."
+			)
+		)
+		return false
+
 	if command_controller == null:
 		var missing_controller_result := "Rejected - command controller is missing."
 
@@ -145,6 +161,7 @@ func connect_command_controller_signals() -> void:
 func initialize_combat():
 	build_party_member_list()
 	store_spawn_positions()
+	setup_attempt_recorder()
 
 	if boss != null and is_instance_valid(boss):
 		if boss.has_method("set_party_members"):
@@ -176,7 +193,10 @@ func initialize_combat():
 
 func _process(delta):
 	if Input.is_action_just_pressed("reset_encounter"):
-		reset_encounter()
+		_on_retry_requested()
+		return
+
+	if fail_screen != null and fail_screen.visible:
 		return
 
 	update_temporary_statuses(delta)
@@ -274,6 +294,9 @@ func _on_structured_combat_event(event: Dictionary) -> void:
 		float(timestamp_msec - combat_started_at_msec) / 1000.0
 	)
 	combat_log.append(recorded_event)
+
+	if attempt_recorder != null:
+		attempt_recorder.record_event(recorded_event)
 
 	if max_combat_log_entries > 0 and combat_log.size() > max_combat_log_entries:
 		combat_log.pop_front()
@@ -412,6 +435,7 @@ func handle_boss_defeated():
 		command_controller.reset_commands()
 		command_controller.stop_all_party_actions()
 
+	finalize_attempt("victory")
 	refresh_all_statuses()
 
 func handle_party_wipe():
@@ -428,6 +452,7 @@ func handle_party_wipe():
 		command_controller.reset_commands()
 		command_controller.clear_boss_target()
 
+	finalize_attempt("wipe")
 	refresh_all_statuses()
 
 func reset_encounter():
@@ -459,6 +484,13 @@ func reset_encounter():
 			boss.reset_boss(spawn_positions[boss])
 
 	clear_combat_log()
+	setup_attempt_recorder()
+	last_attempt_summary.clear()
+	formation_changed_after_failure = false
+
+	if fail_screen != null:
+		fail_screen.hide_result()
+
 	initialize_ui()
 	if ui != null and is_instance_valid(ui):
 		if ui.has_method("clear_command_debug_info"):
@@ -484,6 +516,16 @@ func connect_ui_signals():
 
 		if not ui.is_connected("command_panel_submitted", command_panel_callback):
 			ui.connect("command_panel_submitted", command_panel_callback)
+
+	if fail_screen != null:
+		if not fail_screen.retry_requested.is_connected(_on_retry_requested):
+			fail_screen.retry_requested.connect(_on_retry_requested)
+
+		if not fail_screen.return_requested.is_connected(_on_return_requested):
+			fail_screen.return_requested.connect(_on_return_requested)
+
+		if not fail_screen.formation_changed.is_connected(_on_failure_formation_changed):
+			fail_screen.formation_changed.connect(_on_failure_formation_changed)
 func _on_raid_frame_hovered(unit: Node) -> void:
 	if command_controller == null:
 		return
@@ -577,3 +619,61 @@ func setup_voice_commands() -> void:
 func set_voice_status(text: String, is_error: bool = false) -> void:
 	if ui != null and is_instance_valid(ui) and ui.has_method("set_voice_status"):
 		ui.set_voice_status(text, is_error)
+
+
+func setup_attempt_recorder() -> void:
+	attempt_recorder = AttemptRecorderScript.new()
+	attempt_recorder.setup(GameState.get_selected_tutorial_boss_id())
+
+
+func finalize_attempt(outcome: String) -> void:
+	if attempt_recorder == null:
+		return
+
+	var boss_health := 0
+	var boss_max_health := 0
+	var phase_id := ""
+	var phase_name := ""
+
+	if boss != null and is_instance_valid(boss):
+		if boss.has_method("get_current_health"):
+			boss_health = int(boss.get_current_health())
+
+		if boss.has_method("get_max_health"):
+			boss_max_health = int(boss.get_max_health())
+
+		if boss.has_method("get_current_phase_id"):
+			phase_id = String(boss.get_current_phase_id())
+
+		if boss.has_method("get_current_phase_name"):
+			phase_name = String(boss.get_current_phase_name())
+
+	last_attempt_summary = attempt_recorder.finalize(
+		outcome,
+		boss_health,
+		boss_max_health,
+		phase_id,
+		phase_name
+	)
+
+	if SceneFlow.is_campaign_combat():
+		CampaignState.record_attempt(last_attempt_summary)
+
+	if fail_screen != null:
+		fail_screen.show_result(last_attempt_summary, outcome, SceneFlow.is_campaign_combat())
+
+
+func _on_retry_requested() -> void:
+	if formation_changed_after_failure and SceneFlow.is_campaign_combat():
+		SceneFlow.retry_campaign_combat()
+		return
+
+	reset_encounter()
+
+
+func _on_return_requested(outcome: String) -> void:
+	SceneFlow.return_from_combat(outcome)
+
+
+func _on_failure_formation_changed() -> void:
+	formation_changed_after_failure = true

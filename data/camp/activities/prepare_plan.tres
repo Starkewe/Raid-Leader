@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CampActivityDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/camp_activity_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+activity_id = "prepare_plan"
+display_name = "Preparing at the command tent"
+facility_id = "command_tent"
+base_weight = 1.55
+active_multiplier = 2.0
+reserve_multiplier = 0.55
+minimum_duration = 7.0
+maximum_duration = 12.0
+cooldown = 12.0
+favored_classes = Array[String](["Warrior", "Mage"])
+favored_attributes = Array[String](["steady", "observant", "practical", "vigilant"])
+feedback_lines = Array[String](["The target is set.", "Twenty names, twenty markers.", "Nothing changes unless we change it."])

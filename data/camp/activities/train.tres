@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CampActivityDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/camp_activity_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+activity_id = "train"
+display_name = "Training"
+facility_id = "training"
+base_weight = 1.8
+active_multiplier = 1.5
+reserve_multiplier = 1.15
+minimum_duration = 6.0
+maximum_duration = 11.0
+cooldown = 9.0
+favored_classes = Array[String](["Warrior", "Rogue", "Mage"])
+favored_attributes = Array[String](["bold", "competitive", "restless"])
+feedback_lines = Array[String](["One more pass.", "Watch your footing.", "Clean work."])

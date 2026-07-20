@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CampActivityDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/camp_activity_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+activity_id = "rest"
+display_name = "Using the quarters"
+facility_id = "quarters"
+base_weight = 1.1
+active_multiplier = 0.55
+reserve_multiplier = 2.0
+minimum_duration = 8.0
+maximum_duration = 15.0
+cooldown = 10.0
+favored_classes = Array[String]([])
+favored_attributes = Array[String](["quiet", "reserved", "patient"])
+feedback_lines = Array[String](["Wake me if the plan changes.", "A dry blanket is enough.", "Quiet for a moment."])
