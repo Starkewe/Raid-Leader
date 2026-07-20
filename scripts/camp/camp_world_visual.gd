@@ -161,7 +161,7 @@ func _draw_formation_markers() -> void:
 		var region := String(placement.get("region", "south"))
 		var range_name := String(placement.get("range", "mid"))
 		var direction := _region_direction(region)
-		var radius := {"close": 42.0, "mid": 82.0, "far": 122.0}.get(range_name, 82.0)
+		var radius: float = float({"close": 42.0, "mid": 82.0, "far": 122.0}.get(range_name, 82.0))
 		var tangent := Vector2(-direction.y, direction.x)
 		var jitter := float((index % 3) - 1) * 12.0
 		var marker_position := center + direction * radius + tangent * jitter

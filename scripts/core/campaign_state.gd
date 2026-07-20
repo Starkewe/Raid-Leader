@@ -378,17 +378,19 @@ func get_victory_count(encounter_id: String) -> int:
 
 
 func begin_visit(context_type: String = "normal", details: Dictionary = {}) -> void:
-	var base_budget := (
-		{
-			"normal": 2,
-			"wipe": 9,
-			"first_victory": 16,
-			"repeat_victory": 8,
-			"recruitment": 14,
-			"apex_victory": 22,
-			"roster_change": 4
-		}
-		. get(context_type, 2)
+	var base_budget: int = int(
+		(
+			{
+				"normal": 2,
+				"wipe": 9,
+				"first_victory": 16,
+				"repeat_victory": 8,
+				"recruitment": 14,
+				"apex_victory": 22,
+				"roster_change": 4
+			}
+			. get(context_type, 2)
+		)
 	)
 
 	campaign["visit_context"] = {

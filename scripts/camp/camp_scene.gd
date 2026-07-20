@@ -129,17 +129,19 @@ func _on_embark_requested() -> void:
 func _update_visit_label() -> void:
 	var context := CampaignState.get_visit_context()
 	var context_type := String(context.get("type", "normal"))
-	var headline := (
-		{
-			"normal": "The Writ makes ready.",
-			"wipe": "The raid has returned from a failed attempt.",
-			"first_victory": "A first victory has come home.",
-			"repeat_victory": "The raid has defeated familiar prey again.",
-			"recruitment": "New recruits are settling into camp.",
-			"roster_change": "A changed active roster moves through camp.",
-			"apex_victory": "An apex victory has opened new roads."
-		}
-		. get(context_type, "The Writ makes ready.")
+	var headline: String = String(
+		(
+			{
+				"normal": "The Writ makes ready.",
+				"wipe": "The raid has returned from a failed attempt.",
+				"first_victory": "A first victory has come home.",
+				"repeat_victory": "The raid has defeated familiar prey again.",
+				"recruitment": "New recruits are settling into camp.",
+				"roster_change": "A changed active roster moves through camp.",
+				"apex_victory": "An apex victory has opened new roads."
+			}
+			. get(context_type, "The Writ makes ready.")
+		)
 	)
 	visit_label.text = "%s\nWASD move · E interact · Esc main menu" % headline
 
