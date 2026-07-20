@@ -1,6 +1,8 @@
 extends Control
 class_name FailScreen
 
+const FormationEditorPanelScript := preload("res://scripts/ui/formation_editor_panel.gd")
+
 signal retry_requested
 signal return_requested(outcome: String)
 signal formation_changed
@@ -10,13 +12,12 @@ var summary: Dictionary = {}
 var campaign_mode: bool = false
 var title_label: Label = null
 var summary_label: Label = null
-var detail_label: Label = null
-var formation_editor: VBoxContainer = null
-var formation_member_list: ItemList = null
-var region_dropdown: OptionButton = null
-var range_dropdown: OptionButton = null
+var content_holder: VBoxContainer = null
+var review_scroll: ScrollContainer = null
+var formation_editor: FormationEditorPanel = null
 var retry_button: Button = null
 var formation_button: Button = null
+var review_button: Button = null
 var return_button: Button = null
 
 
@@ -30,15 +31,12 @@ func show_result(new_summary: Dictionary, new_outcome: String, is_campaign: bool
 	outcome = new_outcome
 	campaign_mode = is_campaign
 	visible = true
-	formation_editor.visible = false
 	title_label.text = "Victory" if outcome == "victory" else "The Raid Has Fallen"
 	summary_label.text = _summary_brief()
-	detail_label.text = ""
-	detail_label.visible = false
 	retry_button.text = "Attempt Again" if outcome == "victory" else "Retry Exact Raid Plan"
 	formation_button.visible = campaign_mode and outcome == "wipe"
 	return_button.text = "Return to Camp" if campaign_mode else "Return to Main Menu"
-	_refresh_formation_members()
+	_show_summary_only()
 
 
 func hide_result() -> void:
@@ -57,14 +55,14 @@ func _build_ui() -> void:
 
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	center.offset_left = 190
-	center.offset_top = 90
-	center.offset_right = -190
-	center.offset_bottom = -90
+	center.offset_left = 45
+	center.offset_top = 35
+	center.offset_right = -45
+	center.offset_bottom = -35
 	add_child(center)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(1120, 790)
+	panel.custom_minimum_size = Vector2(1540, 920)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("171e23")
 	style.border_color = Color("75574d")
@@ -81,7 +79,7 @@ func _build_ui() -> void:
 	panel.add_child(margin)
 
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 14)
+	root.add_theme_constant_override("separation", 12)
 	margin.add_child(root)
 
 	title_label = Label.new()
@@ -108,12 +106,12 @@ func _build_ui() -> void:
 	button_row.add_child(retry_button)
 
 	formation_button = Button.new()
-	formation_button.text = "Minor Formation Edit"
+	formation_button.text = "Formation Edit"
 	formation_button.custom_minimum_size = Vector2(220, 48)
 	formation_button.pressed.connect(_on_formation_pressed)
 	button_row.add_child(formation_button)
 
-	var review_button := Button.new()
+	review_button = Button.new()
 	review_button.text = "Attempt Review"
 	review_button.custom_minimum_size = Vector2(200, 48)
 	review_button.pressed.connect(_on_review_pressed)
@@ -125,57 +123,65 @@ func _build_ui() -> void:
 	return_button.pressed.connect(_on_return_pressed)
 	button_row.add_child(return_button)
 
-	formation_editor = VBoxContainer.new()
-	formation_editor.visible = false
-	formation_editor.add_theme_constant_override("separation", 9)
-	root.add_child(formation_editor)
-	var boundary_note := Label.new()
-	boundary_note.text = "Post-wipe exception: starting regions may be adjusted here. Roster, target, and support settings remain locked to the current Raid Plan."
-	boundary_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	boundary_note.add_theme_color_override("font_color", Color("c5af78"))
-	formation_editor.add_child(boundary_note)
+	root.add_child(HSeparator.new())
 
-	var formation_row := HBoxContainer.new()
-	formation_row.add_theme_constant_override("separation", 12)
-	formation_editor.add_child(formation_row)
-	formation_member_list = ItemList.new()
-	formation_member_list.custom_minimum_size = Vector2(490, 250)
-	formation_member_list.item_selected.connect(_on_formation_member_selected)
-	formation_row.add_child(formation_member_list)
+	content_holder = VBoxContainer.new()
+	content_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(content_holder)
 
-	var controls := VBoxContainer.new()
-	controls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	formation_row.add_child(controls)
-	var region_label := Label.new()
-	region_label.text = "Starting region"
-	controls.add_child(region_label)
-	region_dropdown = OptionButton.new()
-	for region in [
-		"north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"
-	]:
-		region_dropdown.add_item(_humanize(region))
-		region_dropdown.set_item_metadata(region_dropdown.item_count - 1, region)
-	controls.add_child(region_dropdown)
-	var range_label := Label.new()
-	range_label.text = "Range ring"
-	controls.add_child(range_label)
-	range_dropdown = OptionButton.new()
-	for range_name in ["close", "mid", "far"]:
-		range_dropdown.add_item(_humanize(range_name))
-		range_dropdown.set_item_metadata(range_dropdown.item_count - 1, range_name)
-	controls.add_child(range_dropdown)
-	var save_button := Button.new()
-	save_button.text = "Save Minor Placement"
-	save_button.custom_minimum_size = Vector2(0, 44)
-	save_button.pressed.connect(_on_save_formation_pressed)
-	controls.add_child(save_button)
 
-	detail_label = Label.new()
-	detail_label.visible = false
-	detail_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail_label.add_theme_color_override("font_color", Color("c7cbc7"))
-	root.add_child(detail_label)
+func _show_summary_only() -> void:
+	_clear_content()
+	var note := Label.new()
+	note.text = (
+		"Choose Attempt Review for the scrollable breakdown, or Formation Edit to make full radial changes before retrying."
+		if campaign_mode and outcome == "wipe"
+		else "Choose Attempt Review for the scrollable breakdown."
+	)
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_color_override("font_color", Color("aeb8af"))
+	content_holder.add_child(note)
+
+
+func _show_formation_editor() -> void:
+	_clear_content()
+	formation_editor = FormationEditorPanelScript.new() as FormationEditorPanel
+	(
+		formation_editor
+		. configure(
+			"Post-wipe exception: the full starting formation may be edited here. Roster, target, and support settings remain locked to the current Raid Plan.",
+			true
+		)
+	)
+	formation_editor.formation_changed.connect(_on_editor_formation_changed)
+	content_holder.add_child(formation_editor)
+
+
+func _show_review() -> void:
+	_clear_content()
+	review_scroll = ScrollContainer.new()
+	review_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	review_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	review_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_holder.add_child(review_scroll)
+
+	var review_label := Label.new()
+	review_label.text = _review_text()
+	review_label.custom_minimum_size = Vector2(1420, 0)
+	review_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	review_label.add_theme_color_override("font_color", Color("c7cbc7"))
+	review_scroll.add_child(review_label)
+
+
+func _clear_content() -> void:
+	for child in content_holder.get_children():
+		content_holder.remove_child(child)
+		child.queue_free()
+
+	formation_editor = null
+	review_scroll = null
 
 
 func _summary_brief() -> String:
@@ -238,7 +244,7 @@ func _review_text() -> String:
 
 	if not deaths.is_empty():
 		lines.append("\nDEATHS")
-		for death in deaths.slice(0, 12):
+		for death in deaths:
 			lines.append(
 				(
 					"• %.1fs  %s — %s"
@@ -253,7 +259,7 @@ func _review_text() -> String:
 	var timeline: Array = summary.get("timeline", [])
 
 	if not timeline.is_empty():
-		lines.append("\nCOMPACT WIPE TIMELINE")
+		lines.append("\nATTEMPT TIMELINE")
 		for event in timeline:
 			var event_label := String(event.get("display_name", ""))
 
@@ -263,43 +269,6 @@ func _review_text() -> String:
 			lines.append("• %.1fs  %s" % [float(event.get("time", 0.0)), event_label])
 
 	return "\n".join(lines)
-
-
-func _refresh_formation_members() -> void:
-	if formation_member_list == null:
-		return
-
-	formation_member_list.clear()
-
-	for member in CampaignState.get_active_members():
-		formation_member_list.add_item(
-			(
-				"%-24s  %s"
-				% [
-					CampaignState.format_member_label(member),
-					_humanize(String(member.get("role", "")))
-				]
-			)
-		)
-		formation_member_list.set_item_metadata(
-			formation_member_list.item_count - 1, String(member.get("member_id", ""))
-		)
-
-	if formation_member_list.item_count > 0:
-		formation_member_list.select(0)
-		_on_formation_member_selected(0)
-
-
-func _on_formation_member_selected(index: int) -> void:
-	if index < 0 or index >= formation_member_list.item_count:
-		return
-
-	var member_id := String(formation_member_list.get_item_metadata(index))
-	var placement: Dictionary = CampaignState.get_formation().get("placements", {}).get(
-		member_id, {}
-	)
-	_select_dropdown_metadata(region_dropdown, String(placement.get("region", "south")))
-	_select_dropdown_metadata(range_dropdown, String(placement.get("range", "mid")))
 
 
 func _on_retry_pressed() -> void:
@@ -313,31 +282,16 @@ func _on_return_pressed() -> void:
 
 
 func _on_review_pressed() -> void:
-	formation_editor.visible = false
-	detail_label.visible = not detail_label.visible
-	detail_label.text = _review_text()
+	_show_review()
 
 
 func _on_formation_pressed() -> void:
-	if not campaign_mode or outcome != "wipe":
-		return
-
-	detail_label.visible = false
-	formation_editor.visible = not formation_editor.visible
+	if campaign_mode and outcome == "wipe":
+		_show_formation_editor()
 
 
-func _on_save_formation_pressed() -> void:
-	var selected := formation_member_list.get_selected_items()
-
-	if selected.is_empty():
-		return
-
-	var member_id := String(formation_member_list.get_item_metadata(selected[0]))
-	var region := String(region_dropdown.get_item_metadata(region_dropdown.selected))
-	var range_name := String(range_dropdown.get_item_metadata(range_dropdown.selected))
-
-	if CampaignState.set_member_placement(member_id, region, range_name):
-		formation_changed.emit()
+func _on_editor_formation_changed() -> void:
+	formation_changed.emit()
 
 
 func _humanize(value: String) -> String:
@@ -351,13 +305,3 @@ func _sum_dictionary_values(values: Dictionary) -> int:
 		total += int(value)
 
 	return total
-
-
-func _select_dropdown_metadata(dropdown: OptionButton, value: String) -> void:
-	if dropdown == null:
-		return
-
-	for item_index in range(dropdown.item_count):
-		if String(dropdown.get_item_metadata(item_index)) == value:
-			dropdown.select(item_index)
-			return

@@ -13,6 +13,7 @@
 [ext_resource type="PackedScene" uid="uid://850fmmf7d8ae" path="res://scenes/raid_member_frame.tscn" id="15_ygsf8"]
 [ext_resource type="Script" uid="uid://b22uscmu6vno7" path="res://scripts/combat/combat_manager.gd" id="16_1f740"]
 [ext_resource type="PackedScene" path="res://scenes/ui/fail_screen.tscn" id="17_fail"]
+[ext_resource type="Script" path="res://scripts/ui/game_pause_menu.gd" id="18_pause"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
 
@@ -128,6 +129,9 @@ grow_horizontal = 0
 script = ExtResource("8_ivkwx")
 
 [node name="FailScreen" parent="UI" instance=ExtResource("17_fail")]
+
+[node name="PauseMenu" type="CanvasLayer" parent="."]
+script = ExtResource("18_pause")
 
 [node name="CombatManager" type="Node" parent="." unique_id=1660831030]
 script = ExtResource("16_1f740")

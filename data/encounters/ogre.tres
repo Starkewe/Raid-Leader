@@ -1,63 +1,20 @@
-[gd_resource type="Resource" script_class="EncounterDefinition" load_steps=27 format=3]
+[gd_resource type="Resource" script_class="EncounterDefinition" format=3 uid="uid://baslxhlpsm7co"]
 
-[ext_resource type="Script" path="res://scripts/data/encounter_definition.gd" id="1_encounter"]
-[ext_resource type="Script" path="res://scripts/data/boss_ability_definition.gd" id="2_ability_type"]
-[ext_resource type="Script" path="res://scripts/data/boss_phase_definition.gd" id="3_phase_type"]
-[ext_resource type="Script" path="res://scripts/data/status_effect_definition.gd" id="4_status_type"]
-[ext_resource type="Script" path="res://scripts/data/hazard_definition.gd" id="5_hazard_type"]
-[ext_resource type="Script" path="res://scripts/data/twin_sweeping_pull_definition.gd" id="6_twin_definition"]
-[ext_resource type="Script" path="res://scripts/abilities/twin_sweeping_pull.gd" id="7_twin_runtime"]
-[ext_resource type="Script" path="res://scripts/data/grabbing_roar_definition.gd" id="8_roar_definition"]
-[ext_resource type="Script" path="res://scripts/abilities/grabbing_roar.gd" id="9_roar_runtime"]
-[ext_resource type="Script" path="res://scripts/data/earthshaker_stomp_definition.gd" id="10_stomp_definition"]
-[ext_resource type="Script" path="res://scripts/abilities/earthshaker_stomp.gd" id="11_stomp_runtime"]
-[ext_resource type="Script" path="res://scripts/data/boulder_toss_definition.gd" id="12_boulder_definition"]
-[ext_resource type="Script" path="res://scripts/abilities/boulder_toss.gd" id="13_boulder_runtime"]
-[ext_resource type="Script" path="res://scripts/data/empowered_slam_definition.gd" id="14_slam_definition"]
-[ext_resource type="Script" path="res://scripts/abilities/empowered_slam.gd" id="15_slam_runtime"]
-
-[sub_resource type="Resource" id="Status_SlamVulnerability"]
-script = ExtResource("4_status_type")
-effect_id = "slam_vulnerability"
-display_name = "Slam Vulnerability"
-duration = 10.0
-max_stacks = 10
-refresh_duration_on_stack = true
-incoming_damage_percent_per_stack = 0.1
-
-[sub_resource type="Resource" id="Status_GrabbingRoar"]
-script = ExtResource("4_status_type")
-effect_id = "grabbing_roar_slow"
-display_name = "Grabbing Roar"
-duration = 8.0
-max_stacks = 1
-refresh_duration_on_stack = true
-dispellable = true
-dispel_category = "cure"
-movement_speed_multiplier_per_stack = 0.5
-
-[sub_resource type="Resource" id="Status_CrackedGround"]
-script = ExtResource("4_status_type")
-effect_id = "cracked_ground_slow"
-display_name = "Cracked Ground"
-duration = 0.0
-max_stacks = 1
-refresh_duration_on_stack = false
-unique_per_source = true
-movement_speed_multiplier_per_stack = 0.8
-
-[sub_resource type="Resource" id="Hazard_CrackedGround"]
-script = ExtResource("5_hazard_type")
-hazard_id = "cracked_ground"
-display_name = "Cracked Ground"
-duration = 0.0
-tick_interval = 1.0
-affected_radius = 72.0
-damage_per_tick = 4
-status_effect = SubResource("Status_CrackedGround")
-show_visual = true
-fill_color = Color(0.34, 0.1, 0.025, 0.44)
-edge_color = Color(1, 0.3, 0.055, 0.92)
+[ext_resource type="Script" uid="uid://c0llxrbvpwd2" path="res://scripts/data/encounter_definition.gd" id="1_encounter"]
+[ext_resource type="Script" uid="uid://cmgswifol0baj" path="res://scripts/data/boss_ability_definition.gd" id="2_ability_type"]
+[ext_resource type="Script" uid="uid://dhp7phpvbp0oi" path="res://scripts/data/boss_phase_definition.gd" id="3_phase_type"]
+[ext_resource type="Script" uid="uid://be1i6p2qjp514" path="res://scripts/data/status_effect_definition.gd" id="4_status_type"]
+[ext_resource type="Script" uid="uid://ud2evmnrpur2" path="res://scripts/data/hazard_definition.gd" id="5_hazard_type"]
+[ext_resource type="Script" uid="uid://cn6wpewkf2sx7" path="res://scripts/data/twin_sweeping_pull_definition.gd" id="6_twin_definition"]
+[ext_resource type="Script" uid="uid://cgdrykqbtcesr" path="res://scripts/abilities/twin_sweeping_pull.gd" id="7_twin_runtime"]
+[ext_resource type="Script" uid="uid://bxnk021uah1p5" path="res://scripts/data/grabbing_roar_definition.gd" id="8_roar_definition"]
+[ext_resource type="Script" uid="uid://wwf014ot60jq" path="res://scripts/abilities/grabbing_roar.gd" id="9_roar_runtime"]
+[ext_resource type="Script" uid="uid://c5servk886kb0" path="res://scripts/data/earthshaker_stomp_definition.gd" id="10_stomp_definition"]
+[ext_resource type="Script" uid="uid://bxd1j1ec8fawk" path="res://scripts/abilities/earthshaker_stomp.gd" id="11_stomp_runtime"]
+[ext_resource type="Script" uid="uid://bxpmbtco0pjo6" path="res://scripts/data/boulder_toss_definition.gd" id="12_boulder_definition"]
+[ext_resource type="Script" uid="uid://ds152rvxhwyh0" path="res://scripts/abilities/boulder_toss.gd" id="13_boulder_runtime"]
+[ext_resource type="Script" uid="uid://cusrrmqltv338" path="res://scripts/data/empowered_slam_definition.gd" id="14_slam_definition"]
+[ext_resource type="Script" uid="uid://cwogrjcck07ip" path="res://scripts/abilities/empowered_slam.gd" id="15_slam_runtime"]
 
 [sub_resource type="Resource" id="Ability_TwinSweepingPull"]
 script = ExtResource("6_twin_definition")
@@ -70,15 +27,19 @@ cooldown = 1.5
 damage = 75
 interruptible = false
 requires_active_target = false
-pull_duration = 1.5
-first_sweep_cast_duration = 2.5
-second_sweep_cast_duration = 4.0
-pull_range = "close"
-affected_ranges = Array[String](["close", "mid"])
-random_pull_regions = Array[String](["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"])
+
+[sub_resource type="Resource" id="Status_GrabbingRoar"]
+script = ExtResource("4_status_type")
+effect_id = "grabbing_roar_slow"
+display_name = "Grabbing Roar"
+duration = 8.0
+dispellable = true
+dispel_category = "cure"
+movement_speed_multiplier_per_stack = 0.5
 
 [sub_resource type="Resource" id="Ability_GrabbingRoar"]
 script = ExtResource("8_roar_definition")
+slow_effect = SubResource("Status_GrabbingRoar")
 runtime_script = ExtResource("9_roar_runtime")
 ability_id = "grabbing_roar"
 display_name = "Grabbing Roar"
@@ -86,12 +47,8 @@ windup_text = "The Ogre draws a crippling breath."
 impact_text = "The roar seizes the raid's legs!"
 cast_time = 1.25
 cooldown = 4.0
-damage = 0
 interruptible = false
 requires_active_target = false
-target_behavior = "random"
-target_count = 4
-slow_effect = SubResource("Status_GrabbingRoar")
 
 [sub_resource type="Resource" id="Ability_EarthshakerStomp"]
 script = ExtResource("10_stomp_definition")
@@ -105,7 +62,6 @@ cooldown = 4.0
 damage = 8
 interruptible = false
 requires_active_target = false
-knockback_duration = 0.75
 
 [sub_resource type="Resource" id="Ability_BoulderToss"]
 script = ExtResource("12_boulder_definition")
@@ -115,15 +71,32 @@ display_name = "Boulder Toss"
 windup_text = "The Ogre sights the densest formation."
 impact_text = "A boulder scatters the formation!"
 cast_time = 2.0
-cooldown = 5.0
 damage = 10
 interruptible = false
 requires_active_target = false
-target_count = 0
-knockback_duration = 0.8
+
+[sub_resource type="Resource" id="Status_CrackedGround"]
+script = ExtResource("4_status_type")
+effect_id = "cracked_ground_slow"
+display_name = "Cracked Ground"
+duration = 0.0
+refresh_duration_on_stack = false
+unique_per_source = true
+movement_speed_multiplier_per_stack = 0.8
+
+[sub_resource type="Resource" id="Hazard_CrackedGround"]
+script = ExtResource("5_hazard_type")
+hazard_id = "cracked_ground"
+display_name = "Cracked Ground"
+duration = 0.0
+damage_per_tick = 4
+status_effect = SubResource("Status_CrackedGround")
+fill_color = Color(0.34, 0.1, 0.025, 0.44)
+edge_color = Color(1, 0.3, 0.055, 0.92)
 
 [sub_resource type="Resource" id="Ability_EmpoweredSlam"]
 script = ExtResource("14_slam_definition")
+fissure_definition = SubResource("Hazard_CrackedGround")
 runtime_script = ExtResource("15_slam_runtime")
 ability_id = "empowered_slam"
 display_name = "Empowered Slam"
@@ -133,23 +106,17 @@ cast_time = 2.5
 cooldown = 6.0
 damage = 18
 interruptible = false
-requires_active_target = true
-affected_ranges = Array[String](["close"])
-fissure_ranges = Array[String](["close", "mid", "far"])
-fissure_definition = SubResource("Hazard_CrackedGround")
-maximum_fissure_lines_per_region = 3
+
+[sub_resource type="Resource" id="Status_SlamVulnerability"]
+script = ExtResource("4_status_type")
+effect_id = "slam_vulnerability"
+display_name = "Slam Vulnerability"
+duration = 10.0
+max_stacks = 10
+incoming_damage_percent_per_stack = 0.1
 
 [sub_resource type="Resource" id="Phase_One"]
 script = ExtResource("3_phase_type")
-phase_id = "phase_1"
-display_name = "Phase 1"
-starts_at_health_percent = 100.0
-attack_speed_multiplier = 1.0
-ability_speed_multiplier = 1.0
-ability_cooldown_multiplier = 1.0
-attack_damage_multiplier = 1.0
-ability_damage_multiplier = 1.0
-ability_target_count_bonus = 0
 
 [sub_resource type="Resource" id="Phase_Two"]
 script = ExtResource("3_phase_type")
@@ -181,12 +148,8 @@ script = ExtResource("1_encounter")
 encounter_id = "ogre"
 display_name = "Ogre: The Earthgnasher"
 description = "The first complete V1 encounter: tank-swap Slams, Twin Sweeping Pull, curable Grabbing Roar, outward Earthshaker Stomps, formation-scattering Boulder Tosses, persistent Cracked Ground, and a final Frenzy."
-scene_path = "res://scenes/combat_scene.tscn"
 boss_display_name = "The Earthgnasher"
-max_health = 6000
-movement_speed_range_units_per_second = 7.0
-attack_range_units = 5.0
-combat_radius = 128.0
+max_health = 500
 attack_damage = 10
 attack_cooldown = 2.0
 basic_attack_id = "ogre_slam"
@@ -195,7 +158,3 @@ basic_attack_status_effect = SubResource("Status_SlamVulnerability")
 abilities = Array[ExtResource("2_ability_type")]([SubResource("Ability_TwinSweepingPull"), SubResource("Ability_GrabbingRoar"), SubResource("Ability_EarthshakerStomp"), SubResource("Ability_BoulderToss"), SubResource("Ability_EmpoweredSlam")])
 phases = Array[ExtResource("3_phase_type")]([SubResource("Phase_One"), SubResource("Phase_Two"), SubResource("Phase_Frenzy")])
 initial_ability_delay = 6.0
-debug_logging_enabled = true
-show_debug_region_guides = true
-show_debug_range_rings = true
-debug_max_range_units = 50.0
