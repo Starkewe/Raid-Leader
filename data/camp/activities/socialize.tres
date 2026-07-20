@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CampActivityDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/camp_activity_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+activity_id = "socialize"
+display_name = "Sharing the fire"
+facility_id = "communal_fire"
+base_weight = 1.35
+active_multiplier = 0.85
+reserve_multiplier = 1.45
+minimum_duration = 7.0
+maximum_duration = 14.0
+cooldown = 13.0
+favored_classes = Array[String]([])
+favored_attributes = Array[String](["sociable", "warm", "wry"])
+feedback_lines = Array[String](["Save a place by the fire.", "The mud gets everywhere.", "We are still here."])

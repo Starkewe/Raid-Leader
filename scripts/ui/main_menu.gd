@@ -31,16 +31,18 @@ var count_labels: Dictionary = {}
 
 func _ready():
 	unit_class_order = GameState.get_available_classes()
+	start_fight_button.text = "Enter Camp"
+	manage_team_button.text = "Tutorial Test Roster"
+	start_fight_from_team_button.text = "Done"
 
 	start_fight_button.pressed.connect(_on_start_fight_pressed)
 	manage_team_button.pressed.connect(_on_manage_team_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 
-	start_fight_from_team_button.pressed.connect(_on_start_fight_pressed)
+	start_fight_from_team_button.pressed.connect(_on_back_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 
 	build_main_menu_extra_buttons()
-	build_normal_encounter_selector()
 	build_tutorial_panel()
 	build_settings_panel()
 	build_team_rows()
@@ -297,7 +299,7 @@ func refresh_team_panel():
 			count_labels[unit_class].text = str(GameState.get_class_count(unit_class))
 
 	start_fight_from_team_button.disabled = not GameState.has_valid_team()
-	start_fight_button.disabled = not GameState.has_valid_team()
+	start_fight_button.disabled = false
 
 func _on_add_class_pressed(unit_class: String):
 	GameState.add_class(unit_class)
@@ -308,19 +310,7 @@ func _on_remove_class_pressed(unit_class: String):
 	refresh_team_panel()
 
 func _on_start_fight_pressed():
-	if not GameState.has_valid_team():
-		print("Cannot start fight. Team is empty.")
-		return
-
-	GameState.select_default_encounter()
-	var selected_scene_path := GameState.get_selected_tutorial_scene_path()
-	print("Starting fight with roster:", GameState.get_roster())
-	print("Loading scene:", selected_scene_path)
-
-	var result = get_tree().change_scene_to_file(selected_scene_path)
-
-	if result != OK:
-		print("Failed to load combat scene:", selected_scene_path)
+	SceneFlow.enter_camp("normal")
 
 func _on_manage_team_pressed():
 	print("Opening team management")
@@ -356,19 +346,11 @@ func _on_tutorial_boss_selected(boss_id: String) -> void:
 		tutorial_description_label.text = String(boss_data.get("description", ""))
 
 	if start_tutorial_button != null:
-		start_tutorial_button.disabled = false
+		start_tutorial_button.disabled = not GameState.has_valid_team()
 
 
 func _on_start_tutorial_pressed() -> void:
-	var scene_path: String = GameState.get_selected_tutorial_scene_path()
-
-	print("Starting tutorial boss:", GameState.get_selected_tutorial_boss_id())
-	print("Loading scene:", scene_path)
-
-	var result = get_tree().change_scene_to_file(scene_path)
-
-	if result != OK:
-		print("Failed to load tutorial scene:", scene_path)
+	SceneFlow.launch_tutorial(GameState.get_selected_tutorial_boss_id())
 
 
 func _on_apply_settings_pressed() -> void:

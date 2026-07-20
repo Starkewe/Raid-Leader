@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CampActivityDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/camp_activity_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+activity_id = "rehearse"
+display_name = "Rehearsing the formation"
+facility_id = "formation_yard"
+base_weight = 2.0
+active_multiplier = 2.4
+reserve_multiplier = 0.55
+minimum_duration = 7.0
+maximum_duration = 13.0
+cooldown = 12.0
+favored_classes = Array[String](["Warrior", "Rogue"])
+favored_attributes = Array[String](["steady", "vigilant", "competitive"])
+feedback_lines = Array[String](["Again from the marker.", "Keep the lane clear.", "The opening needs to be exact."])

@@ -12,17 +12,20 @@ Raid Leader is a Godot 4.6 prototype in which the player coordinates a raid rath
 - Structured combat events containing timestamps, source, target, ability ID, amount, and metadata.
 - Reusable foundations for status effects, hazards, forced movement, targeting, and tank swaps.
 - Local push-to-talk transcription through `whisper.cpp`.
+- A continuous strategic Camp with a persistent twenty-member campaign roster, per-boss formations, attempt intelligence, immediate retry, and weighted member activities.
 
 ## Project structure
 
 ```text
 data/
   abilities/       Boss ability tuning
+  camp/            Data-driven Camp activity definitions
   encounters/      Boss stats, loadouts, phases, and debug display
   phases/          Health thresholds and pacing rules
   units/           Unit stats, roles, scenes, and voice aliases
 scripts/
   abilities/       Runtime boss ability behavior
+  camp/            Facilities, population behavior, movement, and Camp presentation
   combat/          Encounter orchestration and shared combat systems
   commands/        Command validation, targeting, and movement
   data/            Resource schemas
@@ -58,6 +61,21 @@ The menu currently exposes three tutorial encounters:
 
 Twin Sweeping Pull is target-independent and continues if the boss's current target dies. Directional cleaves require an active target and lock their region when the cast starts.
 
+## Strategic Camp
+
+Choose **Enter Camp** from the main menu. The campaign path seeds a deterministic first Writ of exactly 2 Warriors, 5 Priests, 6 Rogues, and 7 Mages. This campaign roster is separate from the legacy class-count roster used by the tutorial test path.
+
+- Move with `WASD`, interact with a functional facility using `E`, and close the current journal with `Esc`.
+- Select either Ogre or Chainmaster and manage the active twenty at the command tent.
+- Edit the selected boss's persistent starting formation at the formation yard.
+- Review observed abilities, phases, death timing, reliable failures, and attempt history at the archive.
+- After a wipe, retry the exact Raid Plan, review the attempt, make a bounded formation edit, or return to Camp.
+- In development builds, the command tent can seed twenty campaign-marked reserves for forty-member population and roster-swap testing.
+
+Campaign data is versioned independently at `user://raid_leader_campaign_v1.json`. Voice settings and the legacy tutorial roster continue to use the existing settings file. Camp facility art is an original modular atlas documented under `assets/camp/README.md`.
+
+The complete round-trip and forty-member acceptance pass is in [`CAMP_V1_PLAYTEST.md`](CAMP_V1_PLAYTEST.md).
+
 ## Local voice setup
 
 The default paths are project-relative:
@@ -85,4 +103,4 @@ This prototype currently uses manual encounter testing rather than an automated 
 
 ## Status
 
-The repository is a pre-v1 gameplay foundation. The next design work can build encounter mechanics on the resource schemas and shared primitives without expanding hard-coded catalogs or duplicating combat state.
+The repository now contains the first-region Camp V1 foundation. Ogre and Chainmaster are both available non-apex encounters. Later bosses can use the dormant recruitment, regional-apex, liaison, support, facility-tier, and forty-member data seams without redesigning current combat state.
