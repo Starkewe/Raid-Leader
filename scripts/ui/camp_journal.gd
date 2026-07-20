@@ -130,8 +130,11 @@ func _refresh_current_facility() -> void:
 	if body == null:
 		return
 
+	# A refresh can originate from one of these controls' signal callbacks.
+	# Defer destruction so the emitter survives until its callback returns.
 	for child in body.get_children():
-		child.free()
+		body.remove_child(child)
+		child.queue_free()
 
 	match current_facility_id:
 		"command_tent":
@@ -583,10 +586,14 @@ func _on_saved_formation_selected(
 
 func _on_archive_target_selected(encounter_id: String) -> void:
 	archive_view_encounter_id = encounter_id
-	_refresh_current_facility()
+	_queue_refresh()
 
 
 func _on_campaign_state_changed() -> void:
+	_queue_refresh()
+
+
+func _queue_refresh() -> void:
 	if not visible or refresh_queued:
 		return
 
