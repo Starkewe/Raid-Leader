@@ -42,12 +42,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		and not journal.is_open()
 	):
 		journal.open_facility(nearest_facility.facility_id)
-		get_viewport().set_input_as_handled()
+		_mark_input_handled()
 		return
 
 	if event.is_action_pressed("ui_cancel") and not journal.is_open():
+		_mark_input_handled()
 		SceneFlow.go_to_main_menu()
-		get_viewport().set_input_as_handled()
+
+
+func _mark_input_handled() -> void:
+	var viewport := get_viewport()
+
+	if viewport != null:
+		viewport.set_input_as_handled()
 
 
 func get_facility(facility_id: String) -> CampFacility:
@@ -129,17 +136,19 @@ func _on_embark_requested() -> void:
 func _update_visit_label() -> void:
 	var context := CampaignState.get_visit_context()
 	var context_type := String(context.get("type", "normal"))
-	var headline := (
-		{
-			"normal": "The Writ makes ready.",
-			"wipe": "The raid has returned from a failed attempt.",
-			"first_victory": "A first victory has come home.",
-			"repeat_victory": "The raid has defeated familiar prey again.",
-			"recruitment": "New recruits are settling into camp.",
-			"roster_change": "A changed active roster moves through camp.",
-			"apex_victory": "An apex victory has opened new roads."
-		}
-		. get(context_type, "The Writ makes ready.")
+	var headline: String = String(
+		(
+			{
+				"normal": "The Writ makes ready.",
+				"wipe": "The raid has returned from a failed attempt.",
+				"first_victory": "A first victory has come home.",
+				"repeat_victory": "The raid has defeated familiar prey again.",
+				"recruitment": "New recruits are settling into camp.",
+				"roster_change": "A changed active roster moves through camp.",
+				"apex_victory": "An apex victory has opened new roads."
+			}
+			. get(context_type, "The Writ makes ready.")
+		)
 	)
 	visit_label.text = "%s\nWASD move · E interact · Esc main menu" % headline
 

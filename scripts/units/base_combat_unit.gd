@@ -359,7 +359,7 @@ func setup_unit_identity(new_unit_class: String, new_unit_number: int):
 func setup_campaign_identity(member_data: Dictionary, class_ordinal: int) -> void:
 	setup_unit_identity(String(member_data.get("unit_class", "")), class_ordinal)
 	member_id = String(member_data.get("member_id", ""))
-	display_name = String(member_data.get("display_name", display_name))
+	display_name = CampaignState.format_member_label(member_data)
 	member_description = String(member_data.get("description", ""))
 
 

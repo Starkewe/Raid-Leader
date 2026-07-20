@@ -26,9 +26,9 @@ static func build(
 		duration = maxf(duration, float(event.get("encounter_time_seconds", 0.0)))
 		var event_type := String(event.get("type", ""))
 		var ability_id := String(event.get("ability_id", ""))
-		var source: Dictionary = event.get("source", {})
-		var target: Dictionary = event.get("target", {})
-		var metadata: Dictionary = event.get("metadata", {})
+		var source := _dictionary_or_empty(event.get("source"))
+		var target := _dictionary_or_empty(event.get("target"))
+		var metadata := _dictionary_or_empty(event.get("metadata"))
 		var source_id := String(source.get("id", "environment"))
 		var target_id := String(target.get("id", ""))
 		var amount := int(event.get("amount", 0))
@@ -123,8 +123,8 @@ static func build(
 
 
 static func _timeline_entry(event: Dictionary) -> Dictionary:
-	var target: Dictionary = event.get("target", {})
-	var metadata: Dictionary = event.get("metadata", {})
+	var target := _dictionary_or_empty(event.get("target"))
+	var metadata := _dictionary_or_empty(event.get("metadata"))
 	return {
 		"time": snappedf(float(event.get("encounter_time_seconds", 0.0)), 0.1),
 		"type": String(event.get("type", "")),
@@ -132,6 +132,13 @@ static func _timeline_entry(event: Dictionary) -> Dictionary:
 		"target_name": String(target.get("name", "")),
 		"display_name": String(metadata.get("display_name", ""))
 	}
+
+
+static func _dictionary_or_empty(value: Variant) -> Dictionary:
+	if value is Dictionary:
+		return Dictionary(value)
+
+	return {}
 
 
 static func _append_unique(target: Array[String], value: String) -> void:

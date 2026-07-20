@@ -10,10 +10,11 @@ signal attempt_recorded(summary: Dictionary)
 signal visit_context_changed(context: Dictionary)
 
 const SAVE_PATH := "user://raid_leader_campaign_v1.json"
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2
 const ACTIVE_RAID_SIZE := 20
 const HISTORY_LIMIT_PER_BOSS := 30
 const FIRST_REGION_ID := "beast_crucible"
+const DEFAULT_FORMATION_NAME := "Default"
 
 const STARTING_BLUEPRINT := [
 	["Brann", "Warrior", "tank", ["steady", "protective"]],
@@ -146,7 +147,6 @@ func set_selected_encounter(encounter_id: String) -> bool:
 		return false
 
 	campaign["raid_plan"]["encounter_id"] = encounter_id
-	_ensure_formation(encounter_id)
 	save_campaign()
 	raid_plan_changed.emit()
 	state_changed.emit()
@@ -174,6 +174,26 @@ func get_roster_by_id() -> Dictionary:
 func get_member(member_id: String) -> Dictionary:
 	var roster_by_id := get_roster_by_id()
 	return Dictionary(roster_by_id.get(member_id, {})).duplicate(true)
+
+
+func get_member_label(member_id: String) -> String:
+	var member := get_member(member_id)
+	return member_id if member.is_empty() else format_member_label(member)
+
+
+func format_member_label(member: Dictionary) -> String:
+	var member_name := String(member.get("display_name", "Unknown")).strip_edges()
+	var unit_class := String(member.get("unit_class", "")).strip_edges()
+
+	if unit_class.is_empty():
+		return member_name
+
+	var class_suffix := " (%s)" % unit_class
+
+	if member_name.ends_with(class_suffix):
+		return member_name
+
+	return member_name + class_suffix
 
 
 func get_active_member_ids() -> Array[String]:
@@ -222,17 +242,25 @@ func swap_active_member(active_member_id: String, reserve_member_id: String) -> 
 	if not roster_by_id.has(reserve_member_id):
 		return false
 
+	_ensure_formation()
 	active_ids[active_index] = reserve_member_id
 	campaign["raid_plan"]["active_member_ids"] = active_ids
 
-	var formations: Dictionary = campaign["raid_plan"].get("formations", {})
+	var raid_plan: Dictionary = campaign["raid_plan"]
+	var formation: Dictionary = raid_plan.get("formation", {})
+	raid_plan["formation"] = _formation_with_replaced_member(
+		formation, active_member_id, reserve_member_id
+	)
+	var saved_formations: Dictionary = raid_plan.get("saved_formations", {})
 
-	for encounter_id in formations.keys():
-		var placements: Dictionary = formations[encounter_id].get("placements", {})
+	for formation_name in saved_formations.keys():
+		var saved_formation: Dictionary = saved_formations[formation_name]
+		saved_formations[formation_name] = _formation_with_replaced_member(
+			saved_formation, active_member_id, reserve_member_id
+		)
 
-		if placements.has(active_member_id):
-			placements[reserve_member_id] = Dictionary(placements[active_member_id]).duplicate(true)
-			placements.erase(active_member_id)
+	raid_plan["saved_formations"] = saved_formations
+	campaign["raid_plan"] = raid_plan
 
 	_augment_visit_reactions("roster_change", 1)
 	save_campaign()
@@ -242,16 +270,38 @@ func swap_active_member(active_member_id: String, reserve_member_id: String) -> 
 	return true
 
 
-func get_formation(encounter_id: String = "") -> Dictionary:
-	if encounter_id.is_empty():
-		encounter_id = get_selected_encounter_id()
+func reorder_active_member(
+	moving_member_id: String, target_member_id: String, place_after_target: bool = false
+) -> bool:
+	var active_ids := get_active_member_ids()
+	var moving_index := active_ids.find(moving_member_id)
+	var target_index := active_ids.find(target_member_id)
 
-	_ensure_formation(encounter_id)
-	return Dictionary(campaign["raid_plan"]["formations"][encounter_id]).duplicate(true)
+	if moving_index < 0 or target_index < 0 or moving_index == target_index:
+		return false
+
+	active_ids.remove_at(moving_index)
+	target_index = active_ids.find(target_member_id)
+
+	if place_after_target:
+		target_index += 1
+
+	active_ids.insert(clampi(target_index, 0, active_ids.size()), moving_member_id)
+	campaign["raid_plan"]["active_member_ids"] = active_ids
+	save_campaign()
+	roster_changed.emit()
+	raid_plan_changed.emit()
+	state_changed.emit()
+	return true
+
+
+func get_formation(_encounter_id: String = "") -> Dictionary:
+	_ensure_formation()
+	return Dictionary(campaign["raid_plan"]["formation"]).duplicate(true)
 
 
 func set_member_placement(
-	member_id: String, region: String, range_name: String, encounter_id: String = ""
+	member_id: String, region: String, range_name: String, _encounter_id: String = ""
 ) -> bool:
 	if not RaidPlanValidatorScript.VALID_REGIONS.has(region):
 		return false
@@ -262,28 +312,88 @@ func set_member_placement(
 	if not get_active_member_ids().has(member_id):
 		return false
 
-	if encounter_id.is_empty():
-		encounter_id = get_selected_encounter_id()
-
-	_ensure_formation(encounter_id)
-	campaign["raid_plan"]["formations"][encounter_id]["placements"][member_id] = {
+	_ensure_formation()
+	campaign["raid_plan"]["formation"]["placements"][member_id] = {
 		"region": region, "range": range_name
 	}
-	campaign["raid_plan"]["formations"][encounter_id]["preset_name"] = "Custom"
+	campaign["raid_plan"]["formation"]["preset_name"] = "Custom"
 	save_campaign()
 	raid_plan_changed.emit()
 	state_changed.emit()
 	return true
 
 
-func apply_default_formation(encounter_id: String = "") -> void:
-	if encounter_id.is_empty():
-		encounter_id = get_selected_encounter_id()
-
-	campaign["raid_plan"]["formations"][encounter_id] = _build_default_formation()
+func apply_default_formation(_encounter_id: String = "") -> void:
+	campaign["raid_plan"]["formation"] = _build_default_formation()
 	save_campaign()
 	raid_plan_changed.emit()
 	state_changed.emit()
+
+
+func get_saved_formation_names() -> Array[String]:
+	_ensure_formation()
+	var names: Array[String] = []
+	var saved_formations: Dictionary = campaign["raid_plan"].get("saved_formations", {})
+
+	for formation_name in saved_formations.keys():
+		names.append(String(formation_name))
+
+	names.sort()
+	return names
+
+
+func save_current_formation(formation_name: String) -> bool:
+	formation_name = formation_name.strip_edges()
+
+	if formation_name.is_empty() or formation_name.to_lower() == DEFAULT_FORMATION_NAME.to_lower():
+		return false
+
+	_ensure_formation()
+	var current := get_formation()
+	current["preset_name"] = formation_name
+	campaign["raid_plan"]["formation"] = current.duplicate(true)
+	campaign["raid_plan"]["saved_formations"][formation_name] = current.duplicate(true)
+	save_campaign()
+	raid_plan_changed.emit()
+	state_changed.emit()
+	return true
+
+
+func load_formation(formation_name: String) -> bool:
+	_ensure_formation()
+
+	if formation_name == DEFAULT_FORMATION_NAME:
+		apply_default_formation()
+		return true
+
+	var saved_formations: Dictionary = campaign["raid_plan"].get("saved_formations", {})
+
+	if not saved_formations.has(formation_name):
+		return false
+
+	var source: Dictionary = saved_formations[formation_name]
+	var loaded := _sanitize_formation_for_active(source)
+	loaded["preset_name"] = formation_name
+	campaign["raid_plan"]["formation"] = loaded
+	save_campaign()
+	raid_plan_changed.emit()
+	state_changed.emit()
+	return true
+
+
+func delete_saved_formation(formation_name: String) -> bool:
+	_ensure_formation()
+	var saved_formations: Dictionary = campaign["raid_plan"].get("saved_formations", {})
+
+	if not saved_formations.has(formation_name):
+		return false
+
+	saved_formations.erase(formation_name)
+	campaign["raid_plan"]["saved_formations"] = saved_formations
+	save_campaign()
+	raid_plan_changed.emit()
+	state_changed.emit()
+	return true
 
 
 func validate_raid_plan() -> Dictionary:
@@ -378,17 +488,19 @@ func get_victory_count(encounter_id: String) -> int:
 
 
 func begin_visit(context_type: String = "normal", details: Dictionary = {}) -> void:
-	var base_budget := (
-		{
-			"normal": 2,
-			"wipe": 9,
-			"first_victory": 16,
-			"repeat_victory": 8,
-			"recruitment": 14,
-			"apex_victory": 22,
-			"roster_change": 4
-		}
-		. get(context_type, 2)
+	var base_budget: int = int(
+		(
+			{
+				"normal": 2,
+				"wipe": 9,
+				"first_victory": 16,
+				"repeat_victory": 8,
+				"recruitment": 14,
+				"apex_victory": 22,
+				"roster_change": 4
+			}
+			. get(context_type, 2)
+		)
 	)
 
 	campaign["visit_context"] = {
@@ -519,11 +631,8 @@ func _create_default_campaign() -> Dictionary:
 			"region_id": FIRST_REGION_ID,
 			"encounter_id": GameState.ENCOUNTER_OGRE,
 			"active_member_ids": active_member_ids,
-			"formations":
-			{
-				GameState.ENCOUNTER_OGRE: default_formation.duplicate(true),
-				GameState.ENCOUNTER_CHAINMASTER: default_formation.duplicate(true)
-			},
+			"formation": default_formation,
+			"saved_formations": {},
 			"support_selections": {},
 			"encounter_configuration": {}
 		},
@@ -566,26 +675,142 @@ func _migrate_campaign(source: Dictionary) -> Dictionary:
 		return defaults
 
 	migrated["roster"] = sanitized_roster
+	var default_plan: Dictionary = defaults["raid_plan"]
+	var raid_plan_value: Variant = migrated.get("raid_plan", {})
+	var raid_plan: Dictionary = (
+		Dictionary(raid_plan_value).duplicate(true)
+		if raid_plan_value is Dictionary
+		else default_plan.duplicate(true)
+	)
+
+	for plan_key in default_plan.keys():
+		if plan_key in ["formation", "saved_formations"]:
+			continue
+
+		if not raid_plan.has(plan_key):
+			raid_plan[plan_key] = default_plan[plan_key]
+
+	var formation_value: Variant = raid_plan.get("formation")
+	var legacy_formations: Dictionary = {}
+
+	if not formation_value is Dictionary:
+		var legacy_formations_value: Variant = raid_plan.get("formations", {})
+		legacy_formations = (
+			Dictionary(legacy_formations_value) if legacy_formations_value is Dictionary else {}
+		)
+		var selected_encounter := String(raid_plan.get("encounter_id", GameState.ENCOUNTER_OGRE))
+		formation_value = legacy_formations.get(selected_encounter, {})
+
+		if not formation_value is Dictionary or Dictionary(formation_value).is_empty():
+			formation_value = default_plan["formation"]
+
+	raid_plan["formation"] = Dictionary(formation_value).duplicate(true)
+
+	var saved_formations_value: Variant = raid_plan.get("saved_formations", {})
+	var saved_formations: Dictionary = (
+		Dictionary(saved_formations_value).duplicate(true)
+		if saved_formations_value is Dictionary
+		else {}
+	)
+
+	for legacy_encounter_id in legacy_formations.keys():
+		var legacy_formation_value: Variant = legacy_formations[legacy_encounter_id]
+
+		if not legacy_formation_value is Dictionary:
+			continue
+
+		var imported_name := "Imported %s layout" % String(legacy_encounter_id).capitalize()
+
+		if saved_formations.has(imported_name):
+			continue
+
+		var imported_formation := Dictionary(legacy_formation_value).duplicate(true)
+		imported_formation["preset_name"] = imported_name
+		saved_formations[imported_name] = imported_formation
+
+	raid_plan["saved_formations"] = saved_formations
+
+	raid_plan.erase("formations")
+	migrated["raid_plan"] = raid_plan
 	migrated["schema_version"] = SCHEMA_VERSION
 	campaign = migrated
-	_ensure_formation(GameState.ENCOUNTER_OGRE)
-	_ensure_formation(GameState.ENCOUNTER_CHAINMASTER)
+	_ensure_formation()
 	return campaign
 
 
-func _ensure_formation(encounter_id: String) -> void:
+func _ensure_formation() -> void:
 	if not campaign.has("raid_plan"):
 		return
 
-	var formations: Dictionary = campaign["raid_plan"].get("formations", {})
+	var raid_plan: Dictionary = campaign["raid_plan"]
+	var formation_value: Variant = raid_plan.get("formation", {})
+	var formation_source: Dictionary = (
+		Dictionary(formation_value) if formation_value is Dictionary else {}
+	)
+	raid_plan["formation"] = _sanitize_formation_for_active(formation_source)
 
-	if not formations.has(encounter_id):
-		formations[encounter_id] = _build_default_formation()
-		campaign["raid_plan"]["formations"] = formations
+	if not raid_plan.get("saved_formations") is Dictionary:
+		raid_plan["saved_formations"] = {}
+
+	raid_plan.erase("formations")
+	campaign["raid_plan"] = raid_plan
 
 
 func _build_default_formation() -> Dictionary:
 	return _build_default_formation_for_ids(get_active_member_ids(), campaign.get("roster", []))
+
+
+func _sanitize_formation_for_active(source: Dictionary) -> Dictionary:
+	var default_formation := _build_default_formation()
+	var placements: Dictionary = default_formation["placements"]
+	var source_placements_value: Variant = source.get("placements", {})
+	var source_placements: Dictionary = (
+		Dictionary(source_placements_value) if source_placements_value is Dictionary else {}
+	)
+
+	for member_id in get_active_member_ids():
+		var placement_value: Variant = source_placements.get(member_id)
+
+		if not placement_value is Dictionary:
+			continue
+
+		var placement: Dictionary = placement_value
+		var region := String(placement.get("region", ""))
+		var range_name := String(placement.get("range", ""))
+
+		if (
+			RaidPlanValidatorScript.VALID_REGIONS.has(region)
+			and RaidPlanValidatorScript.VALID_RANGES.has(range_name)
+		):
+			placements[member_id] = {"region": region, "range": range_name}
+
+	var preset_name := String(source.get("preset_name", "Custom"))
+
+	if preset_name == "Balanced Writ":
+		preset_name = DEFAULT_FORMATION_NAME
+
+	return {"preset_name": preset_name, "placements": placements}
+
+
+func _formation_with_replaced_member(
+	source: Dictionary, outgoing_member_id: String, incoming_member_id: String
+) -> Dictionary:
+	var result := source.duplicate(true)
+	var placements_value: Variant = result.get("placements", {})
+	var placements: Dictionary = (
+		Dictionary(placements_value) if placements_value is Dictionary else {}
+	)
+
+	if placements.has(outgoing_member_id):
+		var outgoing_placement_value: Variant = placements[outgoing_member_id]
+
+		if outgoing_placement_value is Dictionary:
+			placements[incoming_member_id] = Dictionary(outgoing_placement_value).duplicate(true)
+
+		placements.erase(outgoing_member_id)
+
+	result["placements"] = placements
+	return result
 
 
 func _build_default_formation_for_ids(active_ids: Array[String], roster: Array) -> Dictionary:
@@ -628,7 +853,7 @@ func _build_default_formation_for_ids(active_ids: Array[String], roster: Array) 
 		placements[member_id] = {"region": region, "range": range_name}
 		role_indices[role] = role_index + 1
 
-	return {"preset_name": "Balanced Writ", "placements": placements}
+	return {"preset_name": DEFAULT_FORMATION_NAME, "placements": placements}
 
 
 func _update_discoveries_from_attempt(summary: Dictionary) -> void:

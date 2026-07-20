@@ -119,7 +119,7 @@ func resolve(boss: Node, party_members: Array) -> void:
 	locked_targets.clear()
 
 
-func on_interrupted(boss: Node, party_members: Array) -> void:
+func on_interrupted(boss: Node, _party_members: Array) -> void:
 	locked_targets.clear()
 	debug_log(boss, ability_name + " ended before pulling its targets.")
 
@@ -165,7 +165,12 @@ func _select_targets(boss: Node, party_members: Array) -> Array[Dictionary]:
 		return []
 
 	var selected_key := congested_keys[rng.randi_range(0, congested_keys.size() - 1)]
-	var selected: Array = (grouped_targets[selected_key] as Array).duplicate(true)
+	var selected: Array[Dictionary] = []
+
+	for target_data_value in grouped_targets.get(selected_key, []):
+		if target_data_value is Dictionary:
+			selected.append(Dictionary(target_data_value).duplicate(true))
+
 	selected.shuffle()
 
 	if target_count > 0:
@@ -173,7 +178,7 @@ func _select_targets(boss: Node, party_members: Array) -> Array[Dictionary]:
 			get_target_count_with_phase_bonus(boss, target_count),
 			selected.size()
 		)
-		selected = selected.slice(0, resolved_count)
+		selected.resize(resolved_count)
 
 	return selected
 
