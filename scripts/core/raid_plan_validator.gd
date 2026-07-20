@@ -1,7 +1,8 @@
 extends RefCounted
 class_name RaidPlanValidator
 
-const ACTIVE_RAID_SIZE := 20
+const MIN_ACTIVE_RAID_SIZE := 1
+const MAX_ACTIVE_RAID_SIZE := 20
 const VALID_REGIONS := [
 	"north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"
 ]
@@ -22,11 +23,18 @@ static func validate(
 	if not available_encounter_ids.has(encounter_id):
 		errors.append("The selected boss is not available in this region.")
 
-	if active_ids.size() != ACTIVE_RAID_SIZE:
+	if active_ids.size() < MIN_ACTIVE_RAID_SIZE or active_ids.size() > MAX_ACTIVE_RAID_SIZE:
 		errors.append(
 			(
-				"The active raid must contain exactly %d members; it currently contains %d."
-				% [ACTIVE_RAID_SIZE, active_ids.size()]
+				"The active raid must contain between %d and %d members; it currently contains %d."
+				% [MIN_ACTIVE_RAID_SIZE, MAX_ACTIVE_RAID_SIZE, active_ids.size()]
+			)
+		)
+	elif active_ids.size() < MAX_ACTIVE_RAID_SIZE:
+		warnings.append(
+			(
+				"The raid is embarking below full strength with %d of %d active members."
+				% [active_ids.size(), MAX_ACTIVE_RAID_SIZE]
 			)
 		)
 
@@ -58,7 +66,10 @@ static func validate(
 			errors.append("%s has no starting placement." % _member_name(roster_by_id, member_id))
 			continue
 
-		var placement: Dictionary = placements[member_id]
+		var placement_value: Variant = placements[member_id]
+		var placement: Dictionary = (
+			Dictionary(placement_value) if placement_value is Dictionary else {}
+		)
 		var region := String(placement.get("region", ""))
 		var range_name := String(placement.get("range", ""))
 

@@ -1,8 +1,10 @@
 extends Control
 class_name CampJournal
 
-const FormationMapScript := preload("res://scripts/ui/formation_map.gd")
-const FormationMemberCardScript := preload("res://scripts/ui/formation_member_card.gd")
+const FormationEditorPanelScript := preload("res://scripts/ui/formation_editor_panel.gd")
+const RosterMemberCardScript := preload("res://scripts/ui/roster_member_card.gd")
+const RosterDropZoneScript := preload("res://scripts/ui/roster_drop_zone.gd")
+const CampaignRosterActionsScript := preload("res://scripts/core/campaign_roster_actions.gd")
 
 signal journal_visibility_changed(visible_now: bool)
 signal embark_requested
@@ -10,11 +12,11 @@ signal embark_requested
 var current_facility_id: String = ""
 var header_title: Label = null
 var body: VBoxContainer = null
-var active_list: ItemList = null
-var reserve_list: ItemList = null
+var page: VBoxContainer = null
 var member_detail_label: Label = null
 var refresh_queued: bool = false
 var archive_view_encounter_id: String = ""
+var archive_show_older: Dictionary = {}
 
 
 func _ready() -> void:
@@ -53,7 +55,10 @@ func is_open() -> bool:
 func _unhandled_input(event: InputEvent) -> void:
 	if visible and event.is_action_pressed("ui_cancel"):
 		close_journal()
-		get_viewport().set_input_as_handled()
+		var viewport := get_viewport()
+
+		if viewport != null:
+			viewport.set_input_as_handled()
 
 
 func _build_shell() -> void:
@@ -69,14 +74,14 @@ func _build_shell() -> void:
 
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	center.offset_left = 70
-	center.offset_top = 55
-	center.offset_right = -70
-	center.offset_bottom = -55
+	center.offset_left = 55
+	center.offset_top = 40
+	center.offset_right = -55
+	center.offset_bottom = -40
 	add_child(center)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(1500, 870)
+	panel.custom_minimum_size = Vector2(1540, 920)
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color("172027")
 	panel_style.border_color = Color("77694f")
@@ -112,29 +117,26 @@ func _build_shell() -> void:
 	close_button.pressed.connect(close_journal)
 	header.add_child(close_button)
 
-	var separator := HSeparator.new()
-	root.add_child(separator)
-
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(scroll)
+	root.add_child(HSeparator.new())
 
 	body = VBoxContainer.new()
-	body.custom_minimum_size = Vector2(1410, 720)
+	body.custom_minimum_size = Vector2(1450, 760)
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 12)
-	scroll.add_child(body)
+	root.add_child(body)
 
 
 func _refresh_current_facility() -> void:
 	if body == null:
 		return
 
-	# A refresh can originate from one of these controls' signal callbacks.
-	# Defer destruction so the emitter survives until its callback returns.
 	for child in body.get_children():
 		body.remove_child(child)
 		child.queue_free()
+
+	page = null
+	member_detail_label = null
 
 	match current_facility_id:
 		"command_tent":
@@ -145,15 +147,33 @@ func _refresh_current_facility() -> void:
 			_build_archive()
 
 
+func _begin_scrolling_page() -> VBoxContainer:
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	body.add_child(scroll)
+
+	var result := VBoxContainer.new()
+	result.custom_minimum_size = Vector2(1420, 0)
+	result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	result.add_theme_constant_override("separation", 12)
+	scroll.add_child(result)
+	page = result
+	return result
+
+
 func _build_command_tent() -> void:
 	header_title.text = "Command Tent — Assemble the Raid Plan"
-	_add_muted_label(
-		"Target and active-roster decisions belong here. Formation editing remains at the yard; detailed analysis remains at the archive."
+	var command_page := _begin_scrolling_page()
+	_add_muted_label_to(
+		command_page,
+		"Drag members between Active and Reserves. A raid may embark with any active size from 1 to 20."
 	)
 
 	var target_row := HBoxContainer.new()
 	target_row.add_theme_constant_override("separation", 12)
-	body.add_child(target_row)
+	command_page.add_child(target_row)
 	_add_section_label_to(target_row, "Battle map")
 
 	var region_label := Label.new()
@@ -162,13 +182,8 @@ func _build_command_tent() -> void:
 	region_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	target_row.add_child(region_label)
 
-	var locked_label := Label.new()
-	locked_label.text = "Two uncharted regions · Locked until a future apex victory"
-	locked_label.add_theme_color_override("font_color", Color("778087"))
-	target_row.add_child(locked_label)
-
 	var encounter_dropdown := OptionButton.new()
-	encounter_dropdown.custom_minimum_size = Vector2(300, 42)
+	encounter_dropdown.custom_minimum_size = Vector2(330, 42)
 	var selected_encounter := CampaignState.get_selected_encounter_id()
 
 	for encounter_id in CampaignState.get_available_encounter_ids():
@@ -183,75 +198,59 @@ func _build_command_tent() -> void:
 	encounter_dropdown.item_selected.connect(_on_command_target_selected.bind(encounter_dropdown))
 	target_row.add_child(encounter_dropdown)
 
-	_add_section_label("Active Twenty and Reserves")
 	var roster_row := HBoxContainer.new()
-	roster_row.add_theme_constant_override("separation", 14)
-	body.add_child(roster_row)
+	roster_row.add_theme_constant_override("separation", 18)
+	command_page.add_child(roster_row)
 
-	var active_column := VBoxContainer.new()
-	active_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	roster_row.add_child(active_column)
+	var active_members := CampaignState.get_active_members()
+	var reserve_members := CampaignState.get_reserve_members()
 	var role_counts := CampaignState.get_role_counts()
-	var active_heading := Label.new()
-	active_heading.text = (
-		"Active 20  ·  %d tanks  ·  %d healers  ·  %d DPS"
-		% [
-			int(role_counts.get("tank", 0)),
-			int(role_counts.get("healer", 0)),
-			int(role_counts.get("dps", 0))
-		]
+	var active_column := _build_roster_column(
+		(
+			"Active %d / 20  ·  %d tanks  ·  %d healers  ·  %d DPS"
+			% [
+				active_members.size(),
+				int(role_counts.get("tank", 0)),
+				int(role_counts.get("healer", 0)),
+				int(role_counts.get("dps", 0))
+			]
+		),
+		"active",
+		active_members
 	)
-	active_column.add_child(active_heading)
+	roster_row.add_child(active_column)
 
-	active_list = ItemList.new()
-	active_list.custom_minimum_size = Vector2(540, 330)
-	active_list.select_mode = ItemList.SELECT_SINGLE
-	active_column.add_child(active_list)
-	_fill_member_list(active_list, CampaignState.get_active_members(), true)
-	active_list.item_selected.connect(_on_member_list_selected.bind(active_list))
+	var center_note := VBoxContainer.new()
+	center_note.custom_minimum_size = Vector2(210, 390)
+	center_note.alignment = BoxContainer.ALIGNMENT_CENTER
+	roster_row.add_child(center_note)
+	var arrows := Label.new()
+	arrows.text = "DRAG\n⇄"
+	arrows.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	arrows.add_theme_font_size_override("font_size", 25)
+	arrows.add_theme_color_override("font_color", Color("c9b37b"))
+	center_note.add_child(arrows)
+	var drag_note := Label.new()
+	drag_note.text = "Drop an active member into Reserves to remove them. Drop a reserve into Active to add them."
+	drag_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	drag_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	drag_note.add_theme_color_override("font_color", Color("9ca4a5"))
+	center_note.add_child(drag_note)
 
-	var swap_column := VBoxContainer.new()
-	swap_column.custom_minimum_size = Vector2(210, 330)
-	swap_column.alignment = BoxContainer.ALIGNMENT_CENTER
-	roster_row.add_child(swap_column)
-
-	var swap_button := Button.new()
-	swap_button.text = "Swap selected\n↔"
-	swap_button.custom_minimum_size = Vector2(190, 70)
-	swap_button.pressed.connect(_on_swap_selected_members)
-	swap_column.add_child(swap_button)
-
-	var swap_note := Label.new()
-	swap_note.text = "The incoming member inherits the outgoing member's saved formation slot."
-	swap_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	swap_note.add_theme_font_size_override("font_size", 13)
-	swap_note.add_theme_color_override("font_color", Color("9aa2a5"))
-	swap_column.add_child(swap_note)
-
-	var reserve_column := VBoxContainer.new()
-	reserve_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var reserve_column := _build_roster_column(
+		"Available Reserves · %d" % reserve_members.size(), "reserve", reserve_members
+	)
 	roster_row.add_child(reserve_column)
-	var reserve_heading := Label.new()
-	reserve_heading.text = "Available Reserves  ·  %d" % CampaignState.get_reserve_members().size()
-	reserve_column.add_child(reserve_heading)
-
-	reserve_list = ItemList.new()
-	reserve_list.custom_minimum_size = Vector2(540, 330)
-	reserve_list.select_mode = ItemList.SELECT_SINGLE
-	reserve_column.add_child(reserve_list)
-	_fill_member_list(reserve_list, CampaignState.get_reserve_members(), false)
-	reserve_list.item_selected.connect(_on_member_list_selected.bind(reserve_list))
 
 	member_detail_label = Label.new()
 	member_detail_label.text = "Select a member to inspect their visible attributes and identity."
-	member_detail_label.custom_minimum_size = Vector2(0, 58)
+	member_detail_label.custom_minimum_size = Vector2(0, 64)
 	member_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.add_child(member_detail_label)
+	command_page.add_child(member_detail_label)
 
 	var intelligence_row := HBoxContainer.new()
 	intelligence_row.add_theme_constant_override("separation", 18)
-	body.add_child(intelligence_row)
-
+	command_page.add_child(intelligence_row)
 	var intel_panel := _make_text_panel(
 		"Known target facts", _command_intelligence_text(selected_encounter)
 	)
@@ -264,8 +263,11 @@ func _build_command_tent() -> void:
 	intelligence_row.add_child(attempt_panel)
 
 	var formation := CampaignState.get_formation()
+	var placements_value: Variant = formation.get("placements", {})
+	var placements: Dictionary = (
+		Dictionary(placements_value) if placements_value is Dictionary else {}
+	)
 	var placed_count := 0
-	var placements: Dictionary = formation.get("placements", {})
 
 	for member_id in CampaignState.get_active_member_ids():
 		if placements.has(member_id):
@@ -273,11 +275,11 @@ func _build_command_tent() -> void:
 
 	var plan_summary := Label.new()
 	plan_summary.text = (
-		"RAID PLAN · Beast Crucible · Global formation: %s · %d/20 placed · Supports: none unlocked"
-		% [String(formation.get("preset_name", "Custom")), placed_count]
+		"RAID PLAN · Beast Crucible · Global formation: %s · %d/%d active members placed"
+		% [String(formation.get("preset_name", "Custom")), placed_count, active_members.size()]
 	)
 	plan_summary.add_theme_color_override("font_color", Color("c9b37b"))
-	body.add_child(plan_summary)
+	command_page.add_child(plan_summary)
 
 	var validation := CampaignState.validate_raid_plan()
 	var validation_label := Label.new()
@@ -286,17 +288,17 @@ func _build_command_tent() -> void:
 	validation_label.add_theme_color_override(
 		"font_color", Color("9fc18b") if bool(validation.get("valid", false)) else Color("d78d7d")
 	)
-	body.add_child(validation_label)
+	command_page.add_child(validation_label)
 
 	var footer := HBoxContainer.new()
 	footer.alignment = BoxContainer.ALIGNMENT_END
 	footer.add_theme_constant_override("separation", 12)
-	body.add_child(footer)
+	command_page.add_child(footer)
 
 	if OS.is_debug_build():
 		var stress_button := Button.new()
 		stress_button.text = "Debug: Seed 20 Reserves"
-		stress_button.tooltip_text = "Adds the mature 40-member role mix once for roster and Camp stress testing."
+		stress_button.tooltip_text = "Adds the mature 40-member role mix once for Camp stress testing."
 		stress_button.disabled = CampaignState.get_roster_members().size() >= 40
 		stress_button.pressed.connect(_on_seed_debug_reserves)
 		footer.add_child(stress_button)
@@ -309,20 +311,95 @@ func _build_command_tent() -> void:
 	footer.add_child(embark_button)
 
 
+func _build_roster_column(
+	heading_text: String, zone_id: String, members: Array[Dictionary]
+) -> VBoxContainer:
+	var column := VBoxContainer.new()
+	column.custom_minimum_size = Vector2(555, 390)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var heading := Label.new()
+	heading.text = heading_text
+	heading.add_theme_color_override("font_color", Color("d5c18a"))
+	column.add_child(heading)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(540, 350)
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("10181e")
+	style.border_color = Color("39464b")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(3)
+	panel.add_theme_stylebox_override("panel", style)
+	column.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
+
+	var drop_zone := RosterDropZoneScript.new() as RosterDropZone
+	drop_zone.configure(zone_id)
+	drop_zone.custom_minimum_size = Vector2(505, 325)
+	drop_zone.member_dropped.connect(_on_roster_member_dropped)
+	scroll.add_child(drop_zone)
+
+	for member_index in range(members.size()):
+		var member: Dictionary = members[member_index]
+		var member_id := String(member.get("member_id", ""))
+		var prefix := "%02d" % (member_index + 1) if zone_id == "active" else "○"
+		var card := RosterMemberCardScript.new() as RosterMemberCard
+		card.configure(
+			member_id,
+			zone_id,
+			(
+				"%s  %-24s  %s"
+				% [
+					prefix,
+					CampaignState.format_member_label(member),
+					_humanize(String(member.get("role", "")))
+				]
+			)
+		)
+		card.member_inspect_requested.connect(_on_member_inspect_requested)
+		card.member_transfer_requested.connect(_on_roster_member_dropped)
+		card.member_reorder_requested.connect(_on_active_member_reorder_requested)
+		drop_zone.add_child(card)
+
+	if members.is_empty():
+		var empty := Label.new()
+		empty.text = (
+			"No active members."
+			if zone_id == "active"
+			else "No reserves yet. Use the debug seed during development or recruit members later."
+		)
+		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty.add_theme_color_override("font_color", Color("778087"))
+		drop_zone.add_child(empty)
+
+	return column
+
+
 func _build_formation_yard() -> void:
 	header_title.text = "Formation Yard — Raid Formation"
-	_add_muted_label(
-		(
-			"Formations apply to every target. Drag a roster row onto any mini-region to place it; "
-			+ "drop one roster row onto another to choose the active order."
-		)
+	var formation_page := _begin_scrolling_page()
+	_add_muted_label_to(
+		formation_page,
+		"Formations apply to every target. Drag a roster row onto any mini-region; drop rows onto one another to reorder the active raid."
 	)
 
 	var formation := CampaignState.get_formation()
 	var current_name := String(formation.get("preset_name", "Custom"))
 	var preset_row := HBoxContainer.new()
 	preset_row.add_theme_constant_override("separation", 10)
-	body.add_child(preset_row)
+	formation_page.add_child(preset_row)
 	_add_section_label_to(preset_row, "Saved formations")
 
 	var current_label := Label.new()
@@ -344,11 +421,11 @@ func _build_formation_yard() -> void:
 		if formation_name == current_name:
 			preset_dropdown.select(option_index)
 
+	preset_row.add_child(preset_dropdown)
 	var load_button := Button.new()
 	load_button.text = "Load"
 	load_button.custom_minimum_size = Vector2(90, 42)
 	load_button.pressed.connect(_on_load_formation_pressed.bind(preset_dropdown))
-	preset_row.add_child(preset_dropdown)
 	preset_row.add_child(load_button)
 
 	var delete_button := Button.new()
@@ -376,78 +453,17 @@ func _build_formation_yard() -> void:
 	save_button.pressed.connect(_on_save_formation_pressed.bind(name_input))
 	preset_row.add_child(save_button)
 
-	var editor_row := HBoxContainer.new()
-	editor_row.add_theme_constant_override("separation", 22)
-	body.add_child(editor_row)
-
-	var member_column := VBoxContainer.new()
-	member_column.custom_minimum_size = Vector2(540, 610)
-	editor_row.add_child(member_column)
-	var member_heading := Label.new()
-	member_heading.text = "Active roster and placements · drag to sort"
-	member_column.add_child(member_heading)
-
-	var roster_scroll := ScrollContainer.new()
-	roster_scroll.custom_minimum_size = Vector2(530, 570)
-	roster_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	member_column.add_child(roster_scroll)
-	var roster_cards := VBoxContainer.new()
-	roster_cards.custom_minimum_size = Vector2(500, 0)
-	roster_cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	roster_cards.add_theme_constant_override("separation", 4)
-	roster_scroll.add_child(roster_cards)
-	var placements: Dictionary = formation.get("placements", {})
-	var active_members := CampaignState.get_active_members()
-
-	for member_index in range(active_members.size()):
-		var member: Dictionary = active_members[member_index]
-		var member_id := String(member.get("member_id", ""))
-		var placement: Dictionary = placements.get(member_id, {})
-		var card := FormationMemberCardScript.new() as FormationMemberCard
-		card.configure(
-			member_id,
-			(
-				"%02d  %-24s  %s / %s"
-				% [
-					member_index + 1,
-					CampaignState.format_member_label(member),
-					_humanize(String(placement.get("region", "unassigned"))),
-					_humanize(String(placement.get("range", "unassigned")))
-				]
-			)
-		)
-		card.member_reorder_requested.connect(_on_formation_member_reorder_requested)
-		roster_cards.add_child(card)
-
-	var map_column := VBoxContainer.new()
-	map_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	map_column.custom_minimum_size = Vector2(780, 610)
-	editor_row.add_child(map_column)
-	var map_heading := Label.new()
-	map_heading.text = "All 24 mini-regions · C close · M mid · F far"
-	map_column.add_child(map_heading)
-
-	var formation_map := FormationMapScript.new() as FormationMap
-	formation_map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	formation_map.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	formation_map.configure(active_members, formation)
-	formation_map.member_dropped.connect(_on_formation_member_dropped)
-	map_column.add_child(formation_map)
-
-	var validation := CampaignState.validate_raid_plan()
-	var validation_label := Label.new()
-	validation_label.text = _validation_text(validation)
-	validation_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	validation_label.add_theme_color_override(
-		"font_color", Color("9fc18b") if bool(validation.get("valid", false)) else Color("d78d7d")
-	)
-	body.add_child(validation_label)
+	var editor := FormationEditorPanelScript.new() as FormationEditorPanel
+	editor.configure("", true)
+	formation_page.add_child(editor)
 
 
 func _build_archive() -> void:
 	header_title.text = "Archive — Observed Intelligence and Attempts"
-	_add_muted_label(
-		"The archive records observed facts. It does not prescribe a composition or invent mechanic failures."
+	page = body
+	_add_muted_label_to(
+		body,
+		"The archive records observed facts. Only the attempt-history panel scrolls; the target and intelligence remain anchored."
 	)
 
 	var encounter_tabs := HBoxContainer.new()
@@ -465,49 +481,228 @@ func _build_archive() -> void:
 	var selected_encounter := archive_view_encounter_id
 	var content_row := HBoxContainer.new()
 	content_row.add_theme_constant_override("separation", 18)
+	content_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_child(content_row)
 
-	var intel_text := _archive_intelligence_text(selected_encounter)
-	var intel_panel := _make_text_panel("Discovered intelligence", intel_text)
-	intel_panel.custom_minimum_size = Vector2(610, 610)
+	var intel_panel := _make_text_panel(
+		"Discovered intelligence", _archive_intelligence_text(selected_encounter)
+	)
+	intel_panel.custom_minimum_size = Vector2(480, 650)
 	content_row.add_child(intel_panel)
 
-	var history_text := _archive_history_text(selected_encounter)
-	var history_panel := _make_text_panel("Attempt history · newest first", history_text)
-	history_panel.custom_minimum_size = Vector2(760, 610)
+	var history_panel := PanelContainer.new()
+	history_panel.custom_minimum_size = Vector2(930, 650)
+	history_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	history_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var history_style := StyleBoxFlat.new()
+	history_style.bg_color = Color("10181e")
+	history_style.border_color = Color("39464b")
+	history_style.set_border_width_all(1)
+	history_style.set_corner_radius_all(3)
+	history_panel.add_theme_stylebox_override("panel", history_style)
 	content_row.add_child(history_panel)
 
+	var history_margin := MarginContainer.new()
+	history_margin.add_theme_constant_override("margin_left", 14)
+	history_margin.add_theme_constant_override("margin_right", 14)
+	history_margin.add_theme_constant_override("margin_top", 12)
+	history_margin.add_theme_constant_override("margin_bottom", 12)
+	history_panel.add_child(history_margin)
 
-func _fill_member_list(list: ItemList, members: Array[Dictionary], active: bool) -> void:
-	for member in members:
-		var member_id := String(member.get("member_id", ""))
-		var marker := "●" if active else "○"
-		list.add_item(
-			(
-				"%s  %-24s  %s"
-				% [
-					marker,
-					CampaignState.format_member_label(member),
-					_humanize(String(member.get("role", "")))
-				]
-			)
-		)
-		list.set_item_metadata(list.item_count - 1, member_id)
+	var history_root := VBoxContainer.new()
+	history_root.add_theme_constant_override("separation", 8)
+	history_margin.add_child(history_root)
+	var history_title := Label.new()
+	history_title.text = "Attempt history · newest first"
+	history_title.add_theme_font_size_override("font_size", 18)
+	history_title.add_theme_color_override("font_color", Color("c9b37b"))
+	history_root.add_child(history_title)
 
-	if members.is_empty():
-		list.add_item("No reserve members yet.")
-		list.set_item_disabled(0, true)
-
-
-func _on_command_target_selected(index: int, dropdown: OptionButton) -> void:
-	CampaignState.set_selected_encounter(String(dropdown.get_item_metadata(index)))
+	var history_scroll := ScrollContainer.new()
+	history_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	history_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	history_root.add_child(history_scroll)
+	var history_list := VBoxContainer.new()
+	history_list.custom_minimum_size = Vector2(880, 0)
+	history_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	history_list.add_theme_constant_override("separation", 9)
+	history_scroll.add_child(history_list)
+	_build_archive_history(selected_encounter, history_list)
 
 
-func _on_member_list_selected(index: int, source_list: ItemList) -> void:
-	if member_detail_label == null or index < 0 or index >= source_list.item_count:
+func _build_archive_history(encounter_id: String, target: VBoxContainer) -> void:
+	var history := CampaignState.get_attempt_history(encounter_id)
+
+	if history.is_empty():
+		var empty := Label.new()
+		empty.text = "No attempts recorded."
+		target.add_child(empty)
 		return
 
-	var member_id := String(source_list.get_item_metadata(index))
+	history.reverse()
+	var recent_count := mini(5, history.size())
+
+	for index in range(recent_count):
+		target.add_child(_make_attempt_card(history[index], true, index + 1))
+
+	var older_count := history.size() - recent_count
+
+	if older_count <= 0:
+		return
+
+	var expanded := bool(archive_show_older.get(encounter_id, false))
+	var toggle := Button.new()
+	toggle.text = (
+		"Hide %d older attempts" % older_count
+		if expanded
+		else "Show %d older attempts" % older_count
+	)
+	toggle.custom_minimum_size = Vector2(0, 44)
+	toggle.pressed.connect(_on_toggle_older_attempts.bind(encounter_id))
+	target.add_child(toggle)
+
+	if expanded:
+		for index in range(recent_count, history.size()):
+			target.add_child(_make_attempt_card(history[index], false, index + 1))
+
+
+func _make_attempt_card(summary: Dictionary, detailed: bool, attempt_number: int) -> PanelContainer:
+	var card := PanelContainer.new()
+	var outcome := String(summary.get("outcome", "unknown"))
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("162128")
+	style.border_color = Color("6e8a68") if outcome == "victory" else Color("765550")
+	style.set_border_width_all(2 if detailed else 1)
+	style.set_corner_radius_all(4)
+	card.add_theme_stylebox_override("panel", style)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	card.add_child(margin)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 5)
+	margin.add_child(column)
+
+	var summary_label := Label.new()
+	summary_label.text = (
+		"Attempt %d · %s · %.1fs · %.1f%% boss progress · %s"
+		% [
+			attempt_number,
+			_humanize(outcome),
+			float(summary.get("duration_seconds", 0.0)),
+			float(summary.get("boss_progress_percent", 0.0)),
+			String(summary.get("furthest_phase_name", "Unknown phase"))
+		]
+	)
+	summary_label.add_theme_color_override(
+		"font_color", Color("a9cf9b") if outcome == "victory" else Color("d8aaa2")
+	)
+	column.add_child(summary_label)
+
+	var totals := Label.new()
+	totals.text = (
+		"%d damage · %d healing · %d deaths · %d events"
+		% [
+			_sum_dictionary_values(summary.get("damage_by_source", {})),
+			_sum_dictionary_values(summary.get("healing_by_source", {})),
+			summary.get("deaths", []).size(),
+			int(summary.get("event_count", 0))
+		]
+	)
+	totals.add_theme_color_override("font_color", Color("aeb8af"))
+	column.add_child(totals)
+
+	if detailed:
+		var timeline: Array = summary.get("timeline", [])
+		var recent_timeline := timeline.slice(maxi(timeline.size() - 10, 0))
+
+		if not recent_timeline.is_empty():
+			var timeline_label := Label.new()
+			timeline_label.text = "Hover timeline"
+			timeline_label.add_theme_color_override("font_color", Color("c9b37b"))
+			column.add_child(timeline_label)
+			var flow := HFlowContainer.new()
+			flow.add_theme_constant_override("h_separation", 6)
+			flow.add_theme_constant_override("v_separation", 5)
+			column.add_child(flow)
+
+			for event in recent_timeline:
+				var event_label := String(event.get("display_name", ""))
+
+				if event_label.is_empty():
+					event_label = _humanize(
+						String(event.get("ability_id", event.get("type", "event")))
+					)
+
+				var chip := Label.new()
+				chip.text = " %.1fs · %s " % [float(event.get("time", 0.0)), event_label]
+				chip.tooltip_text = _timeline_tooltip(event)
+				chip.add_theme_color_override("font_color", _timeline_color(event))
+				chip.add_theme_color_override("font_shadow_color", Color("080d10"))
+				chip.add_theme_constant_override("shadow_offset_x", 1)
+				chip.add_theme_constant_override("shadow_offset_y", 1)
+				flow.add_child(chip)
+
+		var failures: Array = summary.get("reliable_failures", [])
+
+		for failure in failures.slice(0, 3):
+			var failure_label := Label.new()
+			failure_label.text = "• %s" % String(failure)
+			failure_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			failure_label.add_theme_color_override("font_color", Color("d3b18b"))
+			column.add_child(failure_label)
+
+	return card
+
+
+func _timeline_tooltip(event: Dictionary) -> String:
+	return (
+		"Time: %.1fs\nType: %s\nAbility: %s\nTarget: %s"
+		% [
+			float(event.get("time", 0.0)),
+			_humanize(String(event.get("type", "event"))),
+			_humanize(String(event.get("ability_id", "unknown"))),
+			String(event.get("target_name", event.get("target_id", "Unknown")))
+		]
+	)
+
+
+func _timeline_color(event: Dictionary) -> Color:
+	var event_type := String(event.get("type", ""))
+
+	if event_type.contains("heal"):
+		return Color("8dc79a")
+
+	if event_type.contains("death") or event_type.contains("damage"):
+		return Color("d38d83")
+
+	if event_type.contains("cast") or event_type.contains("ability"):
+		return Color("c9b37b")
+
+	return Color("9ab4c4")
+
+
+func _on_roster_member_dropped(member_id: String, source_zone: String, target_zone: String) -> void:
+	if source_zone == "reserve" and target_zone == "active":
+		CampaignRosterActionsScript.add_active_member(member_id)
+	elif source_zone == "active" and target_zone == "reserve":
+		CampaignRosterActionsScript.remove_active_member(member_id)
+
+
+func _on_active_member_reorder_requested(
+	moving_member_id: String, target_member_id: String, place_after_target: bool
+) -> void:
+	CampaignState.reorder_active_member(moving_member_id, target_member_id, place_after_target)
+
+
+func _on_member_inspect_requested(member_id: String) -> void:
+	if member_detail_label == null:
+		return
+
 	var member := CampaignState.get_member(member_id)
 
 	if member.is_empty():
@@ -524,19 +719,8 @@ func _on_member_list_selected(index: int, source_list: ItemList) -> void:
 	)
 
 
-func _on_swap_selected_members() -> void:
-	if active_list == null or reserve_list == null:
-		return
-
-	var active_selection := active_list.get_selected_items()
-	var reserve_selection := reserve_list.get_selected_items()
-
-	if active_selection.is_empty() or reserve_selection.is_empty():
-		return
-
-	var active_id := String(active_list.get_item_metadata(active_selection[0]))
-	var reserve_id := String(reserve_list.get_item_metadata(reserve_selection[0]))
-	CampaignState.swap_active_member(active_id, reserve_id)
+func _on_command_target_selected(index: int, dropdown: OptionButton) -> void:
+	CampaignState.set_selected_encounter(String(dropdown.get_item_metadata(index)))
 
 
 func _on_seed_debug_reserves() -> void:
@@ -547,28 +731,14 @@ func _on_embark_pressed() -> void:
 	embark_requested.emit()
 
 
-func _on_formation_member_dropped(member_id: String, region: String, range_name: String) -> void:
-	CampaignState.set_member_placement(member_id, region, range_name)
-
-
-func _on_formation_member_reorder_requested(
-	moving_member_id: String, target_member_id: String, place_after_target: bool
-) -> void:
-	CampaignState.reorder_active_member(moving_member_id, target_member_id, place_after_target)
-
-
 func _on_load_formation_pressed(dropdown: OptionButton) -> void:
-	if dropdown.selected < 0:
-		return
-
-	CampaignState.load_formation(String(dropdown.get_item_metadata(dropdown.selected)))
+	if dropdown.selected >= 0:
+		CampaignState.load_formation(String(dropdown.get_item_metadata(dropdown.selected)))
 
 
 func _on_delete_formation_pressed(dropdown: OptionButton) -> void:
-	if dropdown.selected < 0:
-		return
-
-	CampaignState.delete_saved_formation(String(dropdown.get_item_metadata(dropdown.selected)))
+	if dropdown.selected >= 0:
+		CampaignState.delete_saved_formation(String(dropdown.get_item_metadata(dropdown.selected)))
 
 
 func _on_save_formation_pressed(name_input: LineEdit) -> void:
@@ -586,6 +756,11 @@ func _on_saved_formation_selected(
 
 func _on_archive_target_selected(encounter_id: String) -> void:
 	archive_view_encounter_id = encounter_id
+	_queue_refresh()
+
+
+func _on_toggle_older_attempts(encounter_id: String) -> void:
+	archive_show_older[encounter_id] = not bool(archive_show_older.get(encounter_id, false))
 	_queue_refresh()
 
 
@@ -633,27 +808,28 @@ func _latest_attempt_brief(encounter_id: String) -> String:
 	if summary.is_empty():
 		return "No attempts recorded for this target."
 
-	var lines := [
-		(
-			"%s · %.1fs"
-			% [
-				_humanize(String(summary.get("outcome", "unknown"))),
-				float(summary.get("duration_seconds", 0.0))
-			]
-		),
-		(
-			"Boss progress: %.1f%% · Furthest phase: %s"
-			% [
-				float(summary.get("boss_progress_percent", 0.0)),
-				String(summary.get("furthest_phase_name", "Unknown"))
-			]
-		),
-		(
-			"Deaths: %d · Logged events: %d"
-			% [summary.get("deaths", []).size(), int(summary.get("event_count", 0))]
-		)
-	]
-	return "\n".join(lines)
+	return "\n".join(
+		[
+			(
+				"%s · %.1fs"
+				% [
+					_humanize(String(summary.get("outcome", "unknown"))),
+					float(summary.get("duration_seconds", 0.0))
+				]
+			),
+			(
+				"Boss progress: %.1f%% · Furthest phase: %s"
+				% [
+					float(summary.get("boss_progress_percent", 0.0)),
+					String(summary.get("furthest_phase_name", "Unknown"))
+				]
+			),
+			(
+				"Deaths: %d · Logged events: %d"
+				% [summary.get("deaths", []).size(), int(summary.get("event_count", 0))]
+			)
+		]
+	)
 
 
 func _archive_intelligence_text(encounter_id: String) -> String:
@@ -685,71 +861,14 @@ func _archive_intelligence_text(encounter_id: String) -> String:
 	return "\n".join(lines)
 
 
-func _archive_history_text(encounter_id: String) -> String:
-	var history := CampaignState.get_attempt_history(encounter_id)
-
-	if history.is_empty():
-		return "No attempts recorded."
-
-	var lines: Array[String] = []
-	history.reverse()
-
-	for history_index in range(history.size()):
-		var summary: Dictionary = history[history_index]
-		lines.append(
-			(
-				"%s · %.1fs · %.1f%% boss progress · %s · %d damage / %d healing"
-				% [
-					_humanize(String(summary.get("outcome", "unknown"))),
-					float(summary.get("duration_seconds", 0.0)),
-					float(summary.get("boss_progress_percent", 0.0)),
-					String(summary.get("furthest_phase_name", "Unknown phase")),
-					_sum_dictionary_values(summary.get("damage_by_source", {})),
-					_sum_dictionary_values(summary.get("healing_by_source", {}))
-				]
-			)
-		)
-
-		for death in summary.get("deaths", []).slice(0, 4):
-			lines.append(
-				(
-					"  • %.1fs: %s — %s"
-					% [
-						float(death.get("time", 0.0)),
-						String(death.get("member_name", "Unknown")),
-						_humanize(String(death.get("cause_ability_id", "unknown")))
-					]
-				)
-			)
-
-		for failure in summary.get("reliable_failures", []).slice(0, 3):
-			lines.append("  • Detected: %s" % String(failure))
-
-		if history_index < 5:
-			var timeline: Array = summary.get("timeline", [])
-			var recent_timeline := timeline.slice(maxi(timeline.size() - 6, 0))
-
-			if not recent_timeline.is_empty():
-				lines.append("  Recent timeline")
-
-				for event in recent_timeline:
-					var event_label := String(event.get("display_name", ""))
-
-					if event_label.is_empty():
-						event_label = _humanize(
-							String(event.get("ability_id", event.get("type", "event")))
-						)
-
-					lines.append("    %.1fs · %s" % [float(event.get("time", 0.0)), event_label])
-
-		lines.append("")
-
-	return "\n".join(lines)
-
-
 func _validation_text(validation: Dictionary) -> String:
 	if bool(validation.get("valid", false)):
-		return "READY · Target, active twenty, and the global starting formation are valid. No support choices are currently unlocked."
+		var warnings: Array = validation.get("warnings", [])
+		return (
+			"READY · Target, active roster, and global starting formation are valid."
+			if warnings.is_empty()
+			else "READY · " + "  ".join(warnings)
+		)
 
 	return "NOT READY · " + "  ".join(validation.get("errors", []))
 
@@ -787,15 +906,6 @@ func _make_text_panel(title: String, text_value: String) -> PanelContainer:
 	return panel
 
 
-func _add_section_label(text_value: String) -> Label:
-	var label := Label.new()
-	label.text = text_value
-	label.add_theme_font_size_override("font_size", 21)
-	label.add_theme_color_override("font_color", Color("d5c18a"))
-	body.add_child(label)
-	return label
-
-
 func _add_section_label_to(parent: Control, text_value: String) -> Label:
 	var label := Label.new()
 	label.text = text_value
@@ -805,12 +915,12 @@ func _add_section_label_to(parent: Control, text_value: String) -> Label:
 	return label
 
 
-func _add_muted_label(text_value: String) -> Label:
+func _add_muted_label_to(parent: Control, text_value: String) -> Label:
 	var label := Label.new()
 	label.text = text_value
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.add_theme_color_override("font_color", Color("9ca4a5"))
-	body.add_child(label)
+	parent.add_child(label)
 	return label
 
 

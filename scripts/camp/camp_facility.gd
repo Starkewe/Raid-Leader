@@ -3,6 +3,7 @@ class_name CampFacility
 
 const FACILITY_ATLAS := preload("res://assets/camp/camp_facilities_atlas.png")
 const ATLAS_CELL_SIZE := Vector2i(362, 362)
+const ATLAS_INSET := 2
 
 @export var facility_id: String = ""
 @export var display_name: String = "Facility"
@@ -69,10 +70,10 @@ func _create_sprite() -> void:
 	var atlas_texture := AtlasTexture.new()
 	atlas_texture.atlas = FACILITY_ATLAS
 	atlas_texture.region = Rect2(
-		atlas_cell.x * ATLAS_CELL_SIZE.x,
-		atlas_cell.y * ATLAS_CELL_SIZE.y,
-		ATLAS_CELL_SIZE.x,
-		ATLAS_CELL_SIZE.y
+		atlas_cell.x * ATLAS_CELL_SIZE.x + ATLAS_INSET,
+		atlas_cell.y * ATLAS_CELL_SIZE.y + ATLAS_INSET,
+		ATLAS_CELL_SIZE.x - ATLAS_INSET * 2,
+		ATLAS_CELL_SIZE.y - ATLAS_INSET * 2
 	)
 
 	sprite = Sprite2D.new()
@@ -106,10 +107,14 @@ func _create_title_label() -> void:
 	title_label = Label.new()
 	title_label.name = "FacilityName"
 	title_label.text = display_name
-	title_label.position = Vector2(-120, footprint.y * 0.5 + 18)
-	title_label.size = Vector2(240, 28)
+	var label_width := 300.0 if facility_id == "victory_spike" else 240.0
+	var label_y := footprint.y * 0.5 + (48.0 if facility_id == "victory_spike" else 18.0)
+	title_label.position = Vector2(-label_width * 0.5, label_y)
+	title_label.size = Vector2(label_width, 34)
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.add_theme_font_size_override("font_size", 18)
+	title_label.add_theme_font_size_override(
+		"font_size", 15 if facility_id == "victory_spike" else 18
+	)
 	title_label.add_theme_color_override("font_color", Color("d7d0bd"))
 	title_label.add_theme_color_override("font_shadow_color", Color("101518"))
 	title_label.add_theme_constant_override("shadow_offset_x", 2)

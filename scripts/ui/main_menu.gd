@@ -1,352 +1,283 @@
 extends Control
 
-@export_file("*.tscn") var combat_scene_path: String = "res://scenes/combat_scene.tscn"
+const CampaignSaveManagerScript := preload("res://scripts/core/campaign_save_manager.gd")
 
-@onready var main_menu_container: CenterContainer = $CenterContainer
-@onready var start_fight_button: Button = $CenterContainer/VBoxContainer/StartFightButton
-@onready var manage_team_button: Button = $CenterContainer/VBoxContainer/ManageTeamButton
-@onready var quit_button: Button = $CenterContainer/VBoxContainer/QuitButton
-
-@onready var team_panel: PanelContainer = $TeamPanel
-@onready var total_label: Label = $TeamPanel/CenterContainer/VBoxContainer/TotalLabel
-@onready var roster_rows: VBoxContainer = $TeamPanel/CenterContainer/VBoxContainer/RosterRows
-@onready var start_fight_from_team_button: Button = $TeamPanel/CenterContainer/VBoxContainer/StartFightFromTeamButton
-@onready var back_button: Button = $TeamPanel/CenterContainer/VBoxContainer/BackButton
-@onready var main_menu_vbox: VBoxContainer = $CenterContainer/VBoxContainer
-
-var tutorial_button: Button = null
-var settings_button: Button = null
-var encounter_dropdown: OptionButton = null
-
-var tutorial_panel: PanelContainer = null
-var tutorial_grid: GridContainer = null
-var tutorial_description_label: Label = null
-var start_tutorial_button: Button = null
-
-var settings_panel: PanelContainer = null
-var speech_to_text_dropdown: OptionButton = null
-
-var unit_class_order: Array[String] = []
-var count_labels: Dictionary = {}
-
-func _ready():
-	unit_class_order = GameState.get_available_classes()
-	start_fight_button.text = "Enter Camp"
-	manage_team_button.text = "Tutorial Test Roster"
-	start_fight_from_team_button.text = "Done"
-
-	start_fight_button.pressed.connect(_on_start_fight_pressed)
-	manage_team_button.pressed.connect(_on_manage_team_pressed)
-	quit_button.pressed.connect(_on_quit_pressed)
-
-	start_fight_from_team_button.pressed.connect(_on_back_pressed)
-	back_button.pressed.connect(_on_back_pressed)
-
-	build_main_menu_extra_buttons()
-	build_tutorial_panel()
-	build_settings_panel()
-	build_team_rows()
-	show_main_menu()
-
-func build_main_menu_extra_buttons() -> void:
-	tutorial_button = Button.new()
-	tutorial_button.text = "Tutorial"
-	tutorial_button.pressed.connect(_on_tutorial_pressed)
-
-	settings_button = Button.new()
-	settings_button.text = "Settings"
-	settings_button.pressed.connect(_on_settings_pressed)
-
-	main_menu_vbox.add_child(tutorial_button)
-	main_menu_vbox.add_child(settings_button)
-
-	main_menu_vbox.move_child(tutorial_button, 2)
-	main_menu_vbox.move_child(settings_button, 3)
+var main_panel: VBoxContainer = null
+var secondary_panel: VBoxContainer = null
+var tutorial_description: Label = null
+var tutorial_start_button: Button = null
+var settings_dropdown: OptionButton = null
 
 
-func build_normal_encounter_selector() -> void:
-	var label := Label.new()
-	label.text = "Beast Crucible Encounter"
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	main_menu_vbox.add_child(label)
-	main_menu_vbox.move_child(label, 1)
-
-	encounter_dropdown = OptionButton.new()
-	main_menu_vbox.add_child(encounter_dropdown)
-	main_menu_vbox.move_child(encounter_dropdown, 2)
-
-	var selected_id := GameState.get_selected_normal_encounter_id()
-
-	for encounter_id in GameState.get_normal_encounter_ids():
-		var encounter_data: Dictionary = GameState.get_encounter_data(encounter_id)
-		var option_index := encounter_dropdown.item_count
-		encounter_dropdown.add_item(String(encounter_data.get("display_name", encounter_id)))
-		encounter_dropdown.set_item_metadata(option_index, encounter_id)
-
-		if encounter_id == selected_id:
-			encounter_dropdown.select(option_index)
-
-	encounter_dropdown.item_selected.connect(_on_normal_encounter_selected)
+func _ready() -> void:
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	_rebuild_root()
+	_show_main_menu()
 
 
-func _on_normal_encounter_selected(index: int) -> void:
-	if encounter_dropdown == null or index < 0 or index >= encounter_dropdown.item_count:
-		return
-
-	GameState.set_selected_normal_encounter(
-		String(encounter_dropdown.get_item_metadata(index))
-	)
-
-
-func build_tutorial_panel() -> void:
-	tutorial_panel = PanelContainer.new()
-	tutorial_panel.visible = false
-	add_child(tutorial_panel)
-
-	var center := CenterContainer.new()
-	tutorial_panel.add_child(center)
-
-	var root := VBoxContainer.new()
-	root.custom_minimum_size = Vector2(700, 420)
-	root.add_theme_constant_override("separation", 10)
-	center.add_child(root)
-
-	var title := Label.new()
-	title.text = "Tutorial Bosses"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	root.add_child(title)
-
-	tutorial_grid = GridContainer.new()
-	tutorial_grid.columns = 5
-	root.add_child(tutorial_grid)
-
-	build_tutorial_boss_buttons()
-
-	tutorial_description_label = Label.new()
-	tutorial_description_label.text = "Select a tutorial boss."
-	tutorial_description_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	root.add_child(tutorial_description_label)
-
-	start_tutorial_button = Button.new()
-	start_tutorial_button.text = "Start Tutorial"
-	start_tutorial_button.disabled = true
-	start_tutorial_button.pressed.connect(_on_start_tutorial_pressed)
-	root.add_child(start_tutorial_button)
-
-	var back := Button.new()
-	back.text = "Back"
-	back.pressed.connect(_on_back_pressed)
-	root.add_child(back)
-
-	position_fullscreen_panel(tutorial_panel)
-
-
-func build_tutorial_boss_buttons() -> void:
-	for child in tutorial_grid.get_children():
+func _rebuild_root() -> void:
+	for child in get_children():
+		remove_child(child)
 		child.queue_free()
 
-	var boss_ids: Array[String] = GameState.get_tutorial_boss_ids()
+	var background := ColorRect.new()
+	background.set_anchors_preset(Control.PRESET_FULL_RECT)
+	background.color = Color("0c1318")
+	add_child(background)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.offset_left = 40
+	center.offset_top = 35
+	center.offset_right = -40
+	center.offset_bottom = -35
+	add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(720, 820)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("172027")
+	style.border_color = Color("77694f")
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(5)
+	panel.add_theme_stylebox_override("panel", style)
+	center.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 42)
+	margin.add_theme_constant_override("margin_right", 42)
+	margin.add_theme_constant_override("margin_top", 34)
+	margin.add_theme_constant_override("margin_bottom", 34)
+	panel.add_child(margin)
+
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 14)
+	margin.add_child(root)
+
+	var title := Label.new()
+	title.text = "Raid Leader"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 44)
+	title.add_theme_color_override("font_color", Color("e8dfc7"))
+	root.add_child(title)
+
+	var subtitle := Label.new()
+	subtitle.text = "The 20fold Writ"
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.add_theme_font_size_override("font_size", 20)
+	subtitle.add_theme_color_override("font_color", Color("c9b37b"))
+	root.add_child(subtitle)
+
+	root.add_child(HSeparator.new())
+
+	main_panel = VBoxContainer.new()
+	main_panel.add_theme_constant_override("separation", 10)
+	main_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(main_panel)
+
+	secondary_panel = VBoxContainer.new()
+	secondary_panel.visible = false
+	secondary_panel.add_theme_constant_override("separation", 10)
+	secondary_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(secondary_panel)
+
+
+func _show_main_menu() -> void:
+	_clear_secondary()
+	secondary_panel.visible = false
+	main_panel.visible = true
+
+	for child in main_panel.get_children():
+		main_panel.remove_child(child)
+		child.queue_free()
+
+	_add_main_button("New Game", _on_new_game_pressed)
+	var continue_button := _add_main_button("Continue", _on_continue_pressed)
+	continue_button.disabled = not CampaignSaveManagerScript.has_current_save()
+	_add_main_button("Load Game", _show_load_game)
+	_add_main_button("Tutorial", _show_tutorial)
+	_add_main_button("Settings", _show_settings)
+	_add_main_button("Quit", _on_quit_pressed)
+
+
+func _add_main_button(label_text: String, callback: Callable) -> Button:
+	var button := Button.new()
+	button.text = label_text
+	button.custom_minimum_size = Vector2(0, 58)
+	button.pressed.connect(callback)
+	main_panel.add_child(button)
+	return button
+
+
+func _begin_secondary(title_text: String) -> void:
+	_clear_secondary()
+	main_panel.visible = false
+	secondary_panel.visible = true
+
+	var heading := Label.new()
+	heading.text = title_text
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	heading.add_theme_font_size_override("font_size", 30)
+	heading.add_theme_color_override("font_color", Color("e8dfc7"))
+	secondary_panel.add_child(heading)
+
+
+func _show_load_game() -> void:
+	_begin_secondary("Load Game")
+	var snapshots := CampaignSaveManagerScript.list_snapshots()
+	var note := Label.new()
+	note.text = ("Older saves are snapshots created from the Camp menu and automatically before New Game or loading another save.")
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_color_override("font_color", Color("9ca4a5"))
+	secondary_panel.add_child(note)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 500)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	secondary_panel.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 7)
+	scroll.add_child(list)
+
+	if snapshots.is_empty():
+		var empty := Label.new()
+		empty.text = "No older saves are available yet."
+		list.add_child(empty)
+	else:
+		for snapshot in snapshots:
+			var button := Button.new()
+			button.text = String(snapshot.get("display_name", "Save"))
+			button.custom_minimum_size = Vector2(0, 48)
+			button.pressed.connect(_on_snapshot_pressed.bind(String(snapshot.get("path", ""))))
+			list.add_child(button)
+
+	_add_back_button()
+
+
+func _show_tutorial() -> void:
+	_begin_secondary("Tutorial")
+	_apply_tutorial_default_roster()
+	var note := Label.new()
+	note.text = "Tutorial roster: 2 Warriors · 5 Priests · 6 Rogues · 7 Mages"
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	note.add_theme_color_override("font_color", Color("c9b37b"))
+	secondary_panel.add_child(note)
+
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	secondary_panel.add_child(grid)
+
+	var boss_ids := GameState.get_tutorial_boss_ids()
 
 	for boss_id in boss_ids:
-		var boss_data: Dictionary = GameState.get_tutorial_boss_data(boss_id)
-
+		var data := GameState.get_tutorial_boss_data(boss_id)
 		var button := Button.new()
-		button.custom_minimum_size = Vector2(130, 60)
-		button.text = String(boss_data.get("display_name", boss_id))
+		button.text = String(data.get("display_name", boss_id))
+		button.custom_minimum_size = Vector2(290, 58)
 		button.pressed.connect(_on_tutorial_boss_selected.bind(boss_id))
+		grid.add_child(button)
 
-		tutorial_grid.add_child(button)
-func build_settings_panel() -> void:
-	settings_panel = PanelContainer.new()
-	settings_panel.visible = false
-	add_child(settings_panel)
+	tutorial_description = Label.new()
+	tutorial_description.custom_minimum_size = Vector2(0, 150)
+	tutorial_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	secondary_panel.add_child(tutorial_description)
 
-	var center := CenterContainer.new()
-	settings_panel.add_child(center)
+	tutorial_start_button = Button.new()
+	tutorial_start_button.text = "Start Tutorial"
+	tutorial_start_button.custom_minimum_size = Vector2(0, 54)
+	tutorial_start_button.pressed.connect(_on_start_tutorial_pressed)
+	secondary_panel.add_child(tutorial_start_button)
 
-	var root := VBoxContainer.new()
-	root.custom_minimum_size = Vector2(700, 420)
-	root.add_theme_constant_override("separation", 10)
-	center.add_child(root)
+	if not boss_ids.is_empty():
+		_on_tutorial_boss_selected(boss_ids[0])
 
-	var title := Label.new()
-	title.text = "Settings"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	root.add_child(title)
+	_add_back_button()
 
-	speech_to_text_dropdown = add_model_dropdown(
-	root,
-	"Speech-to-Text Model",
-	"speech_to_text_model",
-	GameState.get_speech_to_text_model_options()
-	)
 
-	var apply_button := Button.new()
-	apply_button.text = "Apply Settings"
-	apply_button.pressed.connect(_on_apply_settings_pressed)
-	root.add_child(apply_button)
+func _show_settings() -> void:
+	_begin_secondary("Settings")
+	var label := Label.new()
+	label.text = "Speech-to-Text Model"
+	secondary_panel.add_child(label)
 
+	settings_dropdown = OptionButton.new()
+	var current_value := GameState.get_model_setting("speech_to_text_model")
+
+	for option_data in GameState.get_speech_to_text_model_options():
+		var index := settings_dropdown.item_count
+		settings_dropdown.add_item(String(option_data[0]))
+		settings_dropdown.set_item_metadata(index, String(option_data[1]))
+
+		if String(option_data[1]) == current_value:
+			settings_dropdown.select(index)
+
+	secondary_panel.add_child(settings_dropdown)
+
+	var apply := Button.new()
+	apply.text = "Apply Settings"
+	apply.custom_minimum_size = Vector2(0, 52)
+	apply.pressed.connect(_on_apply_settings_pressed)
+	secondary_panel.add_child(apply)
+	_add_back_button()
+
+
+func _add_back_button() -> void:
 	var back := Button.new()
 	back.text = "Back"
-	back.pressed.connect(_on_back_pressed)
-	root.add_child(back)
+	back.custom_minimum_size = Vector2(0, 50)
+	back.pressed.connect(_show_main_menu)
+	secondary_panel.add_child(back)
 
-	position_fullscreen_panel(settings_panel)
 
-func add_model_dropdown(
-	parent: Node,
-	label_text: String,
-	setting_name: String,
-	options: Array
-) -> OptionButton:
-	var label := Label.new()
-	label.text = label_text
-	parent.add_child(label)
-
-	var dropdown := OptionButton.new()
-	parent.add_child(dropdown)
-
-	var current_value: String = GameState.get_model_setting(setting_name)
-
-	for option_data in options:
-		var option_label: String = String(option_data[0])
-		var option_value: String = String(option_data[1])
-		var index := dropdown.get_item_count()
-
-		dropdown.add_item(option_label)
-		dropdown.set_item_metadata(index, option_value)
-
-		if option_value == current_value:
-			dropdown.select(index)
-
-	return dropdown
-func show_main_menu():
-	main_menu_container.visible = true
-	team_panel.visible = false
-
-	if tutorial_panel != null:
-		tutorial_panel.visible = false
-
-	if settings_panel != null:
-		settings_panel.visible = false
-
-func show_team_panel():
-	main_menu_container.visible = false
-	team_panel.visible = true
-
-	if tutorial_panel != null:
-		tutorial_panel.visible = false
-
-	if settings_panel != null:
-		settings_panel.visible = false
-
-	refresh_team_panel()
-func position_fullscreen_panel(panel: Control) -> void:
-	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	panel.offset_left = 0
-	panel.offset_top = 0
-	panel.offset_right = 0
-	panel.offset_bottom = 0
-
-func build_team_rows():
-	clear_roster_rows()
-	count_labels.clear()
-
-	for unit_class in unit_class_order:
-		var row := HBoxContainer.new()
-		row.custom_minimum_size = Vector2(360, 36)
-
-		var unit_label := Label.new()
-		unit_label.text = GameState.get_display_name_for_class(unit_class)
-		unit_label.custom_minimum_size = Vector2(120, 30)
-
-		var minus_button := Button.new()
-		minus_button.text = "-"
-		minus_button.custom_minimum_size = Vector2(40, 30)
-		minus_button.pressed.connect(_on_remove_class_pressed.bind(unit_class))
-
-		var count_label := Label.new()
-		count_label.text = "0"
-		count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		count_label.custom_minimum_size = Vector2(60, 30)
-
-		var plus_button := Button.new()
-		plus_button.text = "+"
-		plus_button.custom_minimum_size = Vector2(40, 30)
-		plus_button.pressed.connect(_on_add_class_pressed.bind(unit_class))
-
-		row.add_child(unit_label)
-		row.add_child(minus_button)
-		row.add_child(count_label)
-		row.add_child(plus_button)
-
-		roster_rows.add_child(row)
-		count_labels[unit_class] = count_label
-
-	refresh_team_panel()
-
-func clear_roster_rows():
-	for child in roster_rows.get_children():
+func _clear_secondary() -> void:
+	for child in secondary_panel.get_children():
+		secondary_panel.remove_child(child)
 		child.queue_free()
 
-func refresh_team_panel():
-	var total_count = GameState.get_total_count()
+	tutorial_description = null
+	tutorial_start_button = null
+	settings_dropdown = null
 
-	total_label.text = "Raid Size: " + str(total_count) + " / " + str(GameState.MAX_RAID_SIZE)
 
-	for unit_class in unit_class_order:
-		if count_labels.has(unit_class):
-			count_labels[unit_class].text = str(GameState.get_class_count(unit_class))
-
-	start_fight_from_team_button.disabled = not GameState.has_valid_team()
-	start_fight_button.disabled = false
-
-func _on_add_class_pressed(unit_class: String):
-	GameState.add_class(unit_class)
-	refresh_team_panel()
-
-func _on_remove_class_pressed(unit_class: String):
-	GameState.remove_class(unit_class)
-	refresh_team_panel()
-
-func _on_start_fight_pressed():
+func _on_new_game_pressed() -> void:
+	CampaignSaveManagerScript.start_new_campaign()
 	SceneFlow.enter_camp("normal")
 
-func _on_manage_team_pressed():
-	print("Opening team management")
-	show_team_panel()
-func _on_tutorial_pressed() -> void:
-	main_menu_container.visible = false
-	team_panel.visible = false
 
-	if settings_panel != null:
-		settings_panel.visible = false
-
-	if tutorial_panel != null:
-		tutorial_panel.visible = true
+func _on_continue_pressed() -> void:
+	CampaignState.load_campaign()
+	SceneFlow.enter_camp("normal")
 
 
-func _on_settings_pressed() -> void:
-	main_menu_container.visible = false
-	team_panel.visible = false
+func _on_snapshot_pressed(path: String) -> void:
+	if CampaignSaveManagerScript.load_snapshot(path):
+		SceneFlow.enter_camp("normal", {"loaded_snapshot": path})
 
-	if tutorial_panel != null:
-		tutorial_panel.visible = false
 
-	if settings_panel != null:
-		settings_panel.visible = true
+func _apply_tutorial_default_roster() -> void:
+	for unit_class in GameState.get_available_classes():
+		GameState.set_class_count(unit_class, 0)
+
+	GameState.set_class_count("Warrior", 2)
+	GameState.set_class_count("Priest", 5)
+	GameState.set_class_count("Rogue", 6)
+	GameState.set_class_count("Mage", 7)
 
 
 func _on_tutorial_boss_selected(boss_id: String) -> void:
 	GameState.set_selected_tutorial_boss(boss_id)
+	var data := GameState.get_tutorial_boss_data(boss_id)
 
-	var boss_data: Dictionary = GameState.get_tutorial_boss_data(boss_id)
+	if tutorial_description != null:
+		tutorial_description.text = String(data.get("description", ""))
 
-	if tutorial_description_label != null:
-		tutorial_description_label.text = String(boss_data.get("description", ""))
-
-	if start_tutorial_button != null:
-		start_tutorial_button.disabled = not GameState.has_valid_team()
+	if tutorial_start_button != null:
+		tutorial_start_button.disabled = not GameState.has_valid_team()
 
 
 func _on_start_tutorial_pressed() -> void:
@@ -354,28 +285,15 @@ func _on_start_tutorial_pressed() -> void:
 
 
 func _on_apply_settings_pressed() -> void:
-	apply_model_dropdown_setting(speech_to_text_dropdown, "speech_to_text_model")
-
-	print("Applied model settings:", GameState.get_model_settings())
-
-func apply_model_dropdown_setting(dropdown: OptionButton, setting_name: String) -> void:
-	if dropdown == null:
+	if settings_dropdown == null or settings_dropdown.selected < 0:
 		return
 
-	var selected_index := dropdown.selected
+	GameState.set_model_setting(
+		"speech_to_text_model",
+		String(settings_dropdown.get_item_metadata(settings_dropdown.selected))
+	)
 
-	if selected_index < 0:
-		return
 
-	var metadata = dropdown.get_item_metadata(selected_index)
-
-	if metadata == null:
-		return
-
-	GameState.set_model_setting(setting_name, String(metadata))
-
-func _on_back_pressed():
-	show_main_menu()
-
-func _on_quit_pressed():
+func _on_quit_pressed() -> void:
+	CampaignState.save_campaign()
 	get_tree().quit()

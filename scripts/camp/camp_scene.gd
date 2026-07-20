@@ -1,5 +1,7 @@
 extends Node2D
 
+const GamePauseMenuScript := preload("res://scripts/ui/game_pause_menu.gd")
+
 @onready var player: CampPlayer = $CampPlayer
 @onready var journal: CampJournal = $CampHUD/CampJournal
 @onready var interaction_prompt: Label = $CampHUD/InteractionPrompt
@@ -17,6 +19,7 @@ func _ready() -> void:
 	_update_visit_label()
 	_update_victory_spike()
 	interaction_prompt.visible = false
+	add_child(GamePauseMenuScript.new())
 
 	if OS.is_debug_build():
 		_run_travel_budget_audit()
@@ -43,11 +46,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	):
 		journal.open_facility(nearest_facility.facility_id)
 		_mark_input_handled()
-		return
-
-	if event.is_action_pressed("ui_cancel") and not journal.is_open():
-		_mark_input_handled()
-		SceneFlow.go_to_main_menu()
 
 
 func _mark_input_handled() -> void:
@@ -150,7 +148,7 @@ func _update_visit_label() -> void:
 			. get(context_type, "The Writ makes ready.")
 		)
 	)
-	visit_label.text = "%s\nWASD move · E interact · Esc main menu" % headline
+	visit_label.text = "%s\nWASD move · E interact · Esc camp menu" % headline
 
 
 func _update_victory_spike() -> void:

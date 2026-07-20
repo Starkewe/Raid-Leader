@@ -26,7 +26,10 @@ func _draw() -> void:
 	_draw_paths()
 	_draw_perimeter()
 	_draw_crossroads()
-	_draw_empty_victory_spike()
+
+	if CampaignState.get_latest_victory().is_empty():
+		_draw_empty_victory_spike()
+
 	_draw_formation_markers()
 
 
@@ -85,7 +88,6 @@ func _draw_paths() -> void:
 	draw_rect(Rect2(430, 1000, 2140, 250), edge)
 	draw_rect(Rect2(470, 1040, 2060, 170), mud)
 	draw_rect(Rect2(470, 1085, 2060, 80), packed)
-	# Short facility spurs keep the strategic ownership readable.
 	draw_rect(Rect2(760, 720, 170, 480), mud)
 	draw_rect(Rect2(2050, 680, 160, 470), mud)
 	draw_rect(Rect2(610, 1160, 120, 520), mud)
@@ -103,7 +105,6 @@ func _draw_perimeter() -> void:
 		_draw_stake(Vector2(70, y), wood, point)
 		_draw_stake(Vector2(2930, y), wood, point)
 
-	# Keep the southern gate visibly open.
 	draw_rect(Rect2(1330, 1975, 340, 130), Color("141d1c"))
 
 
@@ -126,6 +127,7 @@ func _draw_crossroads() -> void:
 	draw_circle(Vector2(1500, 1125), 205, Color("9b5d2b26"))
 	draw_circle(Vector2(1500, 1125), 172, Color("443b31"))
 	draw_circle(Vector2(1500, 1125), 120, Color("5b4b3a"))
+
 	for angle_index in range(12):
 		var angle := TAU * float(angle_index) / 12.0
 		var rock_position := Vector2(1500, 1125) + Vector2.from_angle(angle) * 142.0
@@ -141,7 +143,7 @@ func _draw_empty_victory_spike() -> void:
 			[
 				Vector2(center.x - 10, center.y - 95),
 				Vector2(center.x, center.y - 116),
-				Vector2(center.x + 10, center.y - 95)
+				Vector2(center.x + 10, center.y - 95),
 			]
 		),
 		Color("67503b")
@@ -152,7 +154,7 @@ func _draw_empty_victory_spike() -> void:
 func _draw_formation_markers() -> void:
 	var placements: Dictionary = formation_preview.get("placements", {})
 	var active_ids := CampaignState.get_active_member_ids()
-	var center := Vector2(870, 880)
+	var center := Vector2(870, 860)
 
 	for index in range(active_ids.size()):
 		var member_id := active_ids[index]
