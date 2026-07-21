@@ -165,6 +165,7 @@ func _update_victory_spike() -> void:
 		if spike.sprite != null:
 			spike.sprite.visible = false
 	else:
+		# Keep the internal identifier for logic and accessibility hooks, but render no label.
 		spike.display_name = "Latest Trophy · %s" % String(latest.get("display_name", "Unknown"))
 
 		if spike.sprite != null:
@@ -174,9 +175,6 @@ func _update_victory_spike() -> void:
 				if String(latest.get("encounter_id", "")) == GameState.ENCOUNTER_OGRE
 				else Color("93a2aa")
 			)
-
-	if spike.title_label != null:
-		spike.title_label.text = spike.display_name
 
 
 func _remove_redundant_waypoints(from_position: Vector2, source: Array[Vector2]) -> Array[Vector2]:

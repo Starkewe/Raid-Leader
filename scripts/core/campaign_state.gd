@@ -10,9 +10,9 @@ signal attempt_recorded(summary: Dictionary)
 signal visit_context_changed(context: Dictionary)
 
 const SAVE_PATH := "user://raid_leader_campaign_v1.json"
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 const ACTIVE_RAID_SIZE := 20
-const HISTORY_LIMIT_PER_BOSS := 30
+const ATTEMPT_HISTORY_LIMIT := 5
 const FIRST_REGION_ID := "beast_crucible"
 const DEFAULT_FORMATION_NAME := "Default"
 
@@ -66,45 +66,103 @@ var campaign: Dictionary = {}
 
 
 func _ready() -> void:
-	load_campaign()
+	reset_campaign(false)
 
 
-func load_campaign() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
-		campaign = _create_default_campaign()
-		save_campaign()
-		return
+func reset_campaign(emit_change: bool = true) -> void:
+	campaign = _create_default_campaign()
 
-	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if emit_change:
+		roster_changed.emit()
+		raid_plan_changed.emit()
+		state_changed.emit()
+
+
+func load_campaign(path: String = SAVE_PATH) -> bool:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		push_warning("Campaign save does not exist: " + path)
+		return false
+
+	var file := FileAccess.open(path, FileAccess.READ)
 
 	if file == null:
-		push_warning("Campaign save could not be opened. A new campaign was seeded in memory.")
-		campaign = _create_default_campaign()
-		return
+		push_warning("Campaign save could not be opened: " + path)
+		return false
 
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
 
 	if not parsed is Dictionary:
-		push_warning("Campaign save was invalid. A new campaign was seeded in memory.")
-		campaign = _create_default_campaign()
-		return
+		push_warning("Campaign save was invalid: " + path)
+		return false
 
-	campaign = _migrate_campaign(parsed as Dictionary)
-	save_campaign()
+	var parsed_dictionary := parsed as Dictionary
+	var campaign_value: Variant = parsed_dictionary.get("campaign", parsed_dictionary)
+
+	if not campaign_value is Dictionary:
+		push_warning("Campaign save did not contain campaign data: " + path)
+		return false
+
+	campaign = _migrate_campaign(campaign_value as Dictionary)
+	roster_changed.emit()
+	raid_plan_changed.emit()
+	state_changed.emit()
+	return true
+
+
+func write_campaign(path: String, metadata: Dictionary = {}) -> bool:
+	if path.is_empty():
+		push_warning("Campaign save path was empty.")
+		return false
+
+	var directory_path := ProjectSettings.globalize_path(path.get_base_dir())
+	var directory_result := DirAccess.make_dir_recursive_absolute(directory_path)
+
+	if directory_result != OK:
+		push_warning("Campaign save directory could not be created: " + path.get_base_dir())
+		return false
+
+	var file := FileAccess.open(path, FileAccess.WRITE)
+
+	if file == null:
+		push_warning("Campaign save could not be written: " + path)
+		return false
+
+	var persistent_snapshot := campaign.duplicate(true)
+	# Current-visit reactions are scene texture, not durable campaign truth.
+	persistent_snapshot.erase("visit_context")
+	var payload := {
+		"save_metadata": metadata.duplicate(true),
+		"campaign": persistent_snapshot,
+	}
+	file.store_string(JSON.stringify(payload, "\t"))
+	file.close()
+	return true
 
 
 func save_campaign() -> void:
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	# Compatibility seam for existing state mutators. Campaign changes intentionally remain
+	# in memory until CampaignSaveManager performs a named save or combat-return autosave.
+	pass
 
-	if file == null:
-		push_warning("Campaign save could not be written.")
-		return
 
-	var persistent_snapshot := campaign.duplicate(true)
-	# Visit reactions survive scene transitions through this autoload but intentionally
-	# do not become long-term campaign truth on disk.
-	persistent_snapshot.erase("visit_context")
-	file.store_string(JSON.stringify(persistent_snapshot, "\t"))
+func get_save_context() -> Dictionary:
+	var raid_plan: Dictionary = campaign.get("raid_plan", {})
+	var encounter_id := get_selected_encounter_id()
+	var definition := GameState.get_encounter_definition(encounter_id)
+	var victory_total := 0
+
+	for victory_count in campaign.get("victories", {}).values():
+		victory_total += int(victory_count)
+
+	return {
+		"region_id": String(raid_plan.get("region_id", FIRST_REGION_ID)),
+		"region_name": "Beast Crucible",
+		"encounter_id": encounter_id,
+		"encounter_name": encounter_id if definition == null else definition.display_name,
+		"victory_count": victory_total,
+		"latest_outcome": String(campaign.get("latest_attempt", {}).get("outcome", "")),
+	}
 
 
 func get_available_encounter_ids() -> Array[String]:
@@ -330,6 +388,13 @@ func apply_default_formation(_encounter_id: String = "") -> void:
 	state_changed.emit()
 
 
+func replace_current_formation(source: Dictionary) -> void:
+	_ensure_formation()
+	campaign["raid_plan"]["formation"] = _sanitize_formation_for_active(source)
+	raid_plan_changed.emit()
+	state_changed.emit()
+
+
 func get_saved_formation_names() -> Array[String]:
 	_ensure_formation()
 	var names: Array[String] = []
@@ -437,9 +502,9 @@ func record_attempt(summary: Dictionary) -> void:
 	var encounter_history: Array = history.get(encounter_id, [])
 	encounter_history.append(summary.duplicate(true))
 
-	if encounter_history.size() > HISTORY_LIMIT_PER_BOSS:
+	if encounter_history.size() > ATTEMPT_HISTORY_LIMIT:
 		encounter_history = encounter_history.slice(
-			encounter_history.size() - HISTORY_LIMIT_PER_BOSS
+			encounter_history.size() - ATTEMPT_HISTORY_LIMIT
 		)
 
 	history[encounter_id] = encounter_history
@@ -460,9 +525,12 @@ func get_attempt_history(encounter_id: String = "") -> Array[Dictionary]:
 		encounter_id = get_selected_encounter_id()
 
 	var result: Array[Dictionary] = []
+	var stored_history: Array = campaign.get("attempt_history", {}).get(encounter_id, [])
+	var first_index := maxi(stored_history.size() - ATTEMPT_HISTORY_LIMIT, 0)
 
-	for summary in campaign.get("attempt_history", {}).get(encounter_id, []):
-		result.append(Dictionary(summary).duplicate(true))
+	for summary in stored_history.slice(first_index):
+		if summary is Dictionary:
+			result.append(Dictionary(summary).duplicate(true))
 
 	return result
 
@@ -732,10 +800,40 @@ func _migrate_campaign(source: Dictionary) -> Dictionary:
 
 	raid_plan.erase("formations")
 	migrated["raid_plan"] = raid_plan
+	migrated["attempt_history"] = _normalize_attempt_history(
+		migrated.get("attempt_history", {})
+	)
 	migrated["schema_version"] = SCHEMA_VERSION
 	campaign = migrated
 	_ensure_formation()
 	return campaign
+
+
+func _normalize_attempt_history(source: Variant) -> Dictionary:
+	var normalized: Dictionary = {}
+
+	if not source is Dictionary:
+		return normalized
+
+	for encounter_id_value in (source as Dictionary).keys():
+		var encounter_id := String(encounter_id_value)
+		var history_value: Variant = (source as Dictionary).get(encounter_id_value, [])
+
+		if not history_value is Array:
+			continue
+
+		var sanitized: Array[Dictionary] = []
+
+		for summary_value in (history_value as Array):
+			if summary_value is Dictionary:
+				sanitized.append(Dictionary(summary_value).duplicate(true))
+
+		while sanitized.size() > ATTEMPT_HISTORY_LIMIT:
+			sanitized.pop_front()
+
+		normalized[encounter_id] = sanitized
+
+	return normalized
 
 
 func _ensure_formation() -> void:

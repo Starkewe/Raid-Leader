@@ -16,10 +16,10 @@ var page: VBoxContainer = null
 var member_detail_label: Label = null
 var refresh_queued: bool = false
 var archive_view_encounter_id: String = ""
-var archive_show_older: Dictionary = {}
 
 
 func _ready() -> void:
+	add_to_group("escape_modal")
 	_build_shell()
 	visible = false
 	CampaignState.state_changed.connect(_on_campaign_state_changed)
@@ -52,13 +52,8 @@ func is_open() -> bool:
 	return visible
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if visible and event.is_action_pressed("ui_cancel"):
-		close_journal()
-		var viewport := get_viewport()
-
-		if viewport != null:
-			viewport.set_input_as_handled()
+func close_for_escape() -> void:
+	close_journal()
 
 
 func _build_shell() -> void:
@@ -540,30 +535,10 @@ func _build_archive_history(encounter_id: String, target: VBoxContainer) -> void
 		return
 
 	history.reverse()
-	var recent_count := mini(5, history.size())
 
-	for index in range(recent_count):
-		target.add_child(_make_attempt_card(history[index], true, index + 1))
-
-	var older_count := history.size() - recent_count
-
-	if older_count <= 0:
-		return
-
-	var expanded := bool(archive_show_older.get(encounter_id, false))
-	var toggle := Button.new()
-	toggle.text = (
-		"Hide %d older attempts" % older_count
-		if expanded
-		else "Show %d older attempts" % older_count
-	)
-	toggle.custom_minimum_size = Vector2(0, 44)
-	toggle.pressed.connect(_on_toggle_older_attempts.bind(encounter_id))
-	target.add_child(toggle)
-
-	if expanded:
-		for index in range(recent_count, history.size()):
-			target.add_child(_make_attempt_card(history[index], false, index + 1))
+	for index in range(history.size()):
+		# The newest attempt is expanded. The remaining retained attempts are compact.
+		target.add_child(_make_attempt_card(history[index], index == 0, index + 1))
 
 
 func _make_attempt_card(summary: Dictionary, detailed: bool, attempt_number: int) -> PanelContainer:
@@ -603,20 +578,20 @@ func _make_attempt_card(summary: Dictionary, detailed: bool, attempt_number: int
 	)
 	column.add_child(summary_label)
 
-	var totals := Label.new()
-	totals.text = (
-		"%d damage · %d healing · %d deaths · %d events"
-		% [
-			_sum_dictionary_values(summary.get("damage_by_source", {})),
-			_sum_dictionary_values(summary.get("healing_by_source", {})),
-			summary.get("deaths", []).size(),
-			int(summary.get("event_count", 0))
-		]
-	)
-	totals.add_theme_color_override("font_color", Color("aeb8af"))
-	column.add_child(totals)
-
 	if detailed:
+		var totals := Label.new()
+		totals.text = (
+			"%d damage · %d healing · %d deaths · %d events"
+			% [
+				_sum_dictionary_values(summary.get("damage_by_source", {})),
+				_sum_dictionary_values(summary.get("healing_by_source", {})),
+				summary.get("deaths", []).size(),
+				int(summary.get("event_count", 0))
+			]
+		)
+		totals.add_theme_color_override("font_color", Color("aeb8af"))
+		column.add_child(totals)
+
 		var timeline: Array = summary.get("timeline", [])
 		var recent_timeline := timeline.slice(maxi(timeline.size() - 10, 0))
 
@@ -756,11 +731,6 @@ func _on_saved_formation_selected(
 
 func _on_archive_target_selected(encounter_id: String) -> void:
 	archive_view_encounter_id = encounter_id
-	_queue_refresh()
-
-
-func _on_toggle_older_attempts(encounter_id: String) -> void:
-	archive_show_older[encounter_id] = not bool(archive_show_older.get(encounter_id, false))
 	_queue_refresh()
 
 

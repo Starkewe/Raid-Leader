@@ -3,7 +3,9 @@ class_name CampFacility
 
 const FACILITY_ATLAS := preload("res://assets/camp/camp_facilities_atlas.png")
 const ATLAS_CELL_SIZE := Vector2i(362, 362)
-const ATLAS_INSET := 2
+const CELL_PADDING := 8
+
+static var _cell_texture_cache: Dictionary = {}
 
 @export var facility_id: String = ""
 @export var display_name: String = "Facility"
@@ -67,22 +69,65 @@ func release_all_slots() -> void:
 
 
 func _create_sprite() -> void:
-	var atlas_texture := AtlasTexture.new()
-	atlas_texture.atlas = FACILITY_ATLAS
-	atlas_texture.region = Rect2(
-		atlas_cell.x * ATLAS_CELL_SIZE.x + ATLAS_INSET,
-		atlas_cell.y * ATLAS_CELL_SIZE.y + ATLAS_INSET,
-		ATLAS_CELL_SIZE.x - ATLAS_INSET * 2,
-		ATLAS_CELL_SIZE.y - ATLAS_INSET * 2
-	)
-
 	sprite = Sprite2D.new()
 	sprite.name = "FacilitySprite"
-	sprite.texture = atlas_texture
+	sprite.texture = _get_padded_cell_texture()
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sprite.scale = Vector2.ONE * sprite_scale
 	sprite.position.y = -22.0
 	add_child(sprite)
+
+
+func _get_padded_cell_texture() -> Texture2D:
+	var cache_key := "%d:%d" % [atlas_cell.x, atlas_cell.y]
+
+	if _cell_texture_cache.has(cache_key):
+		return _cell_texture_cache[cache_key] as Texture2D
+
+	var atlas_image := FACILITY_ATLAS.get_image()
+
+	if atlas_image == null or atlas_image.is_empty():
+		return _make_fallback_atlas_texture()
+
+	if atlas_image.is_compressed() and atlas_image.decompress() != OK:
+		push_warning("Camp facility atlas could not be decompressed.")
+		return _make_fallback_atlas_texture()
+
+	var source_position := Vector2i(
+		atlas_cell.x * ATLAS_CELL_SIZE.x, atlas_cell.y * ATLAS_CELL_SIZE.y
+	)
+
+	if (
+		source_position.x < 0
+		or source_position.y < 0
+		or source_position.x + ATLAS_CELL_SIZE.x > atlas_image.get_width()
+		or source_position.y + ATLAS_CELL_SIZE.y > atlas_image.get_height()
+	):
+		push_warning("Camp facility atlas cell is outside the source image: " + cache_key)
+		return _make_fallback_atlas_texture()
+
+	var cell_image := atlas_image.get_region(Rect2i(source_position, ATLAS_CELL_SIZE))
+	var padded_size := ATLAS_CELL_SIZE + Vector2i.ONE * CELL_PADDING * 2
+	var padded := Image.create(padded_size.x, padded_size.y, false, cell_image.get_format())
+	padded.fill(Color.TRANSPARENT)
+	padded.blit_rect(
+		cell_image,
+		Rect2i(Vector2i.ZERO, ATLAS_CELL_SIZE),
+		Vector2i.ONE * CELL_PADDING
+	)
+	var texture := ImageTexture.create_from_image(padded)
+	_cell_texture_cache[cache_key] = texture
+	return texture
+
+
+func _make_fallback_atlas_texture() -> AtlasTexture:
+	var atlas_texture := AtlasTexture.new()
+	atlas_texture.atlas = FACILITY_ATLAS
+	var source_position := Vector2i(
+		atlas_cell.x * ATLAS_CELL_SIZE.x, atlas_cell.y * ATLAS_CELL_SIZE.y
+	)
+	atlas_texture.region = Rect2(Vector2(source_position), Vector2(ATLAS_CELL_SIZE))
+	return atlas_texture
 
 
 func _create_collision() -> void:
@@ -104,17 +149,19 @@ func _create_collision() -> void:
 
 
 func _create_title_label() -> void:
+	# Trophy identity is conveyed by the sprite and camp reactions, never visible text.
+	if facility_id == "victory_spike":
+		return
+
 	title_label = Label.new()
 	title_label.name = "FacilityName"
 	title_label.text = display_name
-	var label_width := 300.0 if facility_id == "victory_spike" else 240.0
-	var label_y := footprint.y * 0.5 + (48.0 if facility_id == "victory_spike" else 18.0)
+	var label_width := 240.0
+	var label_y := footprint.y * 0.5 + 18.0
 	title_label.position = Vector2(-label_width * 0.5, label_y)
 	title_label.size = Vector2(label_width, 34)
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.add_theme_font_size_override(
-		"font_size", 15 if facility_id == "victory_spike" else 18
-	)
+	title_label.add_theme_font_size_override("font_size", 18)
 	title_label.add_theme_color_override("font_color", Color("d7d0bd"))
 	title_label.add_theme_color_override("font_shadow_color", Color("101518"))
 	title_label.add_theme_constant_override("shadow_offset_x", 2)

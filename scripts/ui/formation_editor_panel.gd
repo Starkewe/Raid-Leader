@@ -4,6 +4,10 @@ class_name FormationEditorPanel
 const FormationMapScript := preload("res://scripts/ui/formation_map.gd")
 const FormationMemberCardScript := preload("res://scripts/ui/formation_member_card.gd")
 
+const ID_COLUMN_WIDTH := 50.0
+const NAME_COLUMN_WIDTH := 250.0
+const MINIREGION_COLUMN_WIDTH := 160.0
+
 signal formation_changed
 
 var note_text: String = ""
@@ -47,7 +51,7 @@ func _rebuild() -> void:
 	add_child(editor_row)
 
 	var member_column := VBoxContainer.new()
-	member_column.custom_minimum_size = Vector2(500, 560)
+	member_column.custom_minimum_size = Vector2(530, 560)
 	member_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	editor_row.add_child(member_column)
 
@@ -58,15 +62,16 @@ func _rebuild() -> void:
 		else "Active roster · drag onto the map or another row"
 	)
 	member_column.add_child(member_heading)
+	member_column.add_child(_make_roster_header())
 
 	var roster_scroll := ScrollContainer.new()
-	roster_scroll.custom_minimum_size = Vector2(490, 520)
+	roster_scroll.custom_minimum_size = Vector2(520, 486)
 	roster_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	roster_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	member_column.add_child(roster_scroll)
 
 	var roster_cards := VBoxContainer.new()
-	roster_cards.custom_minimum_size = Vector2(465, 0)
+	roster_cards.custom_minimum_size = Vector2(510, 0)
 	roster_cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	roster_cards.add_theme_constant_override("separation", 4)
 	roster_scroll.add_child(roster_cards)
@@ -78,18 +83,19 @@ func _rebuild() -> void:
 		var placement: Dictionary = (
 			Dictionary(placement_value) if placement_value is Dictionary else {}
 		)
+		var miniregion := "%s · %s" % [
+			_humanize(String(placement.get("region", "unassigned"))),
+			_humanize(String(placement.get("range", "unassigned"))),
+		]
 		var card := FormationMemberCardScript.new() as FormationMemberCard
 		card.configure(
 			member_id,
-			(
-				"%02d  %-22s  %s / %s"
-				% [
-					member_index + 1,
-					CampaignState.format_member_label(member),
-					_humanize(String(placement.get("region", "unassigned"))),
-					_humanize(String(placement.get("range", "unassigned")))
-				]
-			)
+			String(member.get("recruit_order", member_index + 1)),
+			CampaignState.format_member_label(member),
+			miniregion,
+			ID_COLUMN_WIDTH,
+			NAME_COLUMN_WIDTH,
+			MINIREGION_COLUMN_WIDTH
 		)
 
 		if allow_reorder:
@@ -123,6 +129,25 @@ func _rebuild() -> void:
 		"font_color", Color("9fc18b") if bool(validation.get("valid", false)) else Color("d78d7d")
 	)
 	add_child(validation_label)
+
+
+func _make_roster_header() -> Control:
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	header.custom_minimum_size = Vector2(510, 32)
+	header.add_child(_make_header_label("ID", ID_COLUMN_WIDTH))
+	header.add_child(_make_header_label("Name (Class)", NAME_COLUMN_WIDTH))
+	header.add_child(_make_header_label("Miniregion", MINIREGION_COLUMN_WIDTH))
+	return header
+
+
+func _make_header_label(label_text: String, width: float) -> Label:
+	var label := Label.new()
+	label.text = label_text
+	label.custom_minimum_size = Vector2(width, 0)
+	label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	label.add_theme_color_override("font_color", Color("d5c18a"))
+	return label
 
 
 func _on_member_dropped(member_id: String, region: String, range_name: String) -> void:
