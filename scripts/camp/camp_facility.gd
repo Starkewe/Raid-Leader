@@ -4,6 +4,7 @@ class_name CampFacility
 const FACILITY_ATLAS := preload("res://assets/camp/camp_facilities_atlas.png")
 const ATLAS_CELL_SIZE := Vector2i(362, 362)
 const CELL_PADDING := 8
+const MIN_ART_GUTTER := 8
 
 static var _cell_texture_cache: Dictionary = {}
 
@@ -13,6 +14,7 @@ static var _cell_texture_cache: Dictionary = {}
 @export var interactive: bool = false
 @export var atlas_cell: Vector2i = Vector2i.ZERO
 @export var sprite_scale: float = 1.0
+@export var visual_offset: Vector2 = Vector2.ZERO
 @export var footprint: Vector2 = Vector2(220, 150)
 @export var collision_offset: Vector2 = Vector2(0, -20)
 @export var interaction_radius: float = 170.0
@@ -74,7 +76,7 @@ func _create_sprite() -> void:
 	sprite.texture = _get_padded_cell_texture()
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sprite.scale = Vector2.ONE * sprite_scale
-	sprite.position.y = -22.0
+	sprite.position = visual_offset + Vector2(0.0, -22.0)
 	add_child(sprite)
 
 
@@ -107,6 +109,7 @@ func _get_padded_cell_texture() -> Texture2D:
 		return _make_fallback_atlas_texture()
 
 	var cell_image := atlas_image.get_region(Rect2i(source_position, ATLAS_CELL_SIZE))
+	_validate_cell_gutter(cell_image, cache_key)
 	var padded_size := ATLAS_CELL_SIZE + Vector2i.ONE * CELL_PADDING * 2
 	var padded := Image.create(padded_size.x, padded_size.y, false, cell_image.get_format())
 	padded.fill(Color.TRANSPARENT)
@@ -118,6 +121,28 @@ func _get_padded_cell_texture() -> Texture2D:
 	var texture := ImageTexture.create_from_image(padded)
 	_cell_texture_cache[cache_key] = texture
 	return texture
+
+
+func _validate_cell_gutter(cell_image: Image, cache_key: String) -> void:
+	if not OS.is_debug_build():
+		return
+
+	var size := cell_image.get_size()
+	for y in range(size.y):
+		for x in range(size.x):
+			if (
+				x >= MIN_ART_GUTTER
+				and x < size.x - MIN_ART_GUTTER
+				and y >= MIN_ART_GUTTER
+				and y < size.y - MIN_ART_GUTTER
+			):
+				continue
+			if cell_image.get_pixel(x, y).a > 0.0:
+				push_warning(
+					"Camp facility art reaches the %dpx safety gutter in atlas cell %s."
+					% [MIN_ART_GUTTER, cache_key]
+				)
+				return
 
 
 func _make_fallback_atlas_texture() -> AtlasTexture:
