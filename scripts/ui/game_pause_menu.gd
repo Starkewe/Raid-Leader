@@ -10,7 +10,11 @@ var menu_column: VBoxContainer = null
 var content_holder: VBoxContainer = null
 var status_label: Label = null
 var formation_editor: FormationEditorPanel = null
+var formation_snapshot: Dictionary = {}
 var settings_dropdown: OptionButton = null
+var save_name_input: LineEdit = null
+var overwrite_dialog: ConfirmationDialog = null
+var pending_overwrite_name: String = ""
 
 
 func _ready() -> void:
@@ -20,18 +24,43 @@ func _ready() -> void:
 	overlay.visible = false
 
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	if not event.is_action_pressed("ui_cancel"):
 		return
 
 	if _fail_screen_is_visible():
 		return
 
-	if overlay.visible and content_holder.visible:
-		_show_button_menu()
-	else:
-		_toggle_menu()
+	if overwrite_dialog != null and overwrite_dialog.visible:
+		overwrite_dialog.hide()
+		pending_overwrite_name = ""
+		_mark_input_handled()
+		return
 
+	if not overlay.visible and _close_topmost_external_modal():
+		_mark_input_handled()
+		return
+
+	if overlay.visible and formation_editor != null:
+		_cancel_formation_edit()
+	elif overlay.visible:
+		_close_menu()
+	else:
+		_open_menu()
+
+	_mark_input_handled()
+
+
+func _close_topmost_external_modal() -> bool:
+	for modal in get_tree().get_nodes_in_group("escape_modal"):
+		if modal.has_method("is_open") and bool(modal.call("is_open")):
+			modal.call("close_for_escape")
+			return true
+
+	return false
+
+
+func _mark_input_handled() -> void:
 	var viewport := get_viewport()
 
 	if viewport != null:
@@ -48,6 +77,11 @@ func _build_ui() -> void:
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(overlay)
+
+	overwrite_dialog = ConfirmationDialog.new()
+	overwrite_dialog.title = "Overwrite Save?"
+	overwrite_dialog.confirmed.connect(_on_overwrite_confirmed)
+	add_child(overwrite_dialog)
 
 	var dim := ColorRect.new()
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -124,12 +158,11 @@ func _build_menu_buttons() -> void:
 	_add_button("Resume", _close_menu)
 
 	if SceneFlow.mode == "camp":
-		_add_button("Create Save Snapshot", _create_save_snapshot)
+		_add_button("Save Game", _show_save_game)
 		_add_button("Settings", _show_settings)
 		_add_button("Return to Main Menu", _return_to_main_menu)
 	elif SceneFlow.mode == "campaign_combat":
-		_add_button("Edit Formation for Next Attempt", _show_formation_editor)
-		_add_button("Restart Attempt with Current Plan", _restart_campaign_attempt)
+		_add_button("Edit Formation", _show_formation_editor)
 		_add_button("Return to Camp", _return_to_camp)
 		_add_button("Settings", _show_settings)
 		_add_button("Return to Main Menu", _return_to_main_menu)
@@ -165,6 +198,8 @@ func _open_menu() -> void:
 
 func _close_menu() -> void:
 	overlay.visible = false
+	formation_editor = null
+	formation_snapshot.clear()
 	get_tree().paused = false
 
 
@@ -172,35 +207,68 @@ func _show_button_menu() -> void:
 	content_holder.visible = false
 	menu_column.visible = true
 	panel.custom_minimum_size = Vector2(620, 660)
+	_clear_content_holder()
+	formation_editor = null
+	formation_snapshot.clear()
+	settings_dropdown = null
+	save_name_input = null
 
+
+func _clear_content_holder() -> void:
 	for child in content_holder.get_children():
 		content_holder.remove_child(child)
 		child.queue_free()
-
-	formation_editor = null
-	settings_dropdown = null
 
 
 func _show_formation_editor() -> void:
 	menu_column.visible = false
 	content_holder.visible = true
 	panel.custom_minimum_size = Vector2(1510, 900)
+	_clear_content_holder()
+	formation_snapshot = CampaignState.get_formation()
 	formation_editor = FormationEditorPanelScript.new() as FormationEditorPanel
-	(
-		formation_editor
-		. configure(
-			"Formation changes made here are saved immediately and apply when the attempt is restarted.",
-			true
-		)
+	formation_editor.configure(
+		"Edits apply only after Save and Restart Fight. Back discards them and resumes this attempt.",
+		true
 	)
 	content_holder.add_child(formation_editor)
-	_add_content_back_button()
+
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	actions.add_theme_constant_override("separation", 12)
+	content_holder.add_child(actions)
+
+	var back := Button.new()
+	back.text = "Back"
+	back.custom_minimum_size = Vector2(180, 50)
+	back.pressed.connect(_cancel_formation_edit)
+	actions.add_child(back)
+
+	var restart := Button.new()
+	restart.text = "Save and Restart Fight"
+	restart.custom_minimum_size = Vector2(280, 50)
+	restart.pressed.connect(_save_formation_and_restart)
+	actions.add_child(restart)
+
+
+func _cancel_formation_edit() -> void:
+	if not formation_snapshot.is_empty():
+		CampaignState.replace_current_formation(formation_snapshot)
+
+	_close_menu()
+
+
+func _save_formation_and_restart() -> void:
+	formation_snapshot.clear()
+	_close_menu()
+	SceneFlow.retry_campaign_combat()
 
 
 func _show_settings() -> void:
 	menu_column.visible = false
 	content_holder.visible = true
 	panel.custom_minimum_size = Vector2(760, 620)
+	_clear_content_holder()
 
 	var heading := Label.new()
 	heading.text = "Settings"
@@ -252,14 +320,75 @@ func _apply_settings() -> void:
 	status_label.text = "Settings applied."
 
 
-func _create_save_snapshot() -> void:
-	var path := CampaignSaveManagerScript.create_snapshot("Camp Manual Save")
-	status_label.text = "Save snapshot created." if not path.is_empty() else "Save snapshot failed."
+func _show_save_game() -> void:
+	menu_column.visible = false
+	content_holder.visible = true
+	panel.custom_minimum_size = Vector2(760, 560)
+	_clear_content_holder()
+
+	var heading := Label.new()
+	heading.text = "Create Named Save"
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	heading.add_theme_font_size_override("font_size", 26)
+	content_holder.add_child(heading)
+
+	var help := Label.new()
+	help.text = "Enter a player-facing save name. Invalid filename characters are sanitized."
+	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help.add_theme_color_override("font_color", Color("9ca4a5"))
+	content_holder.add_child(help)
+
+	save_name_input = LineEdit.new()
+	save_name_input.placeholder_text = "Save name"
+	save_name_input.max_length = 80
+	save_name_input.text_submitted.connect(_on_save_name_submitted)
+	content_holder.add_child(save_name_input)
+
+	var create := Button.new()
+	create.text = "Create Save"
+	create.custom_minimum_size = Vector2(0, 50)
+	create.pressed.connect(_on_create_manual_save_pressed)
+	content_holder.add_child(create)
+	_add_content_back_button()
+	save_name_input.grab_focus()
 
 
-func _restart_campaign_attempt() -> void:
-	_close_menu()
-	SceneFlow.retry_campaign_combat()
+func _on_save_name_submitted(_submitted_text: String) -> void:
+	_on_create_manual_save_pressed()
+
+
+func _on_create_manual_save_pressed() -> void:
+	if save_name_input == null:
+		return
+
+	var result := CampaignSaveManagerScript.create_manual_save(save_name_input.text, false)
+	_handle_manual_save_result(result)
+
+
+func _handle_manual_save_result(result: Dictionary) -> void:
+	var status := String(result.get("status", "error"))
+
+	if status == "duplicate":
+		pending_overwrite_name = String(result.get("display_name", ""))
+		overwrite_dialog.dialog_text = "Overwrite the existing save '%s'?" % pending_overwrite_name
+		overwrite_dialog.popup_centered()
+		return
+
+	status_label.text = String(result.get("message", "Save failed."))
+
+	if bool(result.get("ok", false)) and save_name_input != null:
+		save_name_input.clear()
+
+
+func _on_overwrite_confirmed() -> void:
+	if pending_overwrite_name.is_empty():
+		return
+
+	var result := CampaignSaveManagerScript.create_manual_save(
+		pending_overwrite_name, true
+	)
+	pending_overwrite_name = ""
+	_handle_manual_save_result(result)
 
 
 func _return_to_camp() -> void:
@@ -268,13 +397,11 @@ func _return_to_camp() -> void:
 
 
 func _return_to_main_menu() -> void:
-	CampaignState.save_campaign()
 	_close_menu()
 	SceneFlow.go_to_main_menu()
 
 
 func _quit_game() -> void:
-	CampaignState.save_campaign()
 	get_tree().paused = false
 	get_tree().quit()
 

@@ -93,7 +93,7 @@ func _show_main_menu() -> void:
 
 	_add_main_button("New Game", _on_new_game_pressed)
 	var continue_button := _add_main_button("Continue", _on_continue_pressed)
-	continue_button.disabled = not CampaignSaveManagerScript.has_current_save()
+	continue_button.disabled = not CampaignSaveManagerScript.has_any_save()
 	_add_main_button("Load Game", _show_load_game)
 	_add_main_button("Tutorial", _show_tutorial)
 	_add_main_button("Settings", _show_settings)
@@ -124,9 +124,9 @@ func _begin_secondary(title_text: String) -> void:
 
 func _show_load_game() -> void:
 	_begin_secondary("Load Game")
-	var snapshots := CampaignSaveManagerScript.list_snapshots()
+	var saves := CampaignSaveManagerScript.list_saves()
 	var note := Label.new()
-	note.text = ("Older saves are snapshots created from the Camp menu and automatically before New Game or loading another save.")
+	note.text = "Named saves remain until deleted or overwritten. Autosave is one slot updated only after a fight returns to camp."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.add_theme_color_override("font_color", Color("9ca4a5"))
 	secondary_panel.add_child(note)
@@ -142,19 +142,69 @@ func _show_load_game() -> void:
 	list.add_theme_constant_override("separation", 7)
 	scroll.add_child(list)
 
-	if snapshots.is_empty():
+	if saves.is_empty():
 		var empty := Label.new()
-		empty.text = "No older saves are available yet."
+		empty.text = "No saves are available yet. Create a named save from the Camp Menu or return from a fight to create the autosave."
+		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		list.add_child(empty)
 	else:
-		for snapshot in snapshots:
-			var button := Button.new()
-			button.text = String(snapshot.get("display_name", "Save"))
-			button.custom_minimum_size = Vector2(0, 48)
-			button.pressed.connect(_on_snapshot_pressed.bind(String(snapshot.get("path", ""))))
-			list.add_child(button)
+		for save_entry in saves:
+			list.add_child(_make_save_row(save_entry))
 
 	_add_back_button()
+
+
+func _make_save_row(save_entry: Dictionary) -> Control:
+	var panel := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("10181e")
+	style.border_color = Color("39464b")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(3)
+	panel.add_theme_stylebox_override("panel", style)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	panel.add_child(row)
+
+	var details := VBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(details)
+
+	var title := Label.new()
+	var kind := String(save_entry.get("kind", "manual"))
+	title.text = "%s%s" % [
+		String(save_entry.get("display_name", "Save")),
+		" · AUTOSAVE" if kind == "autosave" else "",
+	]
+	title.add_theme_color_override("font_color", Color("e8dfc7"))
+	details.add_child(title)
+
+	var metadata := Label.new()
+	var saved_time := int(save_entry.get("saved_unix_time", 0))
+	metadata.text = "%s · %s" % [
+		Time.get_datetime_string_from_unix_time(saved_time, true),
+		String(save_entry.get("context_label", "Camp")),
+	]
+	metadata.add_theme_color_override("font_color", Color("9ca4a5"))
+	details.add_child(metadata)
+
+	var load_button := Button.new()
+	load_button.text = "Load"
+	load_button.custom_minimum_size = Vector2(90, 48)
+	load_button.pressed.connect(_on_snapshot_pressed.bind(String(save_entry.get("path", ""))))
+	row.add_child(load_button)
+
+	if bool(save_entry.get("deletable", false)):
+		var delete_button := Button.new()
+		delete_button.text = "Delete"
+		delete_button.custom_minimum_size = Vector2(90, 48)
+		delete_button.pressed.connect(
+			_on_delete_save_pressed.bind(String(save_entry.get("path", "")))
+		)
+		row.add_child(delete_button)
+
+	return panel
 
 
 func _show_tutorial() -> void:
@@ -250,13 +300,23 @@ func _on_new_game_pressed() -> void:
 
 
 func _on_continue_pressed() -> void:
-	CampaignState.load_campaign()
-	SceneFlow.enter_camp("normal")
+	if CampaignSaveManagerScript.load_most_recent_save():
+		SceneFlow.enter_camp("normal")
 
 
 func _on_snapshot_pressed(path: String) -> void:
-	if CampaignSaveManagerScript.load_snapshot(path):
-		SceneFlow.enter_camp("normal", {"loaded_snapshot": path})
+	if CampaignSaveManagerScript.load_save(path):
+		SceneFlow.enter_camp("normal", {"loaded_save": true})
+
+
+func _on_delete_save_pressed(path: String) -> void:
+	# Rebuilding this menu from inside the button's signal would free the emitter mid-signal.
+	call_deferred("_delete_save_and_refresh", path)
+
+
+func _delete_save_and_refresh(path: String) -> void:
+	CampaignSaveManagerScript.delete_save(path)
+	_show_load_game()
 
 
 func _apply_tutorial_default_roster() -> void:
@@ -295,5 +355,4 @@ func _on_apply_settings_pressed() -> void:
 
 
 func _on_quit_pressed() -> void:
-	CampaignState.save_campaign()
 	get_tree().quit()

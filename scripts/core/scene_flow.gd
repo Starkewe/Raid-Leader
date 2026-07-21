@@ -1,5 +1,6 @@
 extends Node
 
+const CampaignSaveManagerScript := preload("res://scripts/core/campaign_save_manager.gd")
 const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"
 const CAMP_SCENE := "res://scenes/camp/camp_scene.tscn"
 
@@ -62,7 +63,12 @@ func return_from_combat(outcome: String) -> void:
 		)
 		details["victory"] = latest_victory
 
-	enter_camp(context_type, details)
+	# Combat return owns the only autosave trigger. Entering camp from menus, editing the
+	# Raid Plan, restarting combat, and unrelated transitions never pass through this call.
+	mode = "camp"
+	CampaignState.begin_visit(context_type, details)
+	CampaignSaveManagerScript.write_combat_return_autosave(outcome, details)
+	_change_scene(CAMP_SCENE)
 
 
 func go_to_main_menu() -> void:
