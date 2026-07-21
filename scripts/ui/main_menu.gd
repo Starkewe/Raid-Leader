@@ -173,10 +173,8 @@ func _make_save_row(save_entry: Dictionary) -> Control:
 
 	var title := Label.new()
 	var kind := String(save_entry.get("kind", "manual"))
-	title.text = "%s%s" % [
-		String(save_entry.get("display_name", "Save")),
-		" · AUTOSAVE" if kind == "autosave" else "",
-	]
+	var display_name := String(save_entry.get("display_name", "Save"))
+	title.text = "[AUTOSAVE] %s" % display_name if kind == "autosave" else display_name
 	title.add_theme_color_override("font_color", Color("e8dfc7"))
 	details.add_child(title)
 
@@ -189,11 +187,16 @@ func _make_save_row(save_entry: Dictionary) -> Control:
 	metadata.add_theme_color_override("font_color", Color("9ca4a5"))
 	details.add_child(metadata)
 
+	var actions := HBoxContainer.new()
+	actions.custom_minimum_size = Vector2(190, 48)
+	actions.add_theme_constant_override("separation", 10)
+	row.add_child(actions)
+
 	var load_button := Button.new()
 	load_button.text = "Load"
 	load_button.custom_minimum_size = Vector2(90, 48)
 	load_button.pressed.connect(_on_snapshot_pressed.bind(String(save_entry.get("path", ""))))
-	row.add_child(load_button)
+	actions.add_child(load_button)
 
 	if bool(save_entry.get("deletable", false)):
 		var delete_button := Button.new()
@@ -202,7 +205,13 @@ func _make_save_row(save_entry: Dictionary) -> Control:
 		delete_button.pressed.connect(
 			_on_delete_save_pressed.bind(String(save_entry.get("path", "")))
 		)
-		row.add_child(delete_button)
+		actions.add_child(delete_button)
+	else:
+		# Preserve the action grid so every Load button stays in the same column.
+		var delete_placeholder := Control.new()
+		delete_placeholder.custom_minimum_size = Vector2(90, 48)
+		delete_placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		actions.add_child(delete_placeholder)
 
 	return panel
 

@@ -537,19 +537,13 @@ func _build_archive_history(encounter_id: String, target: VBoxContainer) -> void
 	history.reverse()
 
 	for index in range(history.size()):
-		# The newest attempt is expanded. The remaining retained attempts are compact.
+		# The newest attempt starts expanded. Every retained card can be toggled independently.
 		target.add_child(_make_attempt_card(history[index], index == 0, index + 1))
 
 
-func _make_attempt_card(summary: Dictionary, detailed: bool, attempt_number: int) -> PanelContainer:
+func _make_attempt_card(summary: Dictionary, expanded: bool, attempt_number: int) -> PanelContainer:
 	var card := PanelContainer.new()
 	var outcome := String(summary.get("outcome", "unknown"))
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("162128")
-	style.border_color = Color("6e8a68") if outcome == "victory" else Color("765550")
-	style.set_border_width_all(2 if detailed else 1)
-	style.set_corner_radius_all(4)
-	card.add_theme_stylebox_override("panel", style)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 12)
@@ -562,8 +556,7 @@ func _make_attempt_card(summary: Dictionary, detailed: bool, attempt_number: int
 	column.add_theme_constant_override("separation", 5)
 	margin.add_child(column)
 
-	var summary_label := Label.new()
-	summary_label.text = (
+	var summary_text := (
 		"Attempt %d · %s · %.1fs · %.1f%% boss progress · %s"
 		% [
 			attempt_number,
@@ -573,65 +566,108 @@ func _make_attempt_card(summary: Dictionary, detailed: bool, attempt_number: int
 			String(summary.get("furthest_phase_name", "Unknown phase"))
 		]
 	)
-	summary_label.add_theme_color_override(
+	var summary_button := Button.new()
+	summary_button.flat = true
+	summary_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	summary_button.add_theme_color_override(
 		"font_color", Color("a9cf9b") if outcome == "victory" else Color("d8aaa2")
 	)
-	column.add_child(summary_label)
+	column.add_child(summary_button)
 
-	if detailed:
-		var totals := Label.new()
-		totals.text = (
-			"%d damage · %d healing · %d deaths · %d events"
-			% [
-				_sum_dictionary_values(summary.get("damage_by_source", {})),
-				_sum_dictionary_values(summary.get("healing_by_source", {})),
-				summary.get("deaths", []).size(),
-				int(summary.get("event_count", 0))
-			]
-		)
-		totals.add_theme_color_override("font_color", Color("aeb8af"))
-		column.add_child(totals)
+	var details := VBoxContainer.new()
+	details.add_theme_constant_override("separation", 5)
+	column.add_child(details)
 
-		var timeline: Array = summary.get("timeline", [])
-		var recent_timeline := timeline.slice(maxi(timeline.size() - 10, 0))
+	var totals := Label.new()
+	totals.text = (
+		"%d damage · %d healing · %d deaths · %d events"
+		% [
+			_sum_dictionary_values(summary.get("damage_by_source", {})),
+			_sum_dictionary_values(summary.get("healing_by_source", {})),
+			summary.get("deaths", []).size(),
+			int(summary.get("event_count", 0))
+		]
+	)
+	totals.add_theme_color_override("font_color", Color("aeb8af"))
+	details.add_child(totals)
 
-		if not recent_timeline.is_empty():
-			var timeline_label := Label.new()
-			timeline_label.text = "Hover timeline"
-			timeline_label.add_theme_color_override("font_color", Color("c9b37b"))
-			column.add_child(timeline_label)
-			var flow := HFlowContainer.new()
-			flow.add_theme_constant_override("h_separation", 6)
-			flow.add_theme_constant_override("v_separation", 5)
-			column.add_child(flow)
+	var timeline: Array = summary.get("timeline", [])
+	var recent_timeline := timeline.slice(maxi(timeline.size() - 10, 0))
 
-			for event in recent_timeline:
-				var event_label := String(event.get("display_name", ""))
+	if not recent_timeline.is_empty():
+		var timeline_label := Label.new()
+		timeline_label.text = "Hover timeline"
+		timeline_label.add_theme_color_override("font_color", Color("c9b37b"))
+		details.add_child(timeline_label)
+		var flow := HFlowContainer.new()
+		flow.add_theme_constant_override("h_separation", 6)
+		flow.add_theme_constant_override("v_separation", 5)
+		details.add_child(flow)
 
-				if event_label.is_empty():
-					event_label = _humanize(
-						String(event.get("ability_id", event.get("type", "event")))
-					)
+		for event in recent_timeline:
+			var event_label := String(event.get("display_name", ""))
 
-				var chip := Label.new()
-				chip.text = " %.1fs · %s " % [float(event.get("time", 0.0)), event_label]
-				chip.tooltip_text = _timeline_tooltip(event)
-				chip.add_theme_color_override("font_color", _timeline_color(event))
-				chip.add_theme_color_override("font_shadow_color", Color("080d10"))
-				chip.add_theme_constant_override("shadow_offset_x", 1)
-				chip.add_theme_constant_override("shadow_offset_y", 1)
-				flow.add_child(chip)
+			if event_label.is_empty():
+				event_label = _humanize(
+					String(event.get("ability_id", event.get("type", "event")))
+				)
 
-		var failures: Array = summary.get("reliable_failures", [])
+			var chip := Label.new()
+			chip.text = " %.1fs · %s " % [float(event.get("time", 0.0)), event_label]
+			chip.tooltip_text = _timeline_tooltip(event)
+			chip.add_theme_color_override("font_color", _timeline_color(event))
+			chip.add_theme_color_override("font_shadow_color", Color("080d10"))
+			chip.add_theme_constant_override("shadow_offset_x", 1)
+			chip.add_theme_constant_override("shadow_offset_y", 1)
+			flow.add_child(chip)
 
-		for failure in failures.slice(0, 3):
-			var failure_label := Label.new()
-			failure_label.text = "• %s" % String(failure)
-			failure_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			failure_label.add_theme_color_override("font_color", Color("d3b18b"))
-			column.add_child(failure_label)
+	var failures: Array = summary.get("reliable_failures", [])
+
+	for failure in failures.slice(0, 3):
+		var failure_label := Label.new()
+		failure_label.text = "• %s" % String(failure)
+		failure_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		failure_label.add_theme_color_override("font_color", Color("d3b18b"))
+		details.add_child(failure_label)
+
+	summary_button.pressed.connect(
+		_on_attempt_card_toggled.bind(card, summary_button, details, outcome, summary_text)
+	)
+	_set_attempt_card_expanded(card, summary_button, details, outcome, summary_text, expanded)
 
 	return card
+
+
+func _on_attempt_card_toggled(
+	card: PanelContainer,
+	summary_button: Button,
+	details: VBoxContainer,
+	outcome: String,
+	summary_text: String
+) -> void:
+	_set_attempt_card_expanded(
+		card, summary_button, details, outcome, summary_text, not details.visible
+	)
+
+
+func _set_attempt_card_expanded(
+	card: PanelContainer,
+	summary_button: Button,
+	details: VBoxContainer,
+	outcome: String,
+	summary_text: String,
+	expanded: bool
+) -> void:
+	details.visible = expanded
+	summary_button.text = ("▼ " if expanded else "▶ ") + summary_text
+	summary_button.tooltip_text = "Click to minimize" if expanded else "Click to expand"
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("162128")
+	style.border_color = Color("6e8a68") if outcome == "victory" else Color("765550")
+	style.set_border_width_all(2 if expanded else 1)
+	style.set_corner_radius_all(4)
+	card.add_theme_stylebox_override("panel", style)
 
 
 func _timeline_tooltip(event: Dictionary) -> String:
