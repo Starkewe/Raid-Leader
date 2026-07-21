@@ -81,6 +81,7 @@ func _build_ui() -> void:
 	overwrite_dialog = ConfirmationDialog.new()
 	overwrite_dialog.title = "Overwrite Save?"
 	overwrite_dialog.confirmed.connect(_on_overwrite_confirmed)
+	overwrite_dialog.canceled.connect(_on_overwrite_canceled)
 	add_child(overwrite_dialog)
 
 	var dim := ColorRect.new()
@@ -323,20 +324,61 @@ func _apply_settings() -> void:
 func _show_save_game() -> void:
 	menu_column.visible = false
 	content_holder.visible = true
-	panel.custom_minimum_size = Vector2(760, 560)
+	panel.custom_minimum_size = Vector2(760, 760)
 	_clear_content_holder()
 
 	var heading := Label.new()
-	heading.text = "Create Named Save"
+	heading.text = "Save Game"
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	heading.add_theme_font_size_override("font_size", 26)
 	content_holder.add_child(heading)
 
 	var help := Label.new()
-	help.text = "Enter a player-facing save name. Invalid filename characters are sanitized."
+	help.text = (
+		"Select a named save to overwrite it, or enter a new save name below. "
+		+ "The autosave is shown for reference and updates only after returning from a fight."
+	)
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help.add_theme_color_override("font_color", Color("9ca4a5"))
 	content_holder.add_child(help)
+
+	var existing_heading := Label.new()
+	existing_heading.text = "Available saves"
+	existing_heading.add_theme_color_override("font_color", Color("d5c18a"))
+	content_holder.add_child(existing_heading)
+
+	var saves_scroll := ScrollContainer.new()
+	saves_scroll.custom_minimum_size = Vector2(0, 260)
+	saves_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	saves_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_holder.add_child(saves_scroll)
+
+	var saves_list := VBoxContainer.new()
+	saves_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	saves_list.add_theme_constant_override("separation", 7)
+	saves_scroll.add_child(saves_list)
+
+	var available_save_count := 0
+
+	for save_entry in CampaignSaveManagerScript.list_saves():
+		var kind := String(save_entry.get("kind", "manual"))
+
+		if kind != "autosave" and kind != "manual":
+			continue
+
+		available_save_count += 1
+		saves_list.add_child(_make_existing_save_button(save_entry))
+
+	if available_save_count == 0:
+		var empty := Label.new()
+		empty.text = "No named saves or autosave exist yet."
+		empty.add_theme_color_override("font_color", Color("778087"))
+		saves_list.add_child(empty)
+
+	var new_save_heading := Label.new()
+	new_save_heading.text = "New named save"
+	new_save_heading.add_theme_color_override("font_color", Color("d5c18a"))
+	content_holder.add_child(new_save_heading)
 
 	save_name_input = LineEdit.new()
 	save_name_input.placeholder_text = "Save name"
@@ -351,6 +393,30 @@ func _show_save_game() -> void:
 	content_holder.add_child(create)
 	_add_content_back_button()
 	save_name_input.grab_focus()
+
+
+func _make_existing_save_button(save_entry: Dictionary) -> Button:
+	var button := Button.new()
+	var kind := String(save_entry.get("kind", "manual"))
+	var display_name := String(save_entry.get("display_name", "Save"))
+	var saved_time := int(save_entry.get("saved_unix_time", 0))
+	var title_text := "[AUTOSAVE] %s" % display_name if kind == "autosave" else display_name
+	button.text = "%s\n%s · %s" % [
+		title_text,
+		Time.get_datetime_string_from_unix_time(saved_time, true),
+		String(save_entry.get("context_label", "Camp")),
+	]
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.custom_minimum_size = Vector2(0, 64)
+
+	if kind == "autosave":
+		button.disabled = true
+		button.tooltip_text = "Autosaves can only be updated by returning to camp after a fight."
+	else:
+		button.tooltip_text = "Select to overwrite this named save."
+		button.pressed.connect(_request_overwrite_existing_save.bind(display_name))
+
+	return button
 
 
 func _on_save_name_submitted(_submitted_text: String) -> void:
@@ -369,15 +435,26 @@ func _handle_manual_save_result(result: Dictionary) -> void:
 	var status := String(result.get("status", "error"))
 
 	if status == "duplicate":
-		pending_overwrite_name = String(result.get("display_name", ""))
-		overwrite_dialog.dialog_text = "Overwrite the existing save '%s'?" % pending_overwrite_name
-		overwrite_dialog.popup_centered()
+		_request_overwrite_existing_save(String(result.get("display_name", "")))
 		return
 
-	status_label.text = String(result.get("message", "Save failed."))
+	var message := String(result.get("message", "Save failed."))
 
-	if bool(result.get("ok", false)) and save_name_input != null:
-		save_name_input.clear()
+	if bool(result.get("ok", false)):
+		call_deferred("_refresh_save_game_after_save", message)
+	else:
+		status_label.text = message
+
+
+func _request_overwrite_existing_save(display_name: String) -> void:
+	pending_overwrite_name = display_name.strip_edges()
+
+	if pending_overwrite_name.is_empty():
+		status_label.text = "That save does not have a valid name."
+		return
+
+	overwrite_dialog.dialog_text = "Overwrite the existing save '%s'?" % pending_overwrite_name
+	overwrite_dialog.popup_centered()
 
 
 func _on_overwrite_confirmed() -> void:
@@ -389,6 +466,18 @@ func _on_overwrite_confirmed() -> void:
 	)
 	pending_overwrite_name = ""
 	_handle_manual_save_result(result)
+
+
+func _on_overwrite_canceled() -> void:
+	pending_overwrite_name = ""
+
+
+func _refresh_save_game_after_save(message: String) -> void:
+	if not overlay.visible or SceneFlow.mode != "camp":
+		return
+
+	_show_save_game()
+	status_label.text = message
 
 
 func _return_to_camp() -> void:

@@ -78,19 +78,19 @@ func _rebuild() -> void:
 
 	for member_index in range(active_members.size()):
 		var member: Dictionary = active_members[member_index]
-		var member_id := String(member.get("member_id", ""))
+		var member_id := _string_or_default(member.get("member_id", ""), "")
 		var placement_value: Variant = placements.get(member_id, {})
 		var placement: Dictionary = (
 			Dictionary(placement_value) if placement_value is Dictionary else {}
 		)
 		var miniregion := "%s · %s" % [
-			_humanize(String(placement.get("region", "unassigned"))),
-			_humanize(String(placement.get("range", "unassigned"))),
+			_humanize(_string_or_default(placement.get("region", null), "unassigned")),
+			_humanize(_string_or_default(placement.get("range", null), "unassigned")),
 		]
 		var card := FormationMemberCardScript.new() as FormationMemberCard
 		card.configure(
 			member_id,
-			String(member.get("recruit_order", member_index + 1)),
+			_string_or_default(member.get("recruit_order", null), str(member_index + 1)),
 			CampaignState.format_member_label(member),
 			miniregion,
 			ID_COLUMN_WIDTH,
@@ -187,3 +187,11 @@ func _validation_text(validation: Dictionary) -> String:
 
 func _humanize(value: String) -> String:
 	return value.replace("_", " ").capitalize()
+
+
+func _string_or_default(value: Variant, default_value: String) -> String:
+	if value == null:
+		return default_value
+
+	var converted := str(value).strip_edges()
+	return default_value if converted.is_empty() else converted
