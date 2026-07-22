@@ -274,6 +274,16 @@ func get_active_members() -> Array[Dictionary]:
 	return result
 
 
+func get_active_members_for_roster() -> Array[Dictionary]:
+	var result := get_active_members()
+	var raid_plan: Dictionary = campaign.get("raid_plan", {})
+
+	if String(raid_plan.get("roster_sort_mode", "class_name")) == "class_name":
+		_sort_members_by_class_then_name(result)
+
+	return result
+
+
 func get_reserve_members() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var active_ids := get_active_member_ids()
@@ -282,6 +292,12 @@ func get_reserve_members() -> Array[Dictionary]:
 		if not active_ids.has(String(member.get("member_id", ""))):
 			result.append(Dictionary(member).duplicate(true))
 
+	return result
+
+
+func get_reserve_members_for_roster() -> Array[Dictionary]:
+	var result := get_reserve_members()
+	_sort_members_by_class_then_name(result)
 	return result
 
 
@@ -331,7 +347,15 @@ func swap_active_member(active_member_id: String, reserve_member_id: String) -> 
 func reorder_active_member(
 	moving_member_id: String, target_member_id: String, place_after_target: bool = false
 ) -> bool:
+	var raid_plan: Dictionary = campaign.get("raid_plan", {})
 	var active_ids := get_active_member_ids()
+
+	if String(raid_plan.get("roster_sort_mode", "class_name")) == "class_name":
+		active_ids.clear()
+
+		for member in get_active_members_for_roster():
+			active_ids.append(String(member.get("member_id", "")))
+
 	var moving_index := active_ids.find(moving_member_id)
 	var target_index := active_ids.find(target_member_id)
 
@@ -346,6 +370,7 @@ func reorder_active_member(
 
 	active_ids.insert(clampi(target_index, 0, active_ids.size()), moving_member_id)
 	campaign["raid_plan"]["active_member_ids"] = active_ids
+	campaign["raid_plan"]["roster_sort_mode"] = "custom"
 	save_campaign()
 	roster_changed.emit()
 	raid_plan_changed.emit()
@@ -699,6 +724,7 @@ func _create_default_campaign() -> Dictionary:
 			"region_id": FIRST_REGION_ID,
 			"encounter_id": GameState.ENCOUNTER_OGRE,
 			"active_member_ids": active_member_ids,
+			"roster_sort_mode": "class_name",
 			"formation": default_formation,
 			"saved_formations": {},
 			"support_selections": {},
@@ -720,6 +746,29 @@ func _create_default_campaign() -> Dictionary:
 			"started_unix_time": int(Time.get_unix_time_from_system())
 		}
 	}
+
+
+func _sort_members_by_class_then_name(members: Array[Dictionary]) -> void:
+	members.sort_custom(
+		func(a: Dictionary, b: Dictionary) -> bool:
+			var class_order := String(a.get("unit_class", "")).naturalnocasecmp_to(
+				String(b.get("unit_class", ""))
+			)
+
+			if class_order != 0:
+				return class_order < 0
+
+			var name_order := String(a.get("display_name", "")).naturalnocasecmp_to(
+				String(b.get("display_name", ""))
+			)
+
+			if name_order != 0:
+				return name_order < 0
+
+			return String(a.get("member_id", "")).naturalnocasecmp_to(
+				String(b.get("member_id", ""))
+			) < 0
+	)
 
 
 func _migrate_campaign(source: Dictionary) -> Dictionary:

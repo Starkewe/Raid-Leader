@@ -9,20 +9,51 @@ signal member_transfer_requested(member_id: String, source_zone: String, target_
 
 var member_id: String = ""
 var zone_id: String = ""
+var drag_label: String = ""
 
 
-func configure(new_member_id: String, new_zone_id: String, label_text: String) -> void:
+func configure(
+	new_member_id: String,
+	new_zone_id: String,
+	class_text: String,
+	name_text: String,
+	class_width: float,
+	name_width: float
+) -> void:
 	member_id = new_member_id
 	zone_id = new_zone_id
-	text = label_text
-	alignment = HORIZONTAL_ALIGNMENT_LEFT
+	drag_label = "%s · %s" % [class_text, name_text]
+	text = ""
 	custom_minimum_size = Vector2(0, 42)
 	focus_mode = Control.FOCUS_NONE
 	tooltip_text = (
-		"Drag between Active and Reserves. Active members can also be dropped onto another "
+		"%s · %s\nDrag between Active and Reserves. "
+		+ "Active members can also be dropped onto another "
 		+ "active row to reorder the raid."
-	)
+	) % [class_text, name_text]
+
+	var row := HBoxContainer.new()
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 12
+	row.offset_right = -12
+	row.add_theme_constant_override("separation", 8)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(row)
+	row.add_child(_make_column(class_text, class_width))
+	row.add_child(_make_column(name_text, name_width))
 	pressed.connect(_on_pressed)
+
+
+func _make_column(label_text: String, width: float) -> Label:
+	var label := Label.new()
+	label.text = label_text
+	label.custom_minimum_size = Vector2(width, 0)
+	label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	label.clip_text = true
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	label.tooltip_text = label_text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return label
 
 
 func _get_drag_data(_at_position: Vector2) -> Variant:
@@ -30,7 +61,7 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 		return null
 
 	var preview := Label.new()
-	preview.text = text
+	preview.text = drag_label
 	preview.add_theme_font_size_override("font_size", 16)
 	preview.add_theme_color_override("font_color", Color("f0e5c8"))
 	preview.add_theme_constant_override("outline_size", 5)

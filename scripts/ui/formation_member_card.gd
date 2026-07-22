@@ -11,15 +11,15 @@ var drag_label: String = ""
 
 func configure(
 	new_member_id: String,
-	id_text: String,
+	class_text: String,
 	name_text: String,
 	miniregion_text: String,
-	id_width: float,
+	class_width: float,
 	name_width: float,
 	miniregion_width: float
 ) -> void:
 	member_id = new_member_id
-	drag_label = "%s · %s · %s" % [id_text, name_text, miniregion_text]
+	drag_label = "%s · %s · %s" % [class_text, name_text, miniregion_text]
 	text = ""
 	custom_minimum_size = Vector2(510, 42)
 	tooltip_text = (
@@ -35,7 +35,7 @@ func configure(
 	row.add_theme_constant_override("separation", 8)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(row)
-	row.add_child(_make_column(id_text, id_width, id_text))
+	row.add_child(_make_column(class_text, class_width, class_text))
 	row.add_child(_make_column(name_text, name_width, name_text))
 	row.add_child(_make_column(miniregion_text, miniregion_width, miniregion_text))
 
