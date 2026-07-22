@@ -311,6 +311,22 @@ func _build_command_tent() -> void:
 		stress_button.pressed.connect(_on_seed_debug_reserves)
 		footer.add_child(stress_button)
 
+		var event_report_button := Button.new()
+		event_report_button.text = "Debug: Camp V2 Report"
+		event_report_button.tooltip_text = (
+			"Prints notable events, memories, Chronicle entries, relationships, and lore state."
+		)
+		event_report_button.pressed.connect(_on_print_camp_v2_event_report)
+		footer.add_child(event_report_button)
+
+		var event_smoke_button := Button.new()
+		event_smoke_button.text = "Debug: Memory Smoke"
+		event_smoke_button.tooltip_text = (
+			"Emits bounded synthetic events through the real campaign pipeline, then prints the report."
+		)
+		event_smoke_button.pressed.connect(_on_run_camp_v2_event_smoke)
+		footer.add_child(event_smoke_button)
+
 	var embark_button := Button.new()
 	embark_button.text = "Embark with this Raid Plan"
 	embark_button.custom_minimum_size = Vector2(320, 52)
@@ -784,6 +800,15 @@ func _on_seed_debug_reserves() -> void:
 
 func _on_print_cast_report() -> void:
 	CampaignState.print_campaign_cast_report()
+
+
+func _on_print_camp_v2_event_report() -> void:
+	CampaignState.print_camp_v2_event_debug_report()
+
+
+func _on_run_camp_v2_event_smoke() -> void:
+	print("[Camp V2 Memory Smoke] ", CampaignState.run_camp_v2_event_debug_smoke())
+	CampaignState.print_camp_v2_event_debug_report()
 
 
 func _on_embark_pressed() -> void:

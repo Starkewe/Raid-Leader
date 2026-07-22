@@ -18,6 +18,17 @@ static func add_active_member(member_id: String) -> bool:
 	CampaignState.campaign["raid_plan"]["active_member_ids"] = active_ids
 	CampaignState._sync_active_state_flags()
 	_sanitize_formations()
+	CampaignState.emit_notable_event(
+		{
+			"event_type": "raider_added_to_active_roster",
+			"source_system": "roster",
+			"participants": [member_id],
+			"memory_category": "roster",
+			"subject_key": "roster_status",
+			"significance": 58,
+		},
+		false
+	)
 	_commit_change()
 	return true
 
@@ -32,6 +43,17 @@ static func remove_active_member(member_id: String) -> bool:
 	CampaignState.campaign["raid_plan"]["active_member_ids"] = active_ids
 	CampaignState._sync_active_state_flags()
 	_sanitize_formations()
+	CampaignState.emit_notable_event(
+		{
+			"event_type": "raider_moved_to_reserve",
+			"source_system": "roster",
+			"participants": [member_id],
+			"memory_category": "roster",
+			"subject_key": "roster_status",
+			"significance": 58,
+		},
+		false
+	)
 	_commit_change()
 	return true
 

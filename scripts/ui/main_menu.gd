@@ -252,10 +252,10 @@ func _show_tutorial() -> void:
 	grid.add_theme_constant_override("v_separation", 8)
 	secondary_panel.add_child(grid)
 
-	var boss_ids := GameState.get_tutorial_boss_ids()
+	var boss_ids = GameState.get_tutorial_boss_ids()
 
 	for boss_id in boss_ids:
-		var data := GameState.get_tutorial_boss_data(boss_id)
+		var data = GameState.get_tutorial_boss_data(boss_id)
 		var button := Button.new()
 		button.text = String(data.get("display_name", boss_id))
 		button.custom_minimum_size = Vector2(290, 58)
@@ -286,7 +286,7 @@ func _show_settings() -> void:
 	secondary_panel.add_child(label)
 
 	settings_dropdown = OptionButton.new()
-	var current_value := GameState.get_model_setting("speech_to_text_model")
+	var current_value = GameState.get_model_setting("speech_to_text_model")
 
 	for option_data in GameState.get_speech_to_text_model_options():
 		var index := settings_dropdown.item_count
@@ -361,7 +361,7 @@ func _apply_tutorial_default_roster() -> void:
 
 func _on_tutorial_boss_selected(boss_id: String) -> void:
 	GameState.set_selected_tutorial_boss(boss_id)
-	var data := GameState.get_tutorial_boss_data(boss_id)
+	var data = GameState.get_tutorial_boss_data(boss_id)
 
 	if tutorial_description != null:
 		tutorial_description.text = String(data.get("description", ""))
