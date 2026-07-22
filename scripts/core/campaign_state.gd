@@ -18,6 +18,8 @@ const RaiderLoreKnowledgeStoreScript := preload(
 const CampConversationStateScript := preload(
 	"res://scripts/data/camp_conversation_state.gd"
 )
+const CampContentCatalogScript := preload("res://scripts/core/camp_content_catalog.gd")
+const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
 const RaidPlanValidatorScript := preload("res://scripts/core/raid_plan_validator.gd")
 
 signal state_changed
@@ -30,7 +32,7 @@ signal memory_promoted(event: Dictionary)
 signal relationship_threshold_reached(event: Dictionary)
 
 const SAVE_PATH := "user://raid_leader_campaign_v1.json"
-const SCHEMA_VERSION := 7
+const SCHEMA_VERSION := 8
 const ACTIVE_RAID_SIZE := 20
 const ATTEMPT_HISTORY_LIMIT := 5
 const FIRST_REGION_ID := "beast_crucible"
@@ -118,7 +120,7 @@ func write_campaign(path: String, metadata: Dictionary = {}) -> bool:
 	# Runtime scene state is owned by CampPopulationController and must never enter a save.
 	persistent_snapshot.erase("runtime_raider_states")
 	persistent_snapshot.erase("runtime_state")
-	# Schema 4 stores authored identity in the catalog and save-specific state by stable ID.
+	# Authored identity stays in the catalog; saves retain only stable-ID campaign state.
 	persistent_snapshot.erase("roster")
 	var payload := {
 		"save_metadata": metadata.duplicate(true),
@@ -624,6 +626,15 @@ func get_raider_memories(raider_id: String) -> Dictionary:
 	)
 
 
+func select_conversation_memory(raider_id: String, criteria: Dictionary) -> Dictionary:
+	return RaiderMemoryStoreScript.select_relevant_thread(
+		Dictionary(campaign.get("memory_store", {})),
+		raider_id,
+		criteria,
+		int(Time.get_unix_time_from_system())
+	)
+
+
 func get_relationship(first_id: String, second_id: String) -> Dictionary:
 	return RaiderRelationshipStoreScript.get_pair(
 		Dictionary(campaign.get("relationship_store", {})), first_id, second_id
@@ -879,6 +890,13 @@ func get_camp_conversation_debug_report() -> Dictionary:
 	return CampConversationStateScript.get_debug_report(
 		_get_camp_conversation_store()
 	)
+
+
+func adjust_conversation_pressure(amount: float, source: String = "debug_control") -> float:
+	CampConversationStateScript.adjust_pressure(
+		_get_camp_conversation_store(), clampf(amount, -100.0, 100.0), source
+	)
+	return float(_get_camp_conversation_store().get("pressure", 0.0))
 
 
 func recruit_raider(raider_id: String, recruitment_source: String) -> bool:
@@ -1296,6 +1314,67 @@ func get_camp_v2_event_debug_report() -> Dictionary:
 	return CampV2EventSystemScript.get_debug_report(campaign)
 
 
+func validate_master_raider_definitions() -> Dictionary:
+	return RaiderCatalogScript.validate_all()
+
+
+func get_camp_v2_integration_debug_report() -> Dictionary:
+	var raider_states: Dictionary = {}
+	for raider_id in get_selected_cast_ids():
+		raider_states[raider_id] = get_raider_campaign_state(raider_id)
+	return {
+		"save_schema_version": int(campaign.get("schema_version", 0)),
+		"campaign_cast_and_seed": get_campaign_cast_report(),
+		"raider_campaign_states": raider_states,
+		"events_memories_chronicle_relationships_lore": get_camp_v2_event_debug_report(),
+		"conversation_pressure_and_cooldowns": get_camp_conversation_debug_report(),
+		"recent_member_quarters_summaries": get_conversation_summaries("", 30),
+		"member_quarters_state": Dictionary(
+			campaign.get("member_quarters_state", {})
+		).duplicate(true),
+		"master_raider_validation": validate_master_raider_definitions(),
+		"camp_content_validation": CampContentCatalogScript.get_validation_report(),
+		"central_tuning": CampV2TuningScript.get_summary(),
+	}
+
+
+func force_representative_notable_event() -> Dictionary:
+	if not OS.is_debug_build():
+		return {"ok": false, "reason": "debug_build_required"}
+	var active_ids := get_active_member_ids()
+	if active_ids.size() < 3:
+		return {"ok": false, "reason": "at_least_three_active_raiders_required"}
+	var participants: Array[String] = []
+	for index in range(mini(active_ids.size(), 5)):
+		participants.append(active_ids[index])
+	var event := emit_notable_event(
+		{
+			"event_type": "boss_attempt_completed",
+			"source_system": "debug_integration_control",
+			"participants": participants,
+			"distinctive_participants": [
+				{
+					"raider_id": participants[0],
+					"admission_reasons": ["meaningful_agency"],
+					"memory_strength": 0.55,
+				}
+			],
+			"memory_category": "combat",
+			"subject_key": "debug:representative_raid_event",
+			"significance": 72,
+			"structured_data": {
+				"debug": true,
+				"expected_chronicle_entries": 1,
+				"expected_personal_memories": 1,
+			},
+			"prose_template_id": "debug_representative_raid_event",
+		},
+		false
+	)
+	state_changed.emit()
+	return {"ok": not event.is_empty(), "event": event}
+
+
 func print_camp_v2_event_debug_report() -> void:
 	print(
 		"[Camp V2 Events, Memories, Relationships]\n"
@@ -1360,6 +1439,7 @@ func run_camp_v2_event_debug_smoke() -> Dictionary:
 				first_id: {"affinity": 58, "trust": 55, "respect": 22},
 				second_id: {"affinity": 50, "trust": 45, "respect": 24},
 			},
+			"allow_large_relationship_delta": true,
 		}
 	)
 
@@ -2584,8 +2664,13 @@ func _generate_campaign_seed() -> int:
 
 
 func _print_campaign_cast_report_if_debug() -> void:
-	if OS.is_debug_build():
-		print_campaign_cast_report()
+	if not OS.is_debug_build():
+		return
+
+	var report := get_campaign_cast_report()
+	var warnings: Array = report.get("generation_validation_warnings", [])
+	if not warnings.is_empty():
+		push_warning("Campaign cast validation warnings: " + JSON.stringify(warnings))
 
 
 func _string_array(value: Variant) -> Array[String]:

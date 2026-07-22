@@ -5,9 +5,11 @@ const CampMemberScene := preload("res://scenes/camp/camp_member.tscn")
 const RuntimeRaiderStateScript := preload("res://scripts/data/runtime_raider_state.gd")
 const CampActivityStationScript := preload("res://scripts/data/camp_activity_station.gd")
 const CampContentCatalogScript := preload("res://scripts/core/camp_content_catalog.gd")
+const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
 const CampConversationDirectorScript := preload(
 	"res://scripts/camp/camp_conversation_director.gd"
 )
+const TUNING := CampV2TuningScript.ACTIVITIES
 const ACTIVITIES := [
 	preload("res://data/camp/activities/prepare_plan.tres"),
 	preload("res://data/camp/activities/rehearse.tres"),
@@ -17,6 +19,7 @@ const ACTIVITIES := [
 	preload("res://data/camp/activities/train.tres"),
 	preload("res://data/camp/activities/socialize.tres"),
 	preload("res://data/camp/activities/rest.tres"),
+	preload("res://data/camp/activities/reflect.tres"),
 	preload("res://data/camp/activities/victory_gather.tres")
 ]
 
@@ -52,7 +55,11 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	var scaled_delta := delta * (6.0 if accelerated_timing else 1.0)
+	var scaled_delta := delta * (
+		float(TUNING.get("accelerated_timing_multiplier", 6.0))
+		if accelerated_timing
+		else 1.0
+	)
 	_update_cooldowns(scaled_delta)
 	_sync_runtime_animation_states()
 	reaction_timer -= scaled_delta
@@ -103,7 +110,11 @@ func rebuild_population() -> void:
 		actor.configure(
 			member, _spawn_position(index, roster.size(), visit_type), rng.randf_range(0.4, 4.0)
 		)
-		actor.set_timing_multiplier(6.0 if accelerated_timing else 1.0)
+		actor.set_timing_multiplier(
+			float(TUNING.get("accelerated_timing_multiplier", 6.0))
+			if accelerated_timing
+			else 1.0
+		)
 		actor.ready_for_activity.connect(_on_actor_ready_for_activity)
 		actor.activity_completed.connect(_on_activity_completed)
 		actor.navigation_failed.connect(_on_navigation_failed)
@@ -137,7 +148,10 @@ func _on_actor_ready_for_activity(member_id: String) -> void:
 
 	if (
 		desired_max > 1
-		and (activity.minimum_participants > 1 or rng.randf() <= 0.68)
+		and (
+			activity.minimum_participants > 1
+			or rng.randf() <= float(TUNING.get("shared_activity_chance", 0.68))
+		)
 	):
 		participant_ids.append_array(
 			_find_shared_participants(activity, member_id, desired_max - 1)
@@ -287,7 +301,7 @@ func _find_shared_participants(
 		var other_room := String(member.get("room_assignment_id", ""))
 		if not starter_room.is_empty() and starter_room == other_room:
 			# Roommates are slightly more likely to share camp time, never combat power.
-			weight += 0.65
+			weight += float(TUNING.get("roommate_shared_activity_bonus", 0.65))
 		candidates.append({"raider_id": other_id, "weight": weight})
 
 	var result: Array[String] = []
@@ -486,7 +500,10 @@ func _record_routine_completion(
 		),
 	}
 
-	if outcome != "limited_memory_reinforcement" or rng.randf() > 0.08:
+	if (
+		outcome != "limited_memory_reinforcement"
+		or rng.randf() > float(TUNING.get("routine_memory_reinforcement_chance", 0.06))
+	):
 		return
 	var memories := CampaignState.get_raider_memories(member_id)
 	var threads: Dictionary = memories.get("threads", {})
@@ -515,7 +532,10 @@ func _on_bubble_visibility_changed(visible_now: bool) -> void:
 
 
 func _try_emit_visit_reaction() -> void:
-	if visible_bubble_count >= 3 or actors_by_id.is_empty():
+	if (
+		visible_bubble_count >= int(TUNING.get("ambient_bubble_cap", 3))
+		or actors_by_id.is_empty()
+	):
 		return
 
 	if not CampaignState.consume_visit_reaction():
@@ -705,6 +725,9 @@ func get_conversation_candidates() -> Array[Dictionary]:
 				"reservation_level": String(runtime_state.get("reservation_level", "free")),
 				"attributes": Array(member.get("attributes", [])).duplicate(),
 				"lore_knowledge_tags": Array(member.get("lore_knowledge_tags", [])).duplicate(),
+				"authored_connection_ids": Array(
+					member.get("authored_connection_ids", [])
+				).duplicate(),
 				"unit_class": String(member.get("unit_class", "")),
 				"role": String(member.get("role", "")),
 				"room_assignment_id": String(member.get("room_assignment_id", "")),
@@ -874,18 +897,69 @@ func force_lore_exchange() -> Dictionary:
 	return conversation_director.force_lore_exchange() if conversation_director != null else {"ok": false, "reason": "director_missing"}
 
 
+func get_conversation_frame_ids() -> Array[String]:
+	return conversation_director.get_frame_ids() if conversation_director != null else []
+
+
 func cancel_active_conversations() -> int:
 	return conversation_director.cancel_all("debug_cancel") if conversation_director != null else 0
 
 
 func set_accelerated_activity_timing(enabled: bool) -> void:
 	accelerated_timing = enabled
+	var multiplier := float(TUNING.get("accelerated_timing_multiplier", 6.0))
 	for actor_value in actors_by_id.values():
 		var actor := actor_value as CampMemberActor
 		if actor != null:
-			actor.set_timing_multiplier(6.0 if enabled else 1.0)
+			actor.set_timing_multiplier(multiplier if enabled else 1.0)
 	if conversation_director != null:
 		conversation_director.set_accelerated_timing(enabled)
+
+
+func clear_stuck_reservations() -> Dictionary:
+	var cleared: Array[String] = []
+	for station_id_value in stations_by_id.keys():
+		var station_id := String(station_id_value)
+		var station := stations_by_id[station_id] as CampActivityStation
+		if station == null:
+			continue
+		for member_id_value in station.reservations.keys():
+			var member_id := String(member_id_value)
+			var state: Dictionary = runtime_states_by_id.get(member_id, {})
+			if (
+				not actors_by_id.has(member_id)
+				or String(state.get("station_id", "")) != station_id
+				or String(state.get("current_activity_id", "")).is_empty()
+			):
+				station.release(member_id)
+				reservations_by_member.erase(member_id)
+				cleared.append(member_id)
+
+	for member_id_value in reservations_by_member.keys():
+		var member_id := String(member_id_value)
+		var station_id := String(reservations_by_member.get(member_id, ""))
+		var station := stations_by_id.get(station_id) as CampActivityStation
+		if station != null and station.reservations.has(member_id):
+			continue
+		var actor := actors_by_id.get(member_id) as CampMemberActor
+		if actor != null and is_instance_valid(actor):
+			actor.interrupt_activity()
+		_remove_from_activity_instance(member_id)
+		_reset_runtime_activity(member_id)
+		activity_by_member.erase(member_id)
+		reservations_by_member.erase(member_id)
+		if not cleared.has(member_id):
+			cleared.append(member_id)
+
+	return {"ok": true, "cleared_raider_ids": cleared, "cleared_count": cleared.size()}
+
+
+func adjust_conversation_pressure(amount: float) -> float:
+	return CampaignState.adjust_conversation_pressure(amount, "debug_control")
+
+
+func force_representative_notable_event() -> Dictionary:
+	return CampaignState.force_representative_notable_event()
 
 
 func get_camp_v2_runtime_debug_report() -> Dictionary:
@@ -918,6 +992,21 @@ func get_camp_v2_runtime_debug_report() -> Dictionary:
 		"conversation": conversation_director.get_debug_report() if conversation_director != null else {},
 		"accelerated_timing": accelerated_timing,
 	}
+
+
+func get_camp_v2_integration_debug_report() -> Dictionary:
+	return {
+		"persistent_state": CampaignState.get_camp_v2_integration_debug_report(),
+		"runtime_state": get_camp_v2_runtime_debug_report(),
+		"tuning": CampV2TuningScript.get_summary(),
+	}
+
+
+func print_camp_v2_integration_debug_report() -> void:
+	print(
+		"[Camp V2 Integration Report]\n"
+		+ JSON.stringify(get_camp_v2_integration_debug_report(), "\t")
+	)
 
 
 func print_camp_v2_runtime_debug_report() -> void:

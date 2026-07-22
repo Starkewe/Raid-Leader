@@ -107,6 +107,21 @@
 			"station_tags": ["rest", "quiet"]
 		},
 		{
+			"station_id": "quarters_reflection_bench",
+			"facility_id": "quarters",
+			"supported_activity_ids": ["reflect"],
+			"participant_offsets": [[-205, -125], [205, -125]],
+			"facing": [0, 1],
+			"capacity": 2,
+			"participant_arrangement": "shared_quiet_bench",
+			"animation_profile": "reflection",
+			"prop_references": ["placeholder:bench", "placeholder:journal"],
+			"conversation_compatible": true,
+			"allowed_conversation_tones": ["neutral", "reflective", "encouraging", "reconciliatory"],
+			"allowed_conversation_categories": ["reflection", "relationship", "combat_memory"],
+			"station_tags": ["reflection", "quiet", "shared"]
+		},
+		{
 			"station_id": "communal_fire_ring",
 			"facility_id": "communal_fire",
 			"supported_activity_ids": ["socialize"],

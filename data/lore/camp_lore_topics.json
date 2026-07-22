@@ -1,5 +1,5 @@
 {
-	"schema_version": 1,
+	"schema_version": 2,
 	"knowledge_types": ["confirmed_fact", "common_belief", "disputed_account", "personal_theory", "misinformation"],
 	"topics": [
 		{
@@ -10,6 +10,24 @@
 			"source_id": "beast_crucible_arena_ledgers",
 			"introducer_tags": ["regional_native", "historian", "scholar", "monster_hunter", "former_arena_worker", "outsider", "archive_research_completed", "beast_crucible"],
 			"authored_exchange_id": "lore_full_writ_ledgers"
+		},
+		{
+			"topic_id": "beast_crucible_first_keepers",
+			"display_name": "The First Keepers",
+			"knowledge_type": "disputed_account",
+			"canonical_fact": "No surviving ledger names the Beast Crucible's first keepers; later regional origin claims conflict with one another.",
+			"source_id": "beast_crucible_incomplete_foundation_records",
+			"introducer_tags": ["historian", "scholar", "outsider", "archive_research_completed"],
+			"authored_exchange_id": "lore_first_keepers_dispute"
+		},
+		{
+			"topic_id": "beast_crucible_handler_marks",
+			"display_name": "Handler Marks",
+			"knowledge_type": "confirmed_fact",
+			"canonical_fact": "Surviving Beast Crucible intake plaques use linked-ring marks for arena handlers, who were recorded separately from each writ of entrants.",
+			"source_id": "beast_crucible_intake_plaques",
+			"introducer_tags": ["former_arena_worker", "historian", "regional_native", "archive_research_completed"],
+			"authored_exchange_id": "lore_handler_chain_marks"
 		}
 	]
 }

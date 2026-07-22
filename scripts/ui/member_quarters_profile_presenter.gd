@@ -6,6 +6,7 @@ const CampContentCatalogScript := preload("res://scripts/core/camp_content_catal
 const ACTIVITY_LABELS := {
 	"apothecary_work": "Working at the apothecary",
 	"prepare_plan": "Preparing the raid plan",
+	"reflect": "Taking a quiet moment",
 	"rehearse": "Rehearsing formations",
 	"rest": "Resting in the quarters",
 	"smith_work": "Working at the smith",
@@ -410,6 +411,8 @@ static func _activity_place(activity_id: String) -> String:
 		"socialize":
 			return "communal fire"
 		"rest":
+			return "quarters"
+		"reflect":
 			return "quarters"
 		_:
 			return _humanize(activity_id).to_lower()

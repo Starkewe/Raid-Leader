@@ -4,12 +4,15 @@ class_name MemberQuartersPanel
 const ProfilePresenterScript := preload(
 	"res://scripts/ui/member_quarters_profile_presenter.gd"
 )
+const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
 
 signal back_requested
 
 const ROSTER_COLUMN_TITLES := ["Name", "Class", "Status", "Activity", "Room", "New"]
 const ROSTER_COLUMN_WIDTHS := [150, 95, 80, 175, 85, 40]
-const RUNTIME_REFRESH_SECONDS := 0.75
+const RUNTIME_REFRESH_SECONDS: float = CampV2TuningScript.ACTIVITIES[
+	"profile_refresh_seconds"
+]
 
 var population_controller: Node = null
 var roster_tree: Tree = null

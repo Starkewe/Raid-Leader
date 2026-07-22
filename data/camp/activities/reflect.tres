@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="CampActivityDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/camp_activity_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+activity_id = "reflect"
+display_name = "Taking a quiet moment"
+category = "Reflection"
+facility_id = "quarters"
+compatible_station_ids = Array[String](["quarters_reflection_bench"])
+base_weight = 0.85
+active_multiplier = 1.0
+reserve_multiplier = 1.15
+minimum_duration = 8.0
+maximum_duration = 15.0
+cooldown = 16.0
+maximum_participants = 2
+conversation_compatible = true
+allowed_secondary_interactions = Array[String](["talking", "listening", "sharing_a_story"])
+favored_classes = Array[String](["Priest", "Mage"])
+favored_attributes = Array[String](["reflective", "quiet", "patient", "reserved"])
+personality_preferences = Array[String](["reflective", "quiet", "patient"])
+completion_outcomes = Array[String](["narrative_summary", "limited_memory_reinforcement"])
+feedback_lines = Array[String](["One thought at a time.", "That part is worth keeping.", "Quiet helps the pattern settle."])

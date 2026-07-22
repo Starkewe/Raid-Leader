@@ -1,5 +1,5 @@
 {
-	"schema_version": 1,
+	"schema_version": 2,
 	"frames": [
 		{
 			"frame_id": "generic_camp_check_in",
@@ -8,13 +8,16 @@
 			"tone": "neutral",
 			"category": "social",
 			"roles": ["observer", "subject"],
+			"eligibility": {"summary": "Any two available raiders."},
 			"beats": [
 				{"speaker_role": "observer", "text": "You have been quiet since we came in."},
 				{"speaker_role": "subject", "text": "Just sorting the useful thoughts from the loud ones."},
 				{"speaker_role": "observer", "text": "Keep the useful ones. The rest can wait."}
 			],
 			"outcome": {"outcome_id": "quiet_check_in", "type": "neutral", "meaningful": false, "summary_template": "{observer} checked in with {subject}."},
-			"cooldowns": {"frame": 110, "topic": 75, "pair": 65, "speaker_role": 42, "station_activity": 50}
+			"safe_fallback": {"speaker_role": "observer", "text": "We can talk when the thought is ready."},
+			"cooldowns": {"frame": 120, "topic": 80, "pair": 70, "speaker_role": 45, "station_activity": 55},
+			"summary_metadata": {"category": "check_in", "visibility": "member_quarters"}
 		},
 		{
 			"frame_id": "ordinary_camp_routine",
@@ -23,13 +26,37 @@
 			"tone": "positive",
 			"category": "social",
 			"roles": ["observer", "subject"],
+			"eligibility": {"summary": "Ordinary camp ambience."},
 			"beats": [
 				{"speaker_role": "observer", "text": "The camp feels settled tonight.", "variants": [{"personality_any": ["wry"], "text": "Nothing is on fire that should not be. A fine evening."}]},
 				{"speaker_role": "subject", "text": "That usually means someone is planning tomorrow."},
 				{"speaker_role": "observer", "text": "Then let them plan. We can have one quiet minute."}
 			],
 			"outcome": {"outcome_id": "shared_quiet", "type": "positive", "meaningful": false, "summary_template": "{observer} and {subject} shared a quiet moment in camp."},
-			"cooldowns": {"frame": 120, "topic": 80, "pair": 70, "speaker_role": 45, "station_activity": 55}
+			"safe_fallback": {"speaker_role": "observer", "text": "A quiet camp is worth noticing."},
+			"cooldowns": {"frame": 130, "topic": 85, "pair": 75, "speaker_role": 48, "station_activity": 60},
+			"summary_metadata": {"category": "camp_ambience", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "campfire_last_ration",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded"],
+			"tone": "teasing",
+			"category": "social",
+			"roles": ["teaser", "target"],
+			"required_activity_ids": ["socialize"],
+			"required_station_ids": ["communal_fire_ring"],
+			"eligibility": {"summary": "Two raiders sharing the communal fire."},
+			"beats": [
+				{"speaker_role": "teaser", "text": "You took the last crisp ration."},
+				{"speaker_role": "target", "text": "I took responsibility for it."},
+				{"speaker_role": "teaser", "text": "A burden carried bravely."},
+				{"speaker_role": "target", "text": "The Writ will remember my sacrifice."}
+			],
+			"outcome": {"outcome_id": "campfire_teasing", "type": "positive", "meaningful": false, "summary_template": "{teaser} teased {target} by the campfire."},
+			"safe_fallback": {"speaker_role": "teaser", "text": "Save me one next time."},
+			"cooldowns": {"frame": 165, "topic": 105, "pair": 90, "speaker_role": 60, "station_activity": 120},
+			"summary_metadata": {"category": "teasing", "visibility": "member_quarters"}
 		},
 		{
 			"frame_id": "smith_embedded_hammer",
@@ -40,6 +67,7 @@
 			"roles": ["teaser", "target"],
 			"required_activity_ids": ["smith_work"],
 			"required_station_ids": ["smith_shared_forge"],
+			"eligibility": {"summary": "Two raiders sharing the forge."},
 			"beats": [
 				{"speaker_role": "teaser", "text": "You keep reaching for the large hammer."},
 				{"speaker_role": "target", "text": "It makes the problem reconsider its position."},
@@ -47,7 +75,69 @@
 				{"speaker_role": "target", "text": "Then it should reconsider quickly."}
 			],
 			"outcome": {"outcome_id": "smithing_joke", "type": "positive", "meaningful": false, "summary_template": "{teaser} joked with {target} while they worked at the smith."},
-			"cooldowns": {"frame": 150, "topic": 100, "pair": 75, "speaker_role": 50, "station_activity": 115}
+			"safe_fallback": {"speaker_role": "teaser", "text": "Pass the small hammer when you are done."},
+			"cooldowns": {"frame": 170, "topic": 110, "pair": 85, "speaker_role": 55, "station_activity": 130},
+			"summary_metadata": {"category": "shared_work", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "apothecary_shared_labels",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded"],
+			"tone": "informative",
+			"category": "work",
+			"roles": ["teacher", "learner"],
+			"required_activity_ids": ["apothecary_work"],
+			"required_station_ids": ["apothecary_worktable"],
+			"eligibility": {"summary": "Two raiders working at the apothecary."},
+			"beats": [
+				{"speaker_role": "teacher", "text": "Red cord means observed. White cord means only suspected."},
+				{"speaker_role": "learner", "text": "And no cord?"},
+				{"speaker_role": "teacher", "text": "No one has checked the label. Start there."}
+			],
+			"outcome": {"outcome_id": "apothecary_instruction", "type": "informative", "meaningful": false, "summary_template": "{teacher} showed {learner} the apothecary's labeling system."},
+			"safe_fallback": {"speaker_role": "teacher", "text": "Label it before we move on."},
+			"cooldowns": {"frame": 185, "topic": 125, "pair": 95, "speaker_role": 70, "station_activity": 140},
+			"summary_metadata": {"category": "shared_work", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "training_clean_footwork",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded"],
+			"tone": "competitive",
+			"category": "training",
+			"roles": ["challenger", "partner"],
+			"required_activity_ids": ["train", "rehearse"],
+			"eligibility": {"summary": "A shared training or formation activity."},
+			"beats": [
+				{"speaker_role": "challenger", "text": "Your third step keeps crossing the marker."},
+				{"speaker_role": "partner", "text": "Only when you crowd the lane."},
+				{"speaker_role": "challenger", "text": "Then take it clean before I get there."},
+				{"speaker_role": "partner", "text": "Again. This time watch closely."}
+			],
+			"outcome": {"outcome_id": "training_challenge", "type": "competitive", "meaningful": false, "summary_template": "{challenger} and {partner} challenged each other during training."},
+			"safe_fallback": {"speaker_role": "challenger", "text": "Again from the marker."},
+			"cooldowns": {"frame": 180, "topic": 120, "pair": 90, "speaker_role": 60, "station_activity": 120},
+			"summary_metadata": {"category": "training", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "archive_margin_notes",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded"],
+			"tone": "reflective",
+			"category": "study",
+			"roles": ["reader", "partner"],
+			"required_activity_ids": ["study_target"],
+			"required_station_ids": ["archive_reading_tables"],
+			"eligibility": {"summary": "Two raiders studying the current target."},
+			"beats": [
+				{"speaker_role": "reader", "text": "Someone marked this timing three different ways."},
+				{"speaker_role": "partner", "text": "Three attempts, or three opinions?"},
+				{"speaker_role": "reader", "text": "That is the useful question."}
+			],
+			"outcome": {"outcome_id": "archive_comparison", "type": "reflective", "meaningful": false, "summary_template": "{reader} compared archive notes with {partner}."},
+			"safe_fallback": {"speaker_role": "reader", "text": "Mark it as uncertain for now."},
+			"cooldowns": {"frame": 190, "topic": 130, "pair": 95, "speaker_role": 65, "station_activity": 145},
+			"summary_metadata": {"category": "study", "visibility": "member_quarters"}
 		},
 		{
 			"frame_id": "focused_roster_return",
@@ -56,7 +146,8 @@
 			"tone": "encouraging",
 			"category": "relationship",
 			"roles": ["encourager", "discouraged"],
-			"required_visit_contexts": ["roster_change", "recruitment"],
+			"required_visit_contexts": ["roster_change"],
+			"eligibility": {"summary": "A recent active-roster change."},
 			"beats": [
 				{"speaker_role": "encourager", "text": "Your marker is back on the active board."},
 				{"speaker_role": "discouraged", "text": "For this attempt. I know how quickly it can move."},
@@ -64,7 +155,48 @@
 				{"speaker_role": "discouraged", "text": "I will. Thank you for saying it plainly."}
 			],
 			"outcome": {"outcome_id": "roster_encouragement", "type": "reflective", "meaningful": true, "personal_roles": ["discouraged"], "qualifies_for_relationship_change": true, "relationship_deltas": {"encourager": {"affinity": 3, "trust": 4}, "discouraged": {"affinity": 5, "trust": 3}}, "summary_template": "{encourager} encouraged {discouraged} after the roster changed."},
-			"cooldowns": {"frame": 240, "topic": 180, "pair": 110, "speaker_role": 80, "referenced_memory": 210, "station_activity": 75}
+			"safe_fallback": {"speaker_role": "encourager", "text": "You earned another attempt."},
+			"cooldowns": {"frame": 250, "topic": 190, "pair": 120, "speaker_role": 85, "referenced_memory": 220, "station_activity": 80},
+			"summary_metadata": {"category": "encouragement", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "recruitment_first_introduction",
+			"kind": "ordinary",
+			"delivery_modes": ["focused"],
+			"tone": "positive",
+			"category": "relationship",
+			"roles": ["veteran", "recruit"],
+			"required_visit_contexts": ["recruitment"],
+			"eligibility": {"summary": "A recruitment visit with two available raiders."},
+			"beats": [
+				{"speaker_role": "veteran", "text": "You found the quarters. That is the difficult part of the first night."},
+				{"speaker_role": "recruit", "text": "I assumed the difficult part was learning nineteen names."},
+				{"speaker_role": "veteran", "text": "Twenty, once they learn yours."},
+				{"speaker_role": "recruit", "text": "Then I had better start."}
+			],
+			"outcome": {"outcome_id": "recruit_introduction", "type": "positive", "meaningful": true, "personal_roles": ["recruit"], "summary_template": "{veteran} welcomed {recruit} into the Writ."},
+			"safe_fallback": {"speaker_role": "veteran", "text": "Welcome to the Writ."},
+			"cooldowns": {"frame": 260, "topic": 200, "pair": 125, "speaker_role": 90, "station_activity": 85},
+			"summary_metadata": {"category": "recruitment", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "combat_success_clean_finish",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded", "focused"],
+			"tone": "positive",
+			"category": "combat_memory",
+			"roles": ["witness", "partner"],
+			"required_visit_contexts": ["first_victory", "repeat_victory", "apex_victory"],
+			"eligibility": {"summary": "A victory return to camp."},
+			"beats": [
+				{"speaker_role": "witness", "text": "The last call landed before anyone needed it repeated."},
+				{"speaker_role": "partner", "text": "That is what a clean finish sounds like."},
+				{"speaker_role": "witness", "text": "Remember it before the next pull makes us humble again."}
+			],
+			"outcome": {"outcome_id": "victory_reflection", "type": "positive", "meaningful": true, "summary_template": "{witness} and {partner} reflected on a successful raid."},
+			"safe_fallback": {"speaker_role": "witness", "text": "That finish is worth remembering."},
+			"cooldowns": {"frame": 230, "topic": 165, "pair": 105, "speaker_role": 75, "referenced_memory": 210, "station_activity": 85},
+			"summary_metadata": {"category": "combat_success", "visibility": "member_quarters"}
 		},
 		{
 			"frame_id": "combat_memory_failed_timing",
@@ -75,6 +207,7 @@
 			"roles": ["confidant", "speaker"],
 			"required_visit_contexts": ["wipe"],
 			"referenced_memory_key": "recent_failed_mechanic",
+			"eligibility": {"summary": "A wipe return and a recent combat failure."},
 			"beats": [
 				{"speaker_role": "speaker", "text": "I moved when the warning came. It was still late."},
 				{"speaker_role": "confidant", "text": "Then the warning is not your cue. Find the breath before it."},
@@ -82,7 +215,28 @@
 				{"speaker_role": "confidant", "text": "I think we can look for it together."}
 			],
 			"outcome": {"outcome_id": "mechanic_reflection", "type": "reflective", "meaningful": true, "personal_roles": ["speaker"], "summary_template": "{speaker} discussed the last failed mechanic with {confidant}."},
-			"cooldowns": {"frame": 210, "topic": 150, "pair": 90, "speaker_role": 65, "referenced_memory": 190, "station_activity": 70}
+			"safe_fallback": {"speaker_role": "confidant", "text": "We will look at the timing together."},
+			"cooldowns": {"frame": 220, "topic": 160, "pair": 100, "speaker_role": 70, "referenced_memory": 200, "station_activity": 75},
+			"summary_metadata": {"category": "combat_failure", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "relationship_shared_confidence",
+			"kind": "ordinary",
+			"delivery_modes": ["focused"],
+			"tone": "encouraging",
+			"category": "relationship",
+			"roles": ["speaker", "confidant"],
+			"eligibility": {"summary": "Any available pair; uncommon because of frame and pair cooldowns."},
+			"beats": [
+				{"speaker_role": "speaker", "text": "I keep expecting the camp to feel temporary."},
+				{"speaker_role": "confidant", "text": "It is temporary. That does not make the people temporary."},
+				{"speaker_role": "speaker", "text": "You make that sound simple."},
+				{"speaker_role": "confidant", "text": "Only because I have had time to practice saying it."}
+			],
+			"outcome": {"outcome_id": "shared_confidence", "type": "positive", "meaningful": true, "qualifies_for_relationship_change": true, "relationship_deltas": {"speaker": {"affinity": 3, "trust": 4}, "confidant": {"affinity": 2, "trust": 3}}, "summary_template": "{speaker} confided in {confidant} about life in the Writ."},
+			"safe_fallback": {"speaker_role": "confidant", "text": "You do not have to carry that alone."},
+			"cooldowns": {"frame": 360, "topic": 260, "pair": 220, "speaker_role": 140, "station_activity": 100},
+			"summary_metadata": {"category": "relationship_building", "visibility": "member_quarters"}
 		},
 		{
 			"frame_id": "relationship_respectful_rivals",
@@ -92,6 +246,7 @@
 			"category": "relationship",
 			"roles": ["rival_a", "rival_b"],
 			"minimum_relationship": {"respect": 18},
+			"eligibility": {"summary": "At least one direction has 18 respect."},
 			"beats": [
 				{"speaker_role": "rival_a", "text": "You corrected the lane before I called it."},
 				{"speaker_role": "rival_b", "text": "You were busy pretending not to need the help."},
@@ -99,7 +254,92 @@
 				{"speaker_role": "rival_b", "text": "Good. I would hate to win this argument cheaply."}
 			],
 			"outcome": {"outcome_id": "rival_respect", "type": "competitive", "meaningful": true, "qualifies_for_relationship_change": true, "relationship_deltas": {"rival_a": {"respect": 4, "tension": 1}, "rival_b": {"respect": 4, "tension": 1}}, "summary_template": "{rival_a} and {rival_b} renewed their friendly rivalry."},
-			"cooldowns": {"frame": 260, "topic": 180, "pair": 130, "speaker_role": 85, "station_activity": 90}
+			"safe_fallback": {"speaker_role": "rival_a", "text": "Next pull, I see it first."},
+			"cooldowns": {"frame": 280, "topic": 200, "pair": 145, "speaker_role": 95, "station_activity": 100},
+			"summary_metadata": {"category": "rivalry", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "quarters_shared_reflection",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded"],
+			"tone": "reflective",
+			"category": "reflection",
+			"roles": ["speaker", "listener"],
+			"required_activity_ids": ["reflect"],
+			"required_station_ids": ["quarters_reflection_bench"],
+			"eligibility": {"summary": "Two raiders sharing the reflection bench."},
+			"beats": [
+				{"speaker_role": "speaker", "text": "I remember the mistake more clearly than the recovery."},
+				{"speaker_role": "listener", "text": "Then remember who helped you recover."},
+				{"speaker_role": "speaker", "text": "That is a kinder record."}
+			],
+			"outcome": {"outcome_id": "shared_reflection", "type": "reflective", "meaningful": false, "summary_template": "{speaker} reflected with {listener} in the quarters."},
+			"safe_fallback": {"speaker_role": "listener", "text": "Keep the recovery too."},
+			"cooldowns": {"frame": 210, "topic": 145, "pair": 105, "speaker_role": 75, "station_activity": 150},
+			"summary_metadata": {"category": "reflection", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "callback_mechanic_progress",
+			"kind": "ordinary",
+			"delivery_modes": ["focused"],
+			"tone": "encouraging",
+			"category": "combat_memory",
+			"roles": ["rememberer", "partner"],
+			"referenced_memory_key": "callback_failed_mechanic",
+			"memory_requirement": {"role": "rememberer", "category": "combat", "subject_prefix": "mechanic:", "states": ["active", "latent", "permanent"]},
+			"eligibility": {"summary": "The rememberer has an earlier mechanic thread."},
+			"beats": [
+				{"speaker_role": "partner", "text": "You found the step before the warning this time."},
+				{"speaker_role": "rememberer", "text": "I heard what you said after the last attempt."},
+				{"speaker_role": "partner", "text": "Good. Keep the part that worked."},
+				{"speaker_role": "rememberer", "text": "And bring it back next pull."}
+			],
+			"outcome": {"outcome_id": "callback_mechanic_progress", "type": "positive", "meaningful": true, "personal_roles": ["rememberer"], "summary_template": "{partner} recognized {rememberer}'s progress on a difficult mechanic."},
+			"safe_fallback": {"speaker_role": "partner", "text": "You improved. Keep that part."},
+			"cooldowns": {"frame": 420, "topic": 300, "pair": 240, "speaker_role": 150, "referenced_memory": 420, "station_activity": 110},
+			"summary_metadata": {"category": "memory_callback", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "callback_roster_adjustment",
+			"kind": "ordinary",
+			"delivery_modes": ["focused"],
+			"tone": "reflective",
+			"category": "relationship",
+			"roles": ["rememberer", "companion"],
+			"referenced_memory_key": "callback_roster_change",
+			"memory_requirement": {"role": "rememberer", "category": "roster", "states": ["active", "latent", "permanent"]},
+			"eligibility": {"summary": "The rememberer has an earlier roster memory."},
+			"beats": [
+				{"speaker_role": "companion", "text": "You stopped checking the active board every hour."},
+				{"speaker_role": "rememberer", "text": "Only because I finally believed the marker would still be there."},
+				{"speaker_role": "companion", "text": "And if it moves again?"},
+				{"speaker_role": "rememberer", "text": "I will still know where I belong."}
+			],
+			"outcome": {"outcome_id": "callback_roster_adjustment", "type": "reflective", "meaningful": true, "personal_roles": ["rememberer"], "summary_template": "{rememberer} told {companion} they were adjusting to the roster change."},
+			"safe_fallback": {"speaker_role": "companion", "text": "The board is not the whole Writ."},
+			"cooldowns": {"frame": 440, "topic": 310, "pair": 250, "speaker_role": 160, "referenced_memory": 440, "station_activity": 115},
+			"summary_metadata": {"category": "memory_callback", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "callback_rescue_remembered",
+			"kind": "ordinary",
+			"delivery_modes": ["focused"],
+			"tone": "reconciliatory",
+			"category": "combat_memory",
+			"roles": ["rescuer", "witness"],
+			"referenced_memory_key": "callback_rescue",
+			"memory_requirement": {"role": "rescuer", "category": "combat", "subject_prefix": "rescue:", "states": ["active", "latent", "permanent"]},
+			"eligibility": {"summary": "The rescuer has an earlier rescue thread."},
+			"beats": [
+				{"speaker_role": "witness", "text": "You still look surprised when someone mentions that save."},
+				{"speaker_role": "rescuer", "text": "I remember how close it was, not how well it ended."},
+				{"speaker_role": "witness", "text": "Both are true. You are allowed to keep the second part."},
+				{"speaker_role": "rescuer", "text": "I am trying."}
+			],
+			"outcome": {"outcome_id": "callback_rescue", "type": "reflective", "meaningful": true, "personal_roles": ["rescuer"], "summary_template": "{witness} helped {rescuer} reflect on an earlier rescue."},
+			"safe_fallback": {"speaker_role": "witness", "text": "The rescue mattered."},
+			"cooldowns": {"frame": 460, "topic": 330, "pair": 260, "speaker_role": 165, "referenced_memory": 460, "station_activity": 120},
+			"summary_metadata": {"category": "memory_callback", "visibility": "member_quarters"}
 		},
 		{
 			"frame_id": "lore_full_writ_ledgers",
@@ -109,8 +349,9 @@
 			"category": "lore",
 			"roles": ["teacher", "learner"],
 			"required_activity_ids": ["study_target", "socialize"],
-			"speaker_lore_tags": ["historian", "scholar", "regional_native", "monster_hunter", "former_arena_worker", "outsider", "archive_research_completed", "beast_crucible"],
+			"speaker_lore_tags": ["historian", "scholar", "regional_native", "monster_hunter", "former_arena_worker", "archive_research_completed", "beast_crucible"],
 			"lore_topic_id": "beast_crucible_full_writ",
+			"eligibility": {"summary": "An eligible introducer and a learner without this lore topic."},
 			"beats": [
 				{"speaker_role": "teacher", "text": "The old arena ledgers call twenty fighters a full writ."},
 				{"speaker_role": "learner", "text": "So our name is not ceremonial."},
@@ -119,7 +360,54 @@
 				{"speaker_role": "teacher", "text": "Left blank. The ledger records what happened; it does not invent an answer."}
 			],
 			"outcome": {"outcome_id": "learned_full_writ", "type": "informative", "meaningful": true, "summary_template": "{teacher} taught {learner} about the Beast Crucible's old arena ledgers."},
-			"cooldowns": {"frame": 420, "topic": 420, "pair": 150, "speaker_role": 110, "lore_topic": 600, "lore_delivery": 480, "station_activity": 120}
+			"safe_fallback": {"speaker_role": "teacher", "text": "The ledgers define a full writ as twenty marked fighters."},
+			"cooldowns": {"frame": 440, "topic": 440, "pair": 170, "speaker_role": 125, "lore_topic": 660, "lore_delivery": 520, "station_activity": 140},
+			"summary_metadata": {"category": "lore_learning", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "lore_first_keepers_dispute",
+			"kind": "lore",
+			"delivery_modes": ["embedded", "focused"],
+			"tone": "skeptical",
+			"category": "lore",
+			"roles": ["skeptic", "learner"],
+			"required_activity_ids": ["study_target", "socialize"],
+			"speaker_lore_tags": ["historian", "scholar", "outsider", "archive_research_completed"],
+			"lore_topic_id": "beast_crucible_first_keepers",
+			"eligibility": {"summary": "A qualified skeptic and a learner without the disputed account."},
+			"beats": [
+				{"speaker_role": "skeptic", "text": "Three towns claim their founders built the Crucible."},
+				{"speaker_role": "learner", "text": "Which claim does the archive accept?"},
+				{"speaker_role": "skeptic", "text": "None. The surviving ledgers begin after the arena was already operating."},
+				{"speaker_role": "learner", "text": "So the honest answer is that we do not know."},
+				{"speaker_role": "skeptic", "text": "That is the only account all three towns dislike."}
+			],
+			"outcome": {"outcome_id": "learned_keeper_dispute", "type": "informative", "meaningful": true, "summary_template": "{skeptic} explained the disputed origins of the Beast Crucible to {learner}."},
+			"safe_fallback": {"speaker_role": "skeptic", "text": "No surviving ledger names the first keepers."},
+			"cooldowns": {"frame": 480, "topic": 480, "pair": 180, "speaker_role": 135, "lore_topic": 720, "lore_delivery": 560, "station_activity": 150},
+			"summary_metadata": {"category": "lore_learning", "visibility": "member_quarters"}
+		},
+		{
+			"frame_id": "lore_handler_chain_marks",
+			"kind": "lore",
+			"delivery_modes": ["embedded", "focused"],
+			"tone": "informative",
+			"category": "lore",
+			"roles": ["teacher", "learner"],
+			"required_activity_ids": ["study_target", "smith_work"],
+			"speaker_lore_tags": ["former_arena_worker", "historian", "regional_native", "archive_research_completed"],
+			"lore_topic_id": "beast_crucible_handler_marks",
+			"eligibility": {"summary": "An arena or archive source and a learner without the confirmed fact."},
+			"beats": [
+				{"speaker_role": "teacher", "text": "Linked rings on an intake plaque marked an arena handler, not an entrant."},
+				{"speaker_role": "learner", "text": "The chains were an occupation mark?"},
+				{"speaker_role": "teacher", "text": "On the plaques, yes. The ledgers list handlers separately from every writ."},
+				{"speaker_role": "learner", "text": "Then the symbol survived after its meaning was forgotten."}
+			],
+			"outcome": {"outcome_id": "learned_handler_marks", "type": "informative", "meaningful": true, "summary_template": "{teacher} taught {learner} what the Crucible's linked-ring marks meant."},
+			"safe_fallback": {"speaker_role": "teacher", "text": "Linked rings marked handlers, not entrants."},
+			"cooldowns": {"frame": 470, "topic": 470, "pair": 180, "speaker_role": 130, "lore_topic": 700, "lore_delivery": 550, "station_activity": 150},
+			"summary_metadata": {"category": "lore_learning", "visibility": "member_quarters"}
 		}
 	]
 }

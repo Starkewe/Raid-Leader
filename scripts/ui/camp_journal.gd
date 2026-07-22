@@ -299,53 +299,37 @@ func _build_command_tent() -> void:
 	command_page.add_child(footer)
 
 	if OS.is_debug_build():
-		var report_button := Button.new()
-		report_button.text = "Debug: Print Cast Report"
-		report_button.tooltip_text = (
-			"Prints the campaign seed, hidden cast IDs, distributions, and migration warnings."
+		var debug_menu := MenuButton.new()
+		debug_menu.text = "Debug: Camp V2"
+		debug_menu.tooltip_text = (
+			"One grouped interface for Camp V2 state, validation, events, pressure, activities, reservations, and authored conversations."
 		)
-		report_button.pressed.connect(_on_print_cast_report)
-		footer.add_child(report_button)
-
-		var stress_button := Button.new()
-		stress_button.text = "Debug: Recruit Future 20"
-		stress_button.tooltip_text = (
-			"Recruits this campaign's stored future cast for Camp stress testing."
-		)
-		stress_button.disabled = CampaignState.get_roster_members().size() >= 40
-		stress_button.pressed.connect(_on_seed_debug_reserves)
-		footer.add_child(stress_button)
-
-		var event_report_button := Button.new()
-		event_report_button.text = "Debug: Camp V2 Report"
-		event_report_button.tooltip_text = (
-			"Prints notable events, memories, Chronicle entries, relationships, and lore state."
-		)
-		event_report_button.pressed.connect(_on_print_camp_v2_event_report)
-		footer.add_child(event_report_button)
-
-		var event_smoke_button := Button.new()
-		event_smoke_button.text = "Debug: Memory Smoke"
-		event_smoke_button.tooltip_text = (
-			"Emits bounded synthetic events through the real campaign pipeline, then prints the report."
-		)
-		event_smoke_button.pressed.connect(_on_run_camp_v2_event_smoke)
-		footer.add_child(event_smoke_button)
-
-		var activity_debug_menu := MenuButton.new()
-		activity_debug_menu.text = "Debug: Activities"
-		activity_debug_menu.tooltip_text = (
-			"Inspect or control Camp V2 activities, stations, conversations, pressure, and cooldowns."
-		)
-		var activity_popup := activity_debug_menu.get_popup()
-		activity_popup.add_item("Print activity/conversation report", 0)
-		activity_popup.add_item("Force ordinary conversation", 1)
-		activity_popup.add_item("Force authored lore exchange", 2)
-		activity_popup.add_item("Toggle accelerated timing", 3)
-		activity_popup.add_item("Cancel active conversations", 4)
-		activity_popup.add_item("Force embedded smith conversation", 5)
-		activity_popup.id_pressed.connect(_on_activity_debug_action)
-		footer.add_child(activity_debug_menu)
+		var debug_popup := debug_menu.get_popup()
+		debug_popup.add_item("Print full integration report", 0)
+		debug_popup.add_item("Recruit stored future cast", 1)
+		debug_popup.add_item("Force representative notable event", 2)
+		debug_popup.add_item("Force authored lore exchange", 3)
+		debug_popup.add_item("Increase conversation pressure", 4)
+		debug_popup.add_item("Decrease conversation pressure", 5)
+		debug_popup.add_item("Toggle accelerated activity timing", 6)
+		debug_popup.add_item("Repair stuck reservations", 7)
+		debug_popup.add_item("Cancel active conversations", 8)
+		debug_popup.add_item("Validate master raider definitions", 9)
+		debug_popup.add_item("Run memory/relationship smoke", 10)
+		var controller := _get_population_controller()
+		if controller != null and controller.has_method("get_conversation_frame_ids"):
+			debug_popup.add_separator("Force selected conversation")
+			var frame_ids: Array = controller.call("get_conversation_frame_ids")
+			for index in range(frame_ids.size()):
+				var item_id := 100 + index
+				debug_popup.add_item(
+					"Force: " + _humanize(String(frame_ids[index])), item_id
+				)
+				debug_popup.set_item_metadata(
+					debug_popup.get_item_index(item_id), String(frame_ids[index])
+				)
+		debug_popup.id_pressed.connect(_on_camp_v2_debug_action.bind(debug_popup))
+		footer.add_child(debug_menu)
 
 	var embark_button := Button.new()
 	embark_button.text = "Embark with this Raid Plan"
@@ -841,31 +825,58 @@ func _on_run_camp_v2_event_smoke() -> void:
 	CampaignState.print_camp_v2_event_debug_report()
 
 
-func _on_activity_debug_action(action_id: int) -> void:
+func _on_camp_v2_debug_action(action_id: int, popup: PopupMenu) -> void:
 	var controller := _get_population_controller()
-	if controller == null:
+	if controller == null and action_id not in [9, 10]:
 		print("[Camp V2 Activities] Camp population controller is unavailable.")
+		return
+	if action_id >= 100:
+		var item_index := popup.get_item_index(action_id)
+		var frame_id := String(popup.get_item_metadata(item_index))
+		print(
+			"[Camp V2 Force Selected Conversation] ",
+			controller.call("force_conversation", frame_id)
+		)
 		return
 
 	match action_id:
 		0:
-			controller.call("print_camp_v2_runtime_debug_report")
+			controller.call("print_camp_v2_integration_debug_report")
 		1:
-			print("[Camp V2 Force Conversation] ", controller.call("force_conversation"))
+			print("[Camp V2 Recruit Future Cast] ", CampaignState.ensure_debug_reserves())
 		2:
-			print("[Camp V2 Force Lore] ", controller.call("force_lore_exchange"))
+			print(
+				"[Camp V2 Force Notable Event] ",
+				controller.call("force_representative_notable_event")
+			)
 		3:
+			print("[Camp V2 Force Lore] ", controller.call("force_lore_exchange"))
+		4:
+			print(
+				"[Camp V2 Conversation Pressure] ",
+				controller.call("adjust_conversation_pressure", 20.0)
+			)
+		5:
+			print(
+				"[Camp V2 Conversation Pressure] ",
+				controller.call("adjust_conversation_pressure", -20.0)
+			)
+		6:
 			var report: Dictionary = controller.call("get_camp_v2_runtime_debug_report")
 			var enabled := not bool(report.get("accelerated_timing", false))
 			controller.call("set_accelerated_activity_timing", enabled)
 			print("[Camp V2 Accelerated Timing] ", enabled)
-		4:
+		7:
+			print("[Camp V2 Reservation Repair] ", controller.call("clear_stuck_reservations"))
+		8:
 			print("[Camp V2 Cancel Conversations] ", controller.call("cancel_active_conversations"))
-		5:
+		9:
 			print(
-				"[Camp V2 Force Smith Conversation] ",
-				controller.call("force_conversation", "smith_embedded_hammer")
+				"[Camp V2 Master Raider Validation]\n",
+				JSON.stringify(CampaignState.validate_master_raider_definitions(), "\t")
 			)
+		10:
+			print("[Camp V2 Memory Smoke] ", CampaignState.run_camp_v2_event_debug_smoke())
 
 
 func _get_population_controller() -> Node:

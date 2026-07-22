@@ -1,41 +1,17 @@
 extends RefCounted
 class_name CampConversationState
 
-const SUMMARY_LIMIT := 160
-const PRESSURE_SOURCE_LIMIT := 32
-const MIN_COOLDOWN := 12.0
-const BASELINE_COOLDOWN := 46.0
-const MAX_COOLDOWN := 75.0
-const PRESSURE_DECAY_PER_SECOND := 0.055
-
-const PRESSURE_BY_EVENT := {
-	"raider_recruited": 22.0,
-	"raider_added_to_active_roster": 9.0,
-	"raider_moved_to_reserve": 9.0,
-	"boss_attempt_completed": 12.0,
-	"boss_defeated": 24.0,
-	"class_advanced": 18.0,
-	"memory_promoted": 12.0,
-	"relationship_threshold_reached": 16.0,
-	"lore_learned": 14.0,
-}
-
-const PRESSURE_BY_VISIT := {
-	"normal": 0.0,
-	"wipe": 20.0,
-	"first_victory": 30.0,
-	"repeat_victory": 18.0,
-	"recruitment": 24.0,
-	"roster_change": 12.0,
-	"apex_victory": 36.0,
-}
+const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
+const TUNING := CampV2TuningScript.CONVERSATIONS
 
 
 static func create_store() -> Dictionary:
 	return {
 		"camp_time_seconds": 0.0,
-		"pressure": 18.0,
-		"next_ordinary_conversation_at": 14.0,
+		"pressure": float(TUNING.get("initial_pressure", 18.0)),
+		"next_ordinary_conversation_at": float(
+			TUNING.get("first_conversation_delay_seconds", 14.0)
+		),
 		"cooldowns": {},
 		"recent_summaries": [],
 		"summary_sequence": 0,
@@ -49,9 +25,16 @@ static func sanitize_store(source: Variant, valid_raider_ids: Array[String]) -> 
 	var store := create_store()
 	var raw: Dictionary = Dictionary(source).duplicate(true) if source is Dictionary else {}
 	store["camp_time_seconds"] = maxf(float(raw.get("camp_time_seconds", 0.0)), 0.0)
-	store["pressure"] = clampf(float(raw.get("pressure", 18.0)), 0.0, 100.0)
+	store["pressure"] = clampf(
+		float(raw.get("pressure", TUNING.get("initial_pressure", 18.0))), 0.0, 100.0
+	)
 	store["next_ordinary_conversation_at"] = maxf(
-		float(raw.get("next_ordinary_conversation_at", 14.0)),
+		float(
+			raw.get(
+				"next_ordinary_conversation_at",
+				TUNING.get("first_conversation_delay_seconds", 14.0)
+			)
+		),
 		float(store["camp_time_seconds"])
 	)
 	store["summary_sequence"] = maxi(int(raw.get("summary_sequence", 0)), 0)
@@ -84,8 +67,9 @@ static func sanitize_store(source: Variant, valid_raider_ids: Array[String]) -> 
 		summary["participant_ids"] = participants
 		summaries.append(summary)
 
-	if summaries.size() > SUMMARY_LIMIT:
-		summaries = summaries.slice(summaries.size() - SUMMARY_LIMIT)
+	var summary_limit := int(TUNING.get("summary_limit", 160))
+	if summaries.size() > summary_limit:
+		summaries = summaries.slice(summaries.size() - summary_limit)
 
 	store["recent_summaries"] = summaries
 	var sources: Array = []
@@ -94,8 +78,9 @@ static func sanitize_store(source: Variant, valid_raider_ids: Array[String]) -> 
 		if value is Dictionary:
 			sources.append(Dictionary(value).duplicate(true))
 
-	if sources.size() > PRESSURE_SOURCE_LIMIT:
-		sources = sources.slice(sources.size() - PRESSURE_SOURCE_LIMIT)
+	var pressure_source_limit := int(TUNING.get("pressure_source_limit", 40))
+	if sources.size() > pressure_source_limit:
+		sources = sources.slice(sources.size() - pressure_source_limit)
 
 	store["pressure_sources"] = sources
 	return store
@@ -108,7 +93,8 @@ static func advance(store: Dictionary, delta: float, concurrent_conversations: i
 	store["camp_time_seconds"] = float(store.get("camp_time_seconds", 0.0)) + delta
 	var extra_decay := maxf(float(concurrent_conversations - 1), 0.0) * 0.03
 	store["pressure"] = clampf(
-		float(store.get("pressure", 0.0)) - delta * (PRESSURE_DECAY_PER_SECOND + extra_decay),
+		float(store.get("pressure", 0.0))
+		- delta * (float(TUNING.get("pressure_decay_per_second", 0.065)) + extra_decay),
 		0.0,
 		100.0
 	)
@@ -117,31 +103,40 @@ static func advance(store: Dictionary, delta: float, concurrent_conversations: i
 
 static func apply_event_pressure(store: Dictionary, event: Dictionary) -> void:
 	var event_type := String(event.get("event_type", ""))
-	var amount := float(PRESSURE_BY_EVENT.get(event_type, 0.0))
+	var amount := float(Dictionary(TUNING.get("pressure_by_event", {})).get(event_type, 0.0))
 
 	if event_type == "conversation_completed":
 		var data: Dictionary = Dictionary(event.get("structured_data", {}))
-		amount = -14.0 if String(data.get("delivery", "embedded")) == "focused" else -8.0
+		amount = (
+			-float(TUNING.get("focused_completion_pressure_reduction", 13.0))
+			if String(data.get("delivery", "embedded")) == "focused"
+			else -float(TUNING.get("embedded_completion_pressure_reduction", 7.0))
+		)
 
 	if not is_zero_approx(amount):
-		_adjust_pressure(store, amount, event_type)
+		adjust_pressure(store, amount, event_type)
 
 
 static func apply_visit_pressure(store: Dictionary, visit_type: String) -> void:
-	var amount := float(PRESSURE_BY_VISIT.get(visit_type, 0.0))
+	var amount := float(Dictionary(TUNING.get("pressure_by_visit", {})).get(visit_type, 0.0))
 	if not is_zero_approx(amount):
-		_adjust_pressure(store, amount, "visit:%s" % visit_type)
+		adjust_pressure(store, amount, "visit:%s" % visit_type)
 
 
 static func get_next_cooldown(store: Dictionary, variance: float = 0.0) -> float:
 	var normalized := clampf(float(store.get("pressure", 0.0)) / 100.0, 0.0, 1.0)
-	var result := lerpf(BASELINE_COOLDOWN, MIN_COOLDOWN, normalized) + variance
-	return clampf(result, MIN_COOLDOWN, MAX_COOLDOWN)
+	var minimum := float(TUNING.get("minimum_cooldown_seconds", 14.0))
+	var baseline := float(TUNING.get("baseline_cooldown_seconds", 50.0))
+	var maximum := float(TUNING.get("maximum_cooldown_seconds", 80.0))
+	var result := lerpf(baseline, minimum, normalized) + variance
+	return clampf(result, minimum, maximum)
 
 
 static func schedule_next(store: Dictionary, cooldown: float) -> void:
+	var minimum := float(TUNING.get("minimum_cooldown_seconds", 14.0))
+	var maximum := float(TUNING.get("maximum_cooldown_seconds", 80.0))
 	store["next_ordinary_conversation_at"] = float(store.get("camp_time_seconds", 0.0)) + clampf(
-		cooldown, MIN_COOLDOWN, MAX_COOLDOWN
+		cooldown, minimum, maximum
 	)
 
 
@@ -190,8 +185,9 @@ static func add_summary(store: Dictionary, source: Dictionary) -> Dictionary:
 	var summaries: Array = store.get("recent_summaries", [])
 	summaries.append(summary)
 
-	if summaries.size() > SUMMARY_LIMIT:
-		summaries = summaries.slice(summaries.size() - SUMMARY_LIMIT)
+	var summary_limit := int(TUNING.get("summary_limit", 160))
+	if summaries.size() > summary_limit:
+		summaries = summaries.slice(summaries.size() - summary_limit)
 
 	store["recent_summaries"] = summaries
 	store["completed_conversation_count"] = int(
@@ -203,9 +199,15 @@ static func add_summary(store: Dictionary, source: Dictionary) -> Dictionary:
 static func note_schedule_miss(store: Dictionary, reason: String) -> void:
 	var now := float(store.get("camp_time_seconds", 0.0))
 	if now - float(store.get("last_schedule_miss_at", -999.0)) >= 5.0:
-		_adjust_pressure(store, -1.0, "schedule_miss:%s" % reason)
+		adjust_pressure(
+			store,
+			-float(TUNING.get("schedule_miss_pressure_reduction", 0.5)),
+			"schedule_miss:%s" % reason
+		)
 		store["last_schedule_miss_at"] = now
-	store["next_ordinary_conversation_at"] = now + 6.0
+	store["next_ordinary_conversation_at"] = now + float(
+		TUNING.get("schedule_miss_retry_seconds", 7.0)
+	)
 
 
 static func get_debug_report(store: Dictionary) -> Dictionary:
@@ -213,9 +215,9 @@ static func get_debug_report(store: Dictionary) -> Dictionary:
 		"camp_time_seconds": float(store.get("camp_time_seconds", 0.0)),
 		"conversation_pressure": float(store.get("pressure", 0.0)),
 		"bounded_cooldown_seconds": {
-			"minimum": MIN_COOLDOWN,
-			"baseline": BASELINE_COOLDOWN,
-			"maximum": MAX_COOLDOWN,
+			"minimum": float(TUNING.get("minimum_cooldown_seconds", 14.0)),
+			"baseline": float(TUNING.get("baseline_cooldown_seconds", 50.0)),
+			"maximum": float(TUNING.get("maximum_cooldown_seconds", 80.0)),
 			"next_computed": get_next_cooldown(store),
 		},
 		"next_ordinary_conversation_in": maxf(
@@ -230,7 +232,7 @@ static func get_debug_report(store: Dictionary) -> Dictionary:
 	}
 
 
-static func _adjust_pressure(store: Dictionary, amount: float, source: String) -> void:
+static func adjust_pressure(store: Dictionary, amount: float, source: String) -> void:
 	store["pressure"] = clampf(float(store.get("pressure", 0.0)) + amount, 0.0, 100.0)
 	var sources: Array = store.get("pressure_sources", [])
 	sources.append(
@@ -241,7 +243,7 @@ static func _adjust_pressure(store: Dictionary, amount: float, source: String) -
 			"resulting_pressure": float(store["pressure"]),
 		}
 	)
-	if sources.size() > PRESSURE_SOURCE_LIMIT:
+	if sources.size() > int(TUNING.get("pressure_source_limit", 40)):
 		sources.remove_at(0)
 	store["pressure_sources"] = sources
 
