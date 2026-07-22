@@ -1,6 +1,12 @@
 extends Node
 
 const RaidMemberRecordScript := preload("res://scripts/data/raid_member_record.gd")
+const MasterRaiderDefinitionScript := preload(
+	"res://scripts/data/master_raider_definition.gd"
+)
+const CampaignRaiderStateScript := preload("res://scripts/data/campaign_raider_state.gd")
+const RaiderCatalogScript := preload("res://scripts/data/raider_catalog.gd")
+const CampaignCastGeneratorScript := preload("res://scripts/core/campaign_cast_generator.gd")
 const RaidPlanValidatorScript := preload("res://scripts/core/raid_plan_validator.gd")
 
 signal state_changed
@@ -10,67 +16,24 @@ signal attempt_recorded(summary: Dictionary)
 signal visit_context_changed(context: Dictionary)
 
 const SAVE_PATH := "user://raid_leader_campaign_v1.json"
-const SCHEMA_VERSION := 3
+const SCHEMA_VERSION := 4
 const ACTIVE_RAID_SIZE := 20
 const ATTEMPT_HISTORY_LIMIT := 5
 const FIRST_REGION_ID := "beast_crucible"
 const DEFAULT_FORMATION_NAME := "Default"
 
-const STARTING_BLUEPRINT := [
-	["Brann", "Warrior", "tank", ["steady", "protective"]],
-	["Mara", "Priest", "healer", ["patient", "observant"]],
-	["Vey", "Rogue", "dps", ["bold", "restless"]],
-	["Ash", "Mage", "dps", ["curious", "reserved"]],
-	["Merrow", "Mage", "dps", ["practical", "sociable"]],
-	["Tamsin", "Warrior", "tank", ["vigilant", "stubborn"]],
-	["Elian", "Priest", "healer", ["calm", "scholarly"]],
-	["Nessa", "Rogue", "dps", ["wry", "vigilant"]],
-	["Lysa", "Mage", "dps", ["precise", "quiet"]],
-	["Thale", "Mage", "dps", ["bold", "curious"]],
-	["Sabine", "Priest", "healer", ["practical", "warm"]],
-	["Rook", "Rogue", "dps", ["steady", "competitive"]],
-	["Ilya", "Rogue", "dps", ["observant", "reserved"]],
-	["Yara", "Mage", "dps", ["patient", "scholarly"]],
-	["Pell", "Mage", "dps", ["restless", "sociable"]],
-	["Oren", "Priest", "healer", ["vigilant", "compassionate"]],
-	["Calder", "Priest", "healer", ["direct", "steady"]],
-	["Fen", "Rogue", "dps", ["practical", "quiet"]],
-	["Corin", "Rogue", "dps", ["bold", "wry"]],
-	["Sable", "Mage", "dps", ["precise", "reserved"]]
-]
-
-const DEBUG_RESERVE_BLUEPRINT := [
-	["Ada", "Warrior", "tank"],
-	["Holt", "Warrior", "tank"],
-	["Kestrel", "Warrior", "tank"],
-	["Beren", "Priest", "healer"],
-	["Della", "Priest", "healer"],
-	["Eris", "Priest", "healer"],
-	["Galen", "Priest", "healer"],
-	["Hesta", "Priest", "healer"],
-	["Jori", "Rogue", "dps"],
-	["Kiva", "Rogue", "dps"],
-	["Lark", "Rogue", "dps"],
-	["Miro", "Rogue", "dps"],
-	["Nim", "Rogue", "dps"],
-	["Pike", "Rogue", "dps"],
-	["Quill", "Mage", "dps"],
-	["Rhea", "Mage", "dps"],
-	["Sol", "Mage", "dps"],
-	["Tova", "Mage", "dps"],
-	["Una", "Mage", "dps"],
-	["Wren", "Mage", "dps"]
-]
-
 var campaign: Dictionary = {}
+var missing_definition_warnings_emitted: Dictionary = {}
 
 
 func _ready() -> void:
 	reset_campaign(false)
 
 
-func reset_campaign(emit_change: bool = true) -> void:
-	campaign = _create_default_campaign()
+func reset_campaign(emit_change: bool = true, seed_override: int = 0) -> void:
+	missing_definition_warnings_emitted.clear()
+	campaign = _create_default_campaign(seed_override)
+	_print_campaign_cast_report_if_debug()
 
 	if emit_change:
 		roster_changed.emit()
@@ -104,6 +67,8 @@ func load_campaign(path: String = SAVE_PATH) -> bool:
 		return false
 
 	campaign = _migrate_campaign(campaign_value as Dictionary)
+	missing_definition_warnings_emitted.clear()
+	_print_campaign_cast_report_if_debug()
 	roster_changed.emit()
 	raid_plan_changed.emit()
 	state_changed.emit()
@@ -131,6 +96,11 @@ func write_campaign(path: String, metadata: Dictionary = {}) -> bool:
 	var persistent_snapshot := campaign.duplicate(true)
 	# Current-visit reactions are scene texture, not durable campaign truth.
 	persistent_snapshot.erase("visit_context")
+	# Runtime scene state is owned by CampPopulationController and must never enter a save.
+	persistent_snapshot.erase("runtime_raider_states")
+	persistent_snapshot.erase("runtime_state")
+	# Schema 4 stores authored identity in the catalog and save-specific state by stable ID.
+	persistent_snapshot.erase("roster")
 	var payload := {
 		"save_metadata": metadata.duplicate(true),
 		"campaign": persistent_snapshot,
@@ -213,9 +183,15 @@ func set_selected_encounter(encounter_id: String) -> bool:
 
 func get_roster_members() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	var states: Dictionary = campaign.get("raider_states", {})
 
-	for member_value in campaign.get("roster", []):
-		result.append(Dictionary(member_value).duplicate(true))
+	for raider_id in get_selected_cast_ids():
+		var state_value: Variant = states.get(raider_id, {})
+
+		if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
+			continue
+
+		result.append(_project_member(raider_id, Dictionary(state_value)))
 
 	return result
 
@@ -223,15 +199,36 @@ func get_roster_members() -> Array[Dictionary]:
 func get_roster_by_id() -> Dictionary:
 	var result: Dictionary = {}
 
-	for member in campaign.get("roster", []):
+	for member in get_roster_members():
 		result[String(member.get("member_id", ""))] = member
 
 	return result
 
 
 func get_member(member_id: String) -> Dictionary:
-	var roster_by_id := get_roster_by_id()
-	return Dictionary(roster_by_id.get(member_id, {})).duplicate(true)
+	var state_value: Variant = campaign.get("raider_states", {}).get(member_id, {})
+
+	if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
+		return {}
+
+	return _project_member(member_id, Dictionary(state_value))
+
+
+func get_selected_cast_ids() -> Array[String]:
+	return _string_array(campaign.get("campaign_cast", {}).get("selected_raider_ids", []))
+
+
+func get_initial_cast_ids() -> Array[String]:
+	return _string_array(campaign.get("campaign_cast", {}).get("initial_raider_ids", []))
+
+
+func get_future_recruit_ids() -> Array[String]:
+	return _string_array(campaign.get("campaign_cast", {}).get("future_raider_ids", []))
+
+
+func get_raider_campaign_state(raider_id: String) -> Dictionary:
+	var state_value: Variant = campaign.get("raider_states", {}).get(raider_id, {})
+	return Dictionary(state_value).duplicate(true) if state_value is Dictionary else {}
 
 
 func get_member_label(member_id: String) -> String:
@@ -288,7 +285,7 @@ func get_reserve_members() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var active_ids := get_active_member_ids()
 
-	for member in campaign.get("roster", []):
+	for member in get_roster_members():
 		if not active_ids.has(String(member.get("member_id", ""))):
 			result.append(Dictionary(member).duplicate(true))
 
@@ -319,6 +316,7 @@ func swap_active_member(active_member_id: String, reserve_member_id: String) -> 
 	_ensure_formation()
 	active_ids[active_index] = reserve_member_id
 	campaign["raid_plan"]["active_member_ids"] = active_ids
+	_sync_active_state_flags()
 
 	var raid_plan: Dictionary = campaign["raid_plan"]
 	var formation: Dictionary = raid_plan.get("formation", {})
@@ -370,6 +368,7 @@ func reorder_active_member(
 
 	active_ids.insert(clampi(target_index, 0, active_ids.size()), moving_member_id)
 	campaign["raid_plan"]["active_member_ids"] = active_ids
+	_sync_active_state_flags()
 	campaign["raid_plan"]["roster_sort_mode"] = "custom"
 	save_campaign()
 	roster_changed.emit()
@@ -540,6 +539,7 @@ func record_attempt(summary: Dictionary) -> void:
 	if String(summary.get("outcome", "")) == "victory":
 		_record_victory(encounter_id)
 
+	_record_active_raider_combat_history(String(summary.get("outcome", "")))
 	save_campaign()
 	attempt_recorded.emit(summary.duplicate(true))
 	state_changed.emit()
@@ -626,48 +626,34 @@ func consume_visit_reaction() -> bool:
 
 
 func ensure_debug_reserves() -> int:
-	var roster: Array = campaign.get("roster", [])
-	var existing_debug_count := 0
+	var states: Dictionary = campaign.get("raider_states", {})
+	var recruited_count := 0
 
-	for member in roster:
-		if bool(member.get("debug_member", false)):
-			existing_debug_count += 1
+	for raider_id in get_future_recruit_ids():
+		var state_value: Variant = states.get(raider_id, {})
 
-	if existing_debug_count > 0:
-		return existing_debug_count
+		if not state_value is Dictionary:
+			continue
 
-	var next_serial := int(campaign.get("next_member_serial", roster.size() + 1))
-	var trait_pairs := [
-		["steady", "practical"],
-		["curious", "quiet"],
-		["bold", "sociable"],
-		["patient", "observant"],
-		["vigilant", "reserved"]
-	]
+		var state: Dictionary = state_value
 
-	for index in range(DEBUG_RESERVE_BLUEPRINT.size()):
-		var blueprint: Array = DEBUG_RESERVE_BLUEPRINT[index]
-		var member := RaidMemberRecordScript.create(
-			"writ_%03d" % next_serial,
-			String(blueprint[0]),
-			String(blueprint[1]),
-			String(blueprint[2]),
-			trait_pairs[index % trait_pairs.size()],
-			_debug_description(String(blueprint[1])),
-			next_serial
-		)
-		member["source_id"] = "debug_recruitment"
-		member["debug_member"] = true
-		roster.append(member)
-		next_serial += 1
+		if bool(state.get("recruited", false)):
+			continue
 
-	campaign["roster"] = roster
-	campaign["next_member_serial"] = next_serial
-	_augment_visit_reactions("recruitment", DEBUG_RESERVE_BLUEPRINT.size())
+		state["recruited"] = true
+		state["recruitment_source"] = "debug_recruitment"
+		states[raider_id] = state
+		recruited_count += 1
+
+	if recruited_count <= 0:
+		return 0
+
+	campaign["raider_states"] = states
+	_augment_visit_reactions("recruitment", recruited_count)
 	save_campaign()
 	roster_changed.emit()
 	state_changed.emit()
-	return DEBUG_RESERVE_BLUEPRINT.size()
+	return recruited_count
 
 
 func mark_apex_victory_hook(region_id: String, unlocked_region_ids: Array[String]) -> void:
@@ -685,40 +671,117 @@ func mark_apex_victory_hook(region_id: String, unlocked_region_ids: Array[String
 func get_campaign_debug_summary() -> Dictionary:
 	return {
 		"schema_version": int(campaign.get("schema_version", 0)),
-		"roster_size": campaign.get("roster", []).size(),
+		"roster_size": get_roster_members().size(),
 		"active_size": get_active_member_ids().size(),
 		"selected_encounter": get_selected_encounter_id(),
 		"plan_validation": validate_raid_plan(),
-		"visit_context": get_visit_context()
+		"visit_context": get_visit_context(),
+		"campaign_cast": get_campaign_cast_report(),
 	}
 
 
-func _create_default_campaign() -> Dictionary:
-	var roster: Array[Dictionary] = []
-	var active_member_ids: Array[String] = []
+func get_campaign_cast_report() -> Dictionary:
+	var cast: Dictionary = campaign.get("campaign_cast", {})
+	var diagnostics: Dictionary = campaign.get("data_diagnostics", {})
+	var class_distribution: Dictionary = {}
+	var role_distribution: Dictionary = {}
+	var states: Dictionary = campaign.get("raider_states", {})
 
-	for index in range(STARTING_BLUEPRINT.size()):
-		var blueprint: Array = STARTING_BLUEPRINT[index]
-		var member_id := "writ_%03d" % (index + 1)
-		var member := RaidMemberRecordScript.create(
-			member_id,
-			String(blueprint[0]),
-			String(blueprint[1]),
-			String(blueprint[2]),
-			Array(blueprint[3]).duplicate(),
-			_starting_description(String(blueprint[0]), String(blueprint[1]), Array(blueprint[3])),
-			index + 1
+	for raider_id in get_selected_cast_ids():
+		var state_value: Variant = states.get(raider_id, {})
+
+		if not state_value is Dictionary:
+			continue
+
+		var state: Dictionary = state_value
+		var unit_class := String(state.get("current_class", "Unknown"))
+		var definition := _get_definition_with_fallback(raider_id)
+		var role := String(definition.get("default_role", "unknown"))
+		class_distribution[unit_class] = int(class_distribution.get(unit_class, 0)) + 1
+		role_distribution[role] = int(role_distribution.get(role, 0)) + 1
+
+	var warnings := _string_array(cast.get("generation_warnings", []))
+
+	for catalog_warning in RaiderCatalogScript.get_warnings():
+		if not warnings.has(catalog_warning):
+			warnings.append(catalog_warning)
+
+	return {
+		"campaign_seed": int(campaign.get("campaign_seed", 0)),
+		"catalog_version": int(cast.get("catalog_version", 0)),
+		"selected_40": get_selected_cast_ids(),
+		"initial_20": get_initial_cast_ids(),
+		"future_20": get_future_recruit_ids(),
+		"class_distribution": class_distribution,
+		"role_distribution": role_distribution,
+		"generation_validation_warnings": warnings,
+		"migrated_raider_ids": _string_array(diagnostics.get("migrated_raider_ids", [])),
+		"missing_definition_ids": _string_array(
+			diagnostics.get("missing_definition_ids", [])
+		),
+		"migrated_from_schema": int(diagnostics.get("migrated_from_schema", SCHEMA_VERSION)),
+	}
+
+
+func print_campaign_cast_report() -> void:
+	print("[Camp V2 Campaign Cast]\n" + JSON.stringify(get_campaign_cast_report(), "\t"))
+
+
+func _create_default_campaign(seed_override: int = 0) -> Dictionary:
+	var campaign_seed := seed_override if seed_override != 0 else _generate_campaign_seed()
+	var generation := CampaignCastGeneratorScript.generate(
+		campaign_seed, RaiderCatalogScript.get_all_definitions()
+	)
+	var active_member_ids := _string_array(generation.get("initial_raider_ids", []))
+	var states: Dictionary = {}
+	var projected_roster: Array[Dictionary] = []
+
+	for raider_id in _string_array(generation.get("selected_raider_ids", [])):
+		var definition := RaiderCatalogScript.get_definition(raider_id)
+		var is_initial := active_member_ids.has(raider_id)
+		var recruitment: Dictionary = definition.get("recruitment", {})
+		var state := CampaignRaiderStateScript.create(
+			raider_id,
+			String(definition.get("default_class", "Mage")),
+			is_initial,
+			is_initial,
+			String(
+				recruitment.get("source_hint", "starting_writ" if is_initial else "unrecruited")
+			)
 		)
-		roster.append(member)
-		active_member_ids.append(member_id)
+		states[raider_id] = state
 
-	var default_formation := _build_default_formation_for_ids(active_member_ids, roster)
+		if is_initial:
+			projected_roster.append(_project_member_from(definition, state))
+
+	var default_formation := _build_default_formation_for_ids(
+		active_member_ids, projected_roster
+	)
 
 	return {
 		"schema_version": SCHEMA_VERSION,
-		"campaign_seed": 20004,
-		"roster": roster,
-		"next_member_serial": STARTING_BLUEPRINT.size() + 1,
+		"campaign_seed": campaign_seed,
+		"campaign_cast":
+		{
+			"catalog_version": RaiderCatalogScript.get_catalog_version(),
+			"selected_raider_ids": _string_array(generation.get("selected_raider_ids", [])),
+			"initial_raider_ids": active_member_ids.duplicate(),
+			"future_raider_ids": _string_array(generation.get("future_raider_ids", [])),
+			"generation_warnings": _string_array(generation.get("warnings", [])),
+		},
+		"raider_states": states,
+		"fallback_raider_definitions": {},
+		"data_diagnostics":
+		{
+			"migrated_from_schema": SCHEMA_VERSION,
+			"migrated_raider_ids": [],
+			"missing_definition_ids": [],
+		},
+		# These empty stores establish ownership without implementing their later systems.
+		"memory_store": {},
+		"relationship_store": {},
+		"lore_knowledge_store": {},
+		"notable_event_records": [],
 		"raid_plan":
 		{
 			"region_id": FIRST_REGION_ID,
@@ -772,26 +835,15 @@ func _sort_members_by_class_then_name(members: Array[Dictionary]) -> void:
 
 
 func _migrate_campaign(source: Dictionary) -> Dictionary:
-	var defaults := _create_default_campaign()
+	var source_version := int(source.get("schema_version", 0))
+	var source_seed := int(source.get("campaign_seed", 20004))
+	var defaults := _create_default_campaign(source_seed)
 	var migrated := source.duplicate(true)
 
 	for key in defaults.keys():
 		if not migrated.has(key):
 			migrated[key] = defaults[key]
 
-	if int(migrated.get("schema_version", 0)) < 1:
-		migrated["schema_version"] = 1
-
-	var sanitized_roster: Array[Dictionary] = []
-
-	for member in migrated.get("roster", []):
-		if member is Dictionary:
-			sanitized_roster.append(RaidMemberRecordScript.sanitize(member))
-
-	if sanitized_roster.is_empty():
-		return defaults
-
-	migrated["roster"] = sanitized_roster
 	var default_plan: Dictionary = defaults["raid_plan"]
 	var raid_plan_value: Variant = migrated.get("raid_plan", {})
 	var raid_plan: Dictionary = (
@@ -846,16 +898,309 @@ func _migrate_campaign(source: Dictionary) -> Dictionary:
 		saved_formations[imported_name] = imported_formation
 
 	raid_plan["saved_formations"] = saved_formations
-
 	raid_plan.erase("formations")
 	migrated["raid_plan"] = raid_plan
+
+	if source_version < SCHEMA_VERSION or not _has_layered_raider_data(migrated):
+		if not _migrate_legacy_raider_data(migrated, defaults, source_version):
+			return defaults
+	else:
+		_sanitize_layered_raider_data(migrated, defaults, source_version)
+
+	migrated.erase("roster")
+	migrated.erase("next_member_serial")
 	migrated["attempt_history"] = _normalize_attempt_history(
 		migrated.get("attempt_history", {})
 	)
 	migrated["schema_version"] = SCHEMA_VERSION
 	campaign = migrated
+	_sync_active_state_flags()
 	_ensure_formation()
 	return campaign
+
+
+func _has_layered_raider_data(source: Dictionary) -> bool:
+	return source.get("campaign_cast") is Dictionary and source.get("raider_states") is Dictionary
+
+
+func _migrate_legacy_raider_data(
+	migrated: Dictionary, defaults: Dictionary, source_version: int
+) -> bool:
+	var legacy_roster: Array[Dictionary] = []
+
+	for member_value in migrated.get("roster", []):
+		if member_value is Dictionary:
+			legacy_roster.append(RaidMemberRecordScript.sanitize(member_value))
+
+	if legacy_roster.is_empty():
+		push_warning("Legacy campaign had no valid roster; a new campaign was created instead.")
+		return false
+
+	var selected_ids: Array[String] = []
+	var legacy_by_id: Dictionary = {}
+
+	for index in range(legacy_roster.size()):
+		var member := legacy_roster[index]
+		var raider_id := String(member.get("member_id", "")).strip_edges()
+
+		if raider_id.is_empty():
+			raider_id = "legacy_%03d" % (index + 1)
+			member["member_id"] = raider_id
+
+		if legacy_by_id.has(raider_id):
+			push_warning("Legacy roster contained duplicate member_id: " + raider_id)
+			continue
+
+		legacy_by_id[raider_id] = member
+		selected_ids.append(raider_id)
+
+	for generated_id in _string_array(
+		defaults.get("campaign_cast", {}).get("selected_raider_ids", [])
+	):
+		if selected_ids.size() >= CampaignCastGeneratorScript.CAST_SIZE:
+			break
+
+		_append_unique_id(selected_ids, generated_id)
+
+	var initial_ids: Array[String] = []
+
+	for member in legacy_roster:
+		if String(member.get("source_id", "")) == "starting_writ":
+			_append_unique_id(initial_ids, String(member.get("member_id", "")))
+
+	for generated_id in _string_array(
+		defaults.get("campaign_cast", {}).get("initial_raider_ids", [])
+	):
+		if initial_ids.size() >= CampaignCastGeneratorScript.INITIAL_SIZE:
+			break
+
+		if selected_ids.has(generated_id):
+			_append_unique_id(initial_ids, generated_id)
+
+	for raider_id in selected_ids:
+		if initial_ids.size() >= CampaignCastGeneratorScript.INITIAL_SIZE:
+			break
+		_append_unique_id(initial_ids, raider_id)
+
+	if initial_ids.size() > CampaignCastGeneratorScript.INITIAL_SIZE:
+		initial_ids = initial_ids.slice(0, CampaignCastGeneratorScript.INITIAL_SIZE)
+
+	var future_ids: Array[String] = []
+
+	for raider_id in selected_ids:
+		if not initial_ids.has(raider_id):
+			future_ids.append(raider_id)
+
+	var active_ids := _string_array(
+		migrated.get("raid_plan", {}).get("active_member_ids", [])
+	)
+	var states: Dictionary = {}
+	var fallback_definitions: Dictionary = {}
+	var missing_definition_ids: Array[String] = []
+
+	for raider_id in selected_ids:
+		var legacy_member: Dictionary = legacy_by_id.get(raider_id, {})
+		var definition := RaiderCatalogScript.get_definition(raider_id)
+
+		if definition.is_empty():
+			definition = MasterRaiderDefinitionScript.fallback(raider_id, legacy_member)
+			fallback_definitions[raider_id] = definition
+			missing_definition_ids.append(raider_id)
+
+		var is_legacy_member := not legacy_member.is_empty()
+		var is_initial := initial_ids.has(raider_id)
+		var recruitment: Dictionary = definition.get("recruitment", {})
+		var state := CampaignRaiderStateScript.create(
+			raider_id,
+			String(
+				legacy_member.get("unit_class", definition.get("default_class", "Mage"))
+			),
+			is_legacy_member or is_initial,
+			active_ids.has(raider_id),
+			String(
+				legacy_member.get(
+					"source_id",
+					recruitment.get("source_hint", "starting_writ" if is_initial else "unrecruited")
+				)
+			)
+		)
+
+		if is_legacy_member:
+			state["advanced_class_id"] = String(legacy_member.get("advanced_class_id", ""))
+			state["specialization_id"] = String(legacy_member.get("specialization_id", ""))
+			state["debug_member"] = bool(legacy_member.get("debug_member", false))
+
+		states[raider_id] = CampaignRaiderStateScript.sanitize(
+			state, raider_id, String(definition.get("default_class", "Mage"))
+		)
+
+	var warnings := _string_array(
+		defaults.get("campaign_cast", {}).get("generation_warnings", [])
+	)
+
+	if selected_ids.size() != CampaignCastGeneratorScript.CAST_SIZE:
+		warnings.append(
+			"Migrated cast contains %d raiders instead of %d so no legacy raider was discarded."
+			% [selected_ids.size(), CampaignCastGeneratorScript.CAST_SIZE]
+		)
+
+	migrated["campaign_cast"] = {
+		"catalog_version": RaiderCatalogScript.get_catalog_version(),
+		"selected_raider_ids": selected_ids,
+		"initial_raider_ids": initial_ids,
+		"future_raider_ids": future_ids,
+		"generation_warnings": warnings,
+	}
+	migrated["raider_states"] = states
+	migrated["fallback_raider_definitions"] = fallback_definitions
+	migrated["data_diagnostics"] = {
+		"migrated_from_schema": source_version,
+		"migrated_raider_ids": legacy_by_id.keys(),
+		"missing_definition_ids": missing_definition_ids,
+	}
+	return true
+
+
+func _sanitize_layered_raider_data(
+	migrated: Dictionary, defaults: Dictionary, source_version: int
+) -> void:
+	var cast_value: Variant = migrated.get("campaign_cast", {})
+	var cast: Dictionary = Dictionary(cast_value).duplicate(true) if cast_value is Dictionary else {}
+	var selected_ids := _unique_string_array(cast.get("selected_raider_ids", []))
+	var active_ids := _unique_string_array(
+		migrated.get("raid_plan", {}).get("active_member_ids", [])
+	)
+
+	for active_id in active_ids:
+		_append_unique_id(selected_ids, active_id)
+
+	for generated_id in _string_array(
+		defaults.get("campaign_cast", {}).get("selected_raider_ids", [])
+	):
+		if selected_ids.size() >= CampaignCastGeneratorScript.CAST_SIZE:
+			break
+		_append_unique_id(selected_ids, generated_id)
+
+	var initial_ids := _unique_string_array(cast.get("initial_raider_ids", []))
+	initial_ids = _only_selected_ids(initial_ids, selected_ids)
+
+	for generated_id in _string_array(
+		defaults.get("campaign_cast", {}).get("initial_raider_ids", [])
+	):
+		if initial_ids.size() >= CampaignCastGeneratorScript.INITIAL_SIZE:
+			break
+
+		if selected_ids.has(generated_id):
+			_append_unique_id(initial_ids, generated_id)
+
+	for raider_id in selected_ids:
+		if initial_ids.size() >= CampaignCastGeneratorScript.INITIAL_SIZE:
+			break
+		_append_unique_id(initial_ids, raider_id)
+
+	if initial_ids.size() > CampaignCastGeneratorScript.INITIAL_SIZE:
+		initial_ids = initial_ids.slice(0, CampaignCastGeneratorScript.INITIAL_SIZE)
+
+	var stored_future := _only_selected_ids(
+		_unique_string_array(cast.get("future_raider_ids", [])), selected_ids
+	)
+	var future_ids: Array[String] = []
+
+	for raider_id in stored_future:
+		if not initial_ids.has(raider_id):
+			_append_unique_id(future_ids, raider_id)
+
+	for raider_id in selected_ids:
+		if not initial_ids.has(raider_id):
+			_append_unique_id(future_ids, raider_id)
+
+	var source_states_value: Variant = migrated.get("raider_states", {})
+	var source_states: Dictionary = (
+		Dictionary(source_states_value) if source_states_value is Dictionary else {}
+	)
+	var fallback_value: Variant = migrated.get("fallback_raider_definitions", {})
+	var stored_fallbacks: Dictionary = (
+		Dictionary(fallback_value).duplicate(true) if fallback_value is Dictionary else {}
+	)
+	var sanitized_fallbacks: Dictionary = {}
+	var states: Dictionary = {}
+	var missing_definition_ids: Array[String] = []
+
+	for raider_id in selected_ids:
+		var definition := RaiderCatalogScript.get_definition(raider_id)
+
+		if definition.is_empty():
+			var fallback_source: Dictionary = {}
+
+			if stored_fallbacks.get(raider_id) is Dictionary:
+				fallback_source = Dictionary(stored_fallbacks[raider_id])
+
+			definition = MasterRaiderDefinitionScript.fallback(raider_id, fallback_source)
+			sanitized_fallbacks[raider_id] = definition
+			missing_definition_ids.append(raider_id)
+
+		var state_source: Dictionary = {}
+
+		if source_states.get(raider_id) is Dictionary:
+			state_source = Dictionary(source_states[raider_id])
+		else:
+			var is_initial := initial_ids.has(raider_id)
+			state_source = CampaignRaiderStateScript.create(
+				raider_id,
+				String(definition.get("default_class", "Mage")),
+				is_initial,
+				active_ids.has(raider_id),
+				"starting_writ" if is_initial else "unrecruited"
+			)
+
+		var state := CampaignRaiderStateScript.sanitize(
+			state_source, raider_id, String(definition.get("default_class", "Mage"))
+		)
+
+		if initial_ids.has(raider_id) or active_ids.has(raider_id):
+			state["recruited"] = true
+
+		states[raider_id] = state
+
+	if active_ids.is_empty():
+		active_ids = initial_ids.duplicate()
+
+	var valid_active_ids: Array[String] = []
+
+	for raider_id in active_ids:
+		if selected_ids.has(raider_id) and states.has(raider_id):
+			_append_unique_id(valid_active_ids, raider_id)
+
+	migrated["raid_plan"]["active_member_ids"] = valid_active_ids
+	var warnings := _unique_string_array(cast.get("generation_warnings", []))
+
+	if selected_ids.size() != CampaignCastGeneratorScript.CAST_SIZE:
+		warnings.append(
+			"Stored cast contains %d raiders instead of %d."
+			% [selected_ids.size(), CampaignCastGeneratorScript.CAST_SIZE]
+		)
+
+	migrated["campaign_cast"] = {
+		"catalog_version": RaiderCatalogScript.get_catalog_version(),
+		"selected_raider_ids": selected_ids,
+		"initial_raider_ids": initial_ids,
+		"future_raider_ids": future_ids,
+		"generation_warnings": warnings,
+	}
+	migrated["raider_states"] = states
+	migrated["fallback_raider_definitions"] = sanitized_fallbacks
+	var diagnostics_value: Variant = migrated.get("data_diagnostics", {})
+	var diagnostics: Dictionary = (
+		Dictionary(diagnostics_value).duplicate(true) if diagnostics_value is Dictionary else {}
+	)
+	diagnostics["migrated_from_schema"] = int(
+		diagnostics.get("migrated_from_schema", source_version)
+	)
+	diagnostics["migrated_raider_ids"] = _unique_string_array(
+		diagnostics.get("migrated_raider_ids", [])
+	)
+	diagnostics["missing_definition_ids"] = missing_definition_ids
+	migrated["data_diagnostics"] = diagnostics
 
 
 func _normalize_attempt_history(source: Variant) -> Dictionary:
@@ -904,7 +1249,7 @@ func _ensure_formation() -> void:
 
 
 func _build_default_formation() -> Dictionary:
-	return _build_default_formation_for_ids(get_active_member_ids(), campaign.get("roster", []))
+	return _build_default_formation_for_ids(get_active_member_ids(), get_roster_members())
 
 
 func _sanitize_formation_for_active(source: Dictionary) -> Dictionary:
@@ -1046,6 +1391,174 @@ func _record_victory(encounter_id: String) -> void:
 	}
 
 
+func _record_active_raider_combat_history(outcome: String) -> void:
+	var states: Dictionary = campaign.get("raider_states", {})
+
+	for raider_id in get_active_member_ids():
+		var state_value: Variant = states.get(raider_id, {})
+
+		if not state_value is Dictionary:
+			continue
+
+		var state: Dictionary = state_value
+		var history_value: Variant = state.get("combat_history", {})
+		var history: Dictionary = (
+			Dictionary(history_value).duplicate(true) if history_value is Dictionary else {}
+		)
+		history["attempts"] = int(history.get("attempts", 0)) + 1
+
+		if outcome == "victory":
+			history["victories"] = int(history.get("victories", 0)) + 1
+		else:
+			history["defeats"] = int(history.get("defeats", 0)) + 1
+
+		state["combat_history"] = history
+		states[raider_id] = state
+
+	campaign["raider_states"] = states
+
+
+func _project_member(raider_id: String, state: Dictionary) -> Dictionary:
+	return _project_member_from(_get_definition_with_fallback(raider_id), state)
+
+
+func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictionary:
+	var raider_id := String(state.get("raider_id", definition.get("raider_id", "")))
+	return {
+		# Camp V1 and combat consumers retain these aliases while stable IDs remain authoritative.
+		"member_id": raider_id,
+		"raider_id": raider_id,
+		"display_name": String(definition.get("display_name", "Unnamed Raider")),
+		"unit_class": String(
+			state.get("current_class", definition.get("default_class", "Mage"))
+		),
+		"role": String(definition.get("default_role", "dps")),
+		"attributes": Array(definition.get("personality_tags", [])).duplicate(),
+		"personality_tags": Array(definition.get("personality_tags", [])).duplicate(),
+		"description": String(definition.get("biography", "")),
+		"biography": String(definition.get("biography", "")),
+		"speech_profile_id": String(definition.get("speech_profile_id", "writ_default")),
+		"visual_assets": Dictionary(definition.get("visual_assets", {})).duplicate(true),
+		"preferred_activity_tags": Array(
+			definition.get("preferred_activity_tags", [])
+		).duplicate(),
+		"permitted_class_paths": Array(definition.get("permitted_class_paths", [])).duplicate(),
+		"lore_knowledge_tags": Array(definition.get("lore_knowledge_tags", [])).duplicate(),
+		"authored_connection_ids": Array(
+			definition.get("authored_connection_ids", [])
+		).duplicate(),
+		"recruitment_metadata": Dictionary(definition.get("recruitment", {})).duplicate(true),
+		"recruit_order": int(definition.get("catalog_order", 0)),
+		"advanced_class_id": String(state.get("advanced_class_id", "")),
+		"specialization_id": String(state.get("specialization_id", "")),
+		"source_id": String(state.get("recruitment_source", "unknown")),
+		"room_assignment_id": String(state.get("room_assignment_id", "")),
+		"combat_history": Dictionary(state.get("combat_history", {})).duplicate(true),
+		"permanent_milestone_ids": Array(
+			state.get("permanent_milestone_ids", [])
+		).duplicate(),
+		"descriptive_title": String(state.get("descriptive_title", "")),
+		"debug_member": bool(state.get("debug_member", false)),
+	}
+
+
+func _get_definition_with_fallback(raider_id: String) -> Dictionary:
+	var definition := RaiderCatalogScript.get_definition(raider_id)
+
+	if not definition.is_empty():
+		return definition
+
+	var fallback_value: Variant = campaign.get("fallback_raider_definitions", {}).get(
+		raider_id, {}
+	)
+	var fallback_source: Dictionary = (
+		Dictionary(fallback_value) if fallback_value is Dictionary else {}
+	)
+	definition = MasterRaiderDefinitionScript.fallback(raider_id, fallback_source)
+
+	if not missing_definition_warnings_emitted.has(raider_id):
+		missing_definition_warnings_emitted[raider_id] = true
+		push_warning(
+			"Missing master raider definition for stable ID '%s'; using saved fallback identity."
+			% raider_id
+		)
+
+	return definition
+
+
+func _sync_active_state_flags() -> void:
+	var states_value: Variant = campaign.get("raider_states", {})
+
+	if not states_value is Dictionary:
+		return
+
+	var states: Dictionary = states_value
+	var active_ids := get_active_member_ids()
+
+	for raider_id in states.keys():
+		var state_value: Variant = states[raider_id]
+
+		if not state_value is Dictionary:
+			continue
+
+		var state: Dictionary = state_value
+		state["active"] = active_ids.has(String(raider_id))
+
+		if bool(state["active"]):
+			state["recruited"] = true
+
+		states[raider_id] = state
+
+	campaign["raider_states"] = states
+
+
+func _generate_campaign_seed() -> int:
+	return maxi(
+		int(Time.get_unix_time_from_system() * 1000.0) + int(Time.get_ticks_msec()), 1
+	)
+
+
+func _print_campaign_cast_report_if_debug() -> void:
+	if OS.is_debug_build():
+		print_campaign_cast_report()
+
+
+func _string_array(value: Variant) -> Array[String]:
+	var result: Array[String] = []
+
+	if value is Array:
+		for entry in value:
+			result.append(String(entry))
+
+	return result
+
+
+func _unique_string_array(value: Variant) -> Array[String]:
+	var result: Array[String] = []
+
+	for entry in _string_array(value):
+		_append_unique_id(result, entry)
+
+	return result
+
+
+func _only_selected_ids(ids: Array[String], selected_ids: Array[String]) -> Array[String]:
+	var result: Array[String] = []
+
+	for raider_id in ids:
+		if selected_ids.has(raider_id):
+			_append_unique_id(result, raider_id)
+
+	return result
+
+
+func _append_unique_id(target: Array[String], raider_id: String) -> void:
+	raider_id = raider_id.strip_edges()
+
+	if not raider_id.is_empty() and not target.has(raider_id):
+		target.append(raider_id)
+
+
 func _augment_visit_reactions(context_type: String, magnitude: int) -> void:
 	var context: Dictionary = campaign.get("visit_context", {})
 	context["type"] = context_type
@@ -1059,17 +1572,3 @@ func _augment_visit_reactions(context_type: String, magnitude: int) -> void:
 func _append_unique_value(target: Array, value: Variant) -> void:
 	if not target.has(value):
 		target.append(value)
-
-
-func _starting_description(name_value: String, unit_class: String, attributes: Array) -> String:
-	return (
-		"%s is a %s of the first Writ: %s, %s, and already accustomed to fighting as one of twenty."
-		% [name_value, unit_class.to_lower(), String(attributes[0]), String(attributes[1])]
-	)
-
-
-func _debug_description(unit_class: String) -> String:
-	return (
-		"A campaign-seeded %s reserve added for roster and forty-member stress testing."
-		% unit_class.to_lower()
-	)

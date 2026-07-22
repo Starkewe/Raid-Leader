@@ -21,9 +21,10 @@ static func has_current_save() -> bool:
 	return has_any_save()
 
 
-static func start_new_campaign() -> void:
+static func start_new_campaign(seed_override: int = 0) -> void:
 	# Starting a campaign changes memory only. It neither overwrites nor manufactures a save.
-	CampaignState.reset_campaign()
+	# Tests and developer tools may provide a seed; normal New Game generates one.
+	CampaignState.reset_campaign(true, seed_override)
 
 
 static func create_manual_save(display_name: String, overwrite: bool = false) -> Dictionary:

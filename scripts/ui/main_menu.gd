@@ -1,9 +1,11 @@
 extends Control
 
 const CampaignSaveManagerScript := preload("res://scripts/core/campaign_save_manager.gd")
+const DISPLAY_VERSION := "0.1.0"
 
 var main_panel: VBoxContainer = null
 var secondary_panel: VBoxContainer = null
+var version_label: Label = null
 var tutorial_description: Label = null
 var tutorial_start_button: Button = null
 var settings_dropdown: OptionButton = null
@@ -81,11 +83,29 @@ func _rebuild_root() -> void:
 	secondary_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(secondary_panel)
 
+	version_label = Label.new()
+	version_label.text = DISPLAY_VERSION
+	version_label.anchor_left = 1.0
+	version_label.anchor_top = 1.0
+	version_label.anchor_right = 1.0
+	version_label.anchor_bottom = 1.0
+	version_label.offset_left = -72
+	version_label.offset_top = -30
+	version_label.offset_right = -18
+	version_label.offset_bottom = -12
+	version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	version_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	version_label.add_theme_font_size_override("font_size", 12)
+	version_label.add_theme_color_override("font_color", Color("667174"))
+	version_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(version_label)
+
 
 func _show_main_menu() -> void:
 	_clear_secondary()
 	secondary_panel.visible = false
 	main_panel.visible = true
+	version_label.visible = true
 
 	for child in main_panel.get_children():
 		main_panel.remove_child(child)
@@ -113,6 +133,7 @@ func _begin_secondary(title_text: String) -> void:
 	_clear_secondary()
 	main_panel.visible = false
 	secondary_panel.visible = true
+	version_label.visible = false
 
 	var heading := Label.new()
 	heading.text = title_text

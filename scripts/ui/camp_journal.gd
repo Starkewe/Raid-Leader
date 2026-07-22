@@ -294,9 +294,19 @@ func _build_command_tent() -> void:
 	command_page.add_child(footer)
 
 	if OS.is_debug_build():
+		var report_button := Button.new()
+		report_button.text = "Debug: Print Cast Report"
+		report_button.tooltip_text = (
+			"Prints the campaign seed, hidden cast IDs, distributions, and migration warnings."
+		)
+		report_button.pressed.connect(_on_print_cast_report)
+		footer.add_child(report_button)
+
 		var stress_button := Button.new()
-		stress_button.text = "Debug: Seed 20 Reserves"
-		stress_button.tooltip_text = "Adds the mature 40-member role mix once for Camp stress testing."
+		stress_button.text = "Debug: Recruit Future 20"
+		stress_button.tooltip_text = (
+			"Recruits this campaign's stored future cast for Camp stress testing."
+		)
 		stress_button.disabled = CampaignState.get_roster_members().size() >= 40
 		stress_button.pressed.connect(_on_seed_debug_reserves)
 		footer.add_child(stress_button)
@@ -419,26 +429,21 @@ func _build_formation_yard() -> void:
 	var formation_page := _begin_scrolling_page()
 	_add_muted_label_to(
 		formation_page,
-		"Formations apply to every target. Drag a roster row onto any mini-region; drop rows onto one another to reorder the active raid."
+		"Formations apply to the starting position of each raid member. Drag a member to a \"Mini-region\" to move their starting position."
 	)
 
 	var formation := CampaignState.get_formation()
 	var current_name := String(formation.get("preset_name", "Custom"))
-	var preset_row := HBoxContainer.new()
-	preset_row.add_theme_constant_override("separation", 10)
-	formation_page.add_child(preset_row)
-	_add_section_label_to(preset_row, "Saved formations")
-
-	var current_label := Label.new()
-	current_label.text = "Current: %s" % current_name
-	current_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	current_label.add_theme_color_override("font_color", Color("d7c38f"))
-	preset_row.add_child(current_label)
+	var current_formation_row := HBoxContainer.new()
+	current_formation_row.add_theme_constant_override("separation", 10)
+	formation_page.add_child(current_formation_row)
+	_add_section_label_to(current_formation_row, "Current Formation:")
 
 	var preset_dropdown := OptionButton.new()
 	preset_dropdown.custom_minimum_size = Vector2(230, 42)
 	preset_dropdown.add_item(CampaignState.DEFAULT_FORMATION_NAME)
 	preset_dropdown.set_item_metadata(0, CampaignState.DEFAULT_FORMATION_NAME)
+	var selected_index := 0
 
 	for formation_name in CampaignState.get_saved_formation_names():
 		var option_index := preset_dropdown.item_count
@@ -446,43 +451,50 @@ func _build_formation_yard() -> void:
 		preset_dropdown.set_item_metadata(option_index, formation_name)
 
 		if formation_name == current_name:
-			preset_dropdown.select(option_index)
+			selected_index = option_index
 
-	preset_row.add_child(preset_dropdown)
-	var load_button := Button.new()
-	load_button.text = "Load"
-	load_button.custom_minimum_size = Vector2(90, 42)
-	load_button.pressed.connect(_on_load_formation_pressed.bind(preset_dropdown))
-	preset_row.add_child(load_button)
+	preset_dropdown.select(selected_index)
+	preset_dropdown.item_selected.connect(_on_saved_formation_selected.bind(preset_dropdown))
+	current_formation_row.add_child(preset_dropdown)
 
-	var delete_button := Button.new()
-	delete_button.text = "Delete save"
-	delete_button.custom_minimum_size = Vector2(120, 42)
-	delete_button.disabled = (
-		String(preset_dropdown.get_item_metadata(preset_dropdown.selected))
-		== CampaignState.DEFAULT_FORMATION_NAME
-	)
-	delete_button.pressed.connect(_on_delete_formation_pressed.bind(preset_dropdown))
-	preset_dropdown.item_selected.connect(
-		_on_saved_formation_selected.bind(preset_dropdown, delete_button)
-	)
-	preset_row.add_child(delete_button)
+	var editor := FormationEditorPanelScript.new() as FormationEditorPanel
+	editor.set_map_header_builder(_build_formation_name_controls.bind(preset_dropdown))
+	editor.configure("", true, false, false)
+	formation_page.add_child(editor)
+
+
+func _build_formation_name_controls(preset_dropdown: OptionButton) -> Control:
+	var center := CenterContainer.new()
+	center.custom_minimum_size = Vector2(0, 42)
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var controls := HBoxContainer.new()
+	controls.add_theme_constant_override("separation", 10)
+	center.add_child(controls)
 
 	var name_input := LineEdit.new()
 	name_input.placeholder_text = "New formation name"
 	name_input.custom_minimum_size = Vector2(235, 42)
 	name_input.tooltip_text = "Saving an existing name overwrites that saved formation."
-	preset_row.add_child(name_input)
+	controls.add_child(name_input)
 
 	var save_button := Button.new()
-	save_button.text = "Save current"
-	save_button.custom_minimum_size = Vector2(130, 42)
+	save_button.text = "Save"
+	save_button.custom_minimum_size = Vector2(90, 42)
 	save_button.pressed.connect(_on_save_formation_pressed.bind(name_input))
-	preset_row.add_child(save_button)
+	controls.add_child(save_button)
 
-	var editor := FormationEditorPanelScript.new() as FormationEditorPanel
-	editor.configure("", true)
-	formation_page.add_child(editor)
+	var delete_button := Button.new()
+	delete_button.text = "Delete"
+	delete_button.custom_minimum_size = Vector2(90, 42)
+	delete_button.disabled = (
+		String(preset_dropdown.get_item_metadata(preset_dropdown.selected))
+		== CampaignState.DEFAULT_FORMATION_NAME
+	)
+	delete_button.pressed.connect(_on_delete_formation_pressed.bind(preset_dropdown))
+	controls.add_child(delete_button)
+
+	return center
 
 
 func _build_archive() -> void:
@@ -770,13 +782,12 @@ func _on_seed_debug_reserves() -> void:
 	CampaignState.ensure_debug_reserves()
 
 
+func _on_print_cast_report() -> void:
+	CampaignState.print_campaign_cast_report()
+
+
 func _on_embark_pressed() -> void:
 	embark_requested.emit()
-
-
-func _on_load_formation_pressed(dropdown: OptionButton) -> void:
-	if dropdown.selected >= 0:
-		CampaignState.load_formation(String(dropdown.get_item_metadata(dropdown.selected)))
 
 
 func _on_delete_formation_pressed(dropdown: OptionButton) -> void:
@@ -790,11 +801,10 @@ func _on_save_formation_pressed(name_input: LineEdit) -> void:
 
 
 func _on_saved_formation_selected(
-	index: int, dropdown: OptionButton, delete_button: Button
+	index: int, dropdown: OptionButton
 ) -> void:
-	delete_button.disabled = (
-		String(dropdown.get_item_metadata(index)) == CampaignState.DEFAULT_FORMATION_NAME
-	)
+	if index >= 0:
+		CampaignState.load_formation(String(dropdown.get_item_metadata(index)))
 
 
 func _on_archive_target_selected(encounter_id: String) -> void:
