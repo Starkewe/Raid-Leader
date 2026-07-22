@@ -135,7 +135,12 @@ func _draw_crossroads() -> void:
 
 
 func _draw_empty_victory_spike() -> void:
-	var center := Vector2(1500, 1660)
+	var victory_spike := get_node_or_null("../VictorySpike") as Node2D
+
+	if victory_spike == null:
+		return
+
+	var center := to_local(victory_spike.global_position)
 	draw_rect(Rect2(center.x - 7, center.y - 95, 14, 115), Color("382b22"))
 	draw_rect(Rect2(center.x - 56, center.y - 72, 112, 12), Color("47362a"))
 	draw_colored_polygon(

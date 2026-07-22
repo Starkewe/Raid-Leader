@@ -127,7 +127,21 @@ static func list_saves() -> Array[Dictionary]:
 
 	result.sort_custom(
 		func(a: Dictionary, b: Dictionary) -> bool:
-			return int(a.get("saved_unix_time", 0)) > int(b.get("saved_unix_time", 0))
+			var a_is_autosave := String(a.get("kind", "")) == "autosave"
+			var b_is_autosave := String(b.get("kind", "")) == "autosave"
+
+			if a_is_autosave != b_is_autosave:
+				return a_is_autosave
+
+			var a_saved_time := int(a.get("saved_unix_time", 0))
+			var b_saved_time := int(b.get("saved_unix_time", 0))
+
+			if a_saved_time != b_saved_time:
+				return a_saved_time > b_saved_time
+
+			return String(a.get("display_name", "")).naturalnocasecmp_to(
+				String(b.get("display_name", ""))
+			) < 0
 	)
 	return result
 
@@ -139,7 +153,17 @@ static func list_snapshots() -> Array[Dictionary]:
 
 static func get_most_recent_save() -> Dictionary:
 	var saves := list_saves()
-	return {} if saves.is_empty() else Dictionary(saves[0]).duplicate(true)
+	var latest: Dictionary = {}
+
+	for save_entry in saves:
+		if (
+			latest.is_empty()
+			or int(save_entry.get("saved_unix_time", 0))
+			> int(latest.get("saved_unix_time", 0))
+		):
+			latest = save_entry
+
+	return latest.duplicate(true)
 
 
 static func load_most_recent_save() -> bool:
