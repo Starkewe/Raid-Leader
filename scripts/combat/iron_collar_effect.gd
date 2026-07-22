@@ -46,6 +46,16 @@ func _process(delta: float) -> void:
 
 	if current_range_index >= starting_range_index + maxi(definition.required_outward_steps, 1):
 		_debug_log(_get_target_name() + " broke Iron Collar by moving outward.")
+
+		if target.has_method("emit_combat_event"):
+			target.emit_combat_event(
+				"mechanic_resolved",
+				boss,
+				definition.ability_id,
+				0,
+				{"successful": true, "iron_collar_success": true}
+			)
+
 		cleanup()
 		return
 

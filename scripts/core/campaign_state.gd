@@ -7,6 +7,14 @@ const MasterRaiderDefinitionScript := preload(
 const CampaignRaiderStateScript := preload("res://scripts/data/campaign_raider_state.gd")
 const RaiderCatalogScript := preload("res://scripts/data/raider_catalog.gd")
 const CampaignCastGeneratorScript := preload("res://scripts/core/campaign_cast_generator.gd")
+const CampV2EventSystemScript := preload("res://scripts/core/camp_v2_event_system.gd")
+const RaiderMemoryStoreScript := preload("res://scripts/data/raider_memory_store.gd")
+const RaiderRelationshipStoreScript := preload(
+	"res://scripts/data/raider_relationship_store.gd"
+)
+const RaiderLoreKnowledgeStoreScript := preload(
+	"res://scripts/data/raider_lore_knowledge_store.gd"
+)
 const RaidPlanValidatorScript := preload("res://scripts/core/raid_plan_validator.gd")
 
 signal state_changed
@@ -14,9 +22,12 @@ signal raid_plan_changed
 signal roster_changed
 signal attempt_recorded(summary: Dictionary)
 signal visit_context_changed(context: Dictionary)
+signal notable_event_recorded(event: Dictionary)
+signal memory_promoted(event: Dictionary)
+signal relationship_threshold_reached(event: Dictionary)
 
 const SAVE_PATH := "user://raid_leader_campaign_v1.json"
-const SCHEMA_VERSION := 4
+const SCHEMA_VERSION := 5
 const ACTIVE_RAID_SIZE := 20
 const ATTEMPT_HISTORY_LIMIT := 5
 const FIRST_REGION_ID := "beast_crucible"
@@ -67,6 +78,9 @@ func load_campaign(path: String = SAVE_PATH) -> bool:
 		return false
 
 	campaign = _migrate_campaign(campaign_value as Dictionary)
+	CampV2EventSystemScript.advance_lifecycle(
+		campaign, int(Time.get_unix_time_from_system())
+	)
 	missing_definition_warnings_emitted.clear()
 	_print_campaign_cast_report_if_debug()
 	roster_changed.emit()
@@ -119,7 +133,7 @@ func save_campaign() -> void:
 func get_save_context() -> Dictionary:
 	var raid_plan: Dictionary = campaign.get("raid_plan", {})
 	var encounter_id := get_selected_encounter_id()
-	var definition := GameState.get_encounter_definition(encounter_id)
+	var definition = GameState.get_encounter_definition(encounter_id)
 	var victory_total := 0
 
 	for victory_count in campaign.get("victories", {}).values():
@@ -335,6 +349,30 @@ func swap_active_member(active_member_id: String, reserve_member_id: String) -> 
 	campaign["raid_plan"] = raid_plan
 
 	_augment_visit_reactions("roster_change", 1)
+	emit_notable_event(
+		{
+			"event_type": "raider_moved_to_reserve",
+			"source_system": "roster",
+			"participants": [active_member_id],
+			"memory_category": "roster",
+			"subject_key": "roster_status",
+			"significance": 58,
+			"structured_data": {"replaced_by_id": reserve_member_id},
+		},
+		false
+	)
+	emit_notable_event(
+		{
+			"event_type": "raider_added_to_active_roster",
+			"source_system": "roster",
+			"participants": [reserve_member_id],
+			"memory_category": "roster",
+			"subject_key": "roster_status",
+			"significance": 58,
+			"structured_data": {"replaced_raider_id": active_member_id},
+		},
+		false
+	)
 	save_campaign()
 	roster_changed.emit()
 	raid_plan_changed.emit()
@@ -501,6 +539,320 @@ func get_role_counts() -> Dictionary:
 	return counts
 
 
+func emit_notable_event(raw_event: Dictionary, emit_change: bool = true) -> Dictionary:
+	if raw_event.is_empty():
+		return {}
+
+	campaign["notable_event_sequence"] = int(campaign.get("notable_event_sequence", 0)) + 1
+	var prepared := raw_event.duplicate(true)
+	prepared["event_id"] = String(
+		prepared.get("event_id", "event_%08d" % int(campaign["notable_event_sequence"]))
+	)
+	prepared["recorded_unix_time"] = int(
+		prepared.get("recorded_unix_time", Time.get_unix_time_from_system())
+	)
+	var result := CampV2EventSystemScript.process_event(campaign, prepared)
+	var event: Dictionary = result.get("event", {})
+
+	if event.is_empty():
+		return {}
+
+	notable_event_recorded.emit(event.duplicate(true))
+
+	for derived_value in result.get("derived_events", []):
+		if not derived_value is Dictionary:
+			continue
+
+		var derived: Dictionary = derived_value
+		notable_event_recorded.emit(derived.duplicate(true))
+
+		match String(derived.get("event_type", "")):
+			"memory_promoted":
+				memory_promoted.emit(derived.duplicate(true))
+			"relationship_threshold_reached":
+				relationship_threshold_reached.emit(derived.duplicate(true))
+
+	save_campaign()
+
+	if emit_change:
+		state_changed.emit()
+
+	return event.duplicate(true)
+
+
+func get_recent_notable_events(limit: int = 30) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var records: Array = campaign.get("notable_event_records", [])
+	var first_index := maxi(records.size() - maxi(limit, 0), 0)
+
+	for value in records.slice(first_index):
+		if value is Dictionary:
+			result.append(Dictionary(value).duplicate(true))
+
+	return result
+
+
+func get_raid_chronicle(limit: int = 30) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var entries: Array = campaign.get("raid_chronicle", [])
+	var first_index := maxi(entries.size() - maxi(limit, 0), 0)
+
+	for value in entries.slice(first_index):
+		if value is Dictionary:
+			result.append(Dictionary(value).duplicate(true))
+
+	return result
+
+
+func get_raider_memories(raider_id: String) -> Dictionary:
+	return RaiderMemoryStoreScript.get_raider_memory(
+		Dictionary(campaign.get("memory_store", {})), raider_id
+	)
+
+
+func get_relationship(first_id: String, second_id: String) -> Dictionary:
+	return RaiderRelationshipStoreScript.get_pair(
+		Dictionary(campaign.get("relationship_store", {})), first_id, second_id
+	)
+
+
+func get_relationship_label(viewer_id: String, other_id: String) -> String:
+	var pair := get_relationship(viewer_id, other_id)
+	return RaiderRelationshipStoreScript.get_public_label(
+		pair, viewer_id
+	)
+
+
+func get_raider_lore_knowledge(raider_id: String) -> Dictionary:
+	return RaiderLoreKnowledgeStoreScript.get_raider_knowledge(
+		Dictionary(campaign.get("lore_knowledge_store", {})), raider_id
+	)
+
+
+func record_completed_conversation(
+	first_id: String, second_id: String, controlled_outcome: Dictionary
+) -> Dictionary:
+	if first_id.is_empty() or second_id.is_empty() or first_id == second_id:
+		return {}
+
+	var data := controlled_outcome.duplicate(true)
+	data["controlled_outcome"] = bool(data.get("controlled_outcome", true))
+	data["meaningful"] = bool(data.get("meaningful", true))
+	return emit_notable_event(
+		{
+			"event_type": "conversation_completed",
+			"source_system": "conversation",
+			"participants": [first_id, second_id],
+			"memory_category": "social",
+			"subject_key": String(data.get("subject_key", "conversation:%s" % second_id)),
+			"significance": int(data.get("significance", 60)),
+			"personal_participants": data.get("personal_participants", []),
+			"admission_reasons": data.get(
+				"admission_reasons", ["involved_specific_person"]
+			),
+			"reinforcement_mode": "social",
+			"structured_data": data,
+			"prose_template_id": String(
+				data.get("prose_template_id", "conversation_completed")
+			),
+			"prose_parameters": data.get("prose_parameters", {}),
+		}
+	)
+
+
+func record_significant_shared_activity(
+	first_id: String, second_id: String, activity_id: String, meaningful: bool = false
+) -> Dictionary:
+	return emit_notable_event(
+		{
+			"event_type": "significant_shared_activity",
+			"source_system": "camp_activity",
+			"participants": [first_id, second_id],
+			"memory_category": "camp_life",
+			"subject_key": "facility_activity:%s" % activity_id,
+			"significance": 55 if meaningful else 40,
+			"structured_data": {
+				"activity_id": activity_id,
+				"meaningful": meaningful,
+				"threshold_worthy": false,
+			},
+			"prose_template_id": "significant_shared_activity",
+			"prose_parameters": {"activity_id": activity_id},
+		}
+	)
+
+
+func reinforce_memory_through_reflection(
+	raider_id: String, category: String, subject_key: String, authored_significance: bool = false
+) -> Dictionary:
+	return emit_notable_event(
+		{
+			"event_type": "self_reflection",
+			"source_system": "reflection",
+			"participants": [raider_id],
+			"memory_category": category,
+			"subject_key": subject_key,
+			"significance": 45,
+			"memory_strength": 0.22,
+			"reinforcement_mode": "self",
+			"authored_significance": authored_significance,
+			"admission_reasons": ["reinforces_existing_thread"],
+			"structured_data": {"reflection": true},
+		}
+	)
+
+
+func record_lore_knowledge(
+	raider_id: String,
+	topic_id: String,
+	knowledge_state: String,
+	interpretation: String,
+	source_id: String,
+	shared_with_raid: bool = false
+) -> Dictionary:
+	return emit_notable_event(
+		{
+			"event_type": "lore_learned",
+			"source_system": "lore",
+			"participants": [raider_id],
+			"memory_category": "personal_reflection",
+			"subject_key": "lore:%s" % topic_id,
+			"significance": 50,
+			"admission_reasons": [],
+			"structured_data": {
+				"topic_id": topic_id,
+				"knowledge_state": knowledge_state,
+				"interpretation": interpretation,
+				"source_id": source_id,
+				"shared_with_raid": shared_with_raid,
+			},
+		}
+	)
+
+
+func recruit_raider(raider_id: String, recruitment_source: String) -> bool:
+	var states: Dictionary = campaign.get("raider_states", {})
+	var state_value: Variant = states.get(raider_id, {})
+
+	if not state_value is Dictionary or bool(state_value.get("recruited", false)):
+		return false
+
+	var state: Dictionary = state_value
+	state["recruited"] = true
+	state["recruitment_source"] = recruitment_source
+	states[raider_id] = state
+	campaign["raider_states"] = states
+	emit_notable_event(
+		{
+			"event_type": "raider_recruited",
+			"source_system": "recruitment",
+			"participants": [raider_id],
+			"memory_category": "roster",
+			"subject_key": "recruitment",
+			"significance": 70,
+			"structured_data": {"recruitment_source": recruitment_source},
+		},
+		false
+	)
+	_augment_visit_reactions("recruitment", 1)
+	roster_changed.emit()
+	state_changed.emit()
+	return true
+
+
+func set_room_assignment(
+	raider_id: String, room_assignment_id: String, roommate_id: String = ""
+) -> bool:
+	var states: Dictionary = campaign.get("raider_states", {})
+	var state_value: Variant = states.get(raider_id, {})
+
+	if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
+		return false
+
+	var state: Dictionary = state_value
+	var previous_room := String(state.get("room_assignment_id", ""))
+	state["room_assignment_id"] = room_assignment_id
+	states[raider_id] = state
+	var participants: Array[String] = [raider_id]
+
+	if not roommate_id.is_empty() and roommate_id != raider_id and states.has(roommate_id):
+		var roommate_state_value: Variant = states[roommate_id]
+
+		if roommate_state_value is Dictionary and bool(roommate_state_value.get("recruited", false)):
+			var roommate_state: Dictionary = roommate_state_value
+			roommate_state["room_assignment_id"] = room_assignment_id
+			states[roommate_id] = roommate_state
+			participants.append(roommate_id)
+
+	campaign["raider_states"] = states
+	emit_notable_event(
+		{
+			"event_type": "room_assignment_changed",
+			"source_system": "quarters",
+			"participants": participants,
+			"memory_category": "roster",
+			"subject_key": "room_assignment",
+			"significance": 52,
+			"personal_participants": [raider_id] if participants.size() == 2 else [],
+			"structured_data": {
+				"previous_room_assignment_id": previous_room,
+				"room_assignment_id": room_assignment_id,
+				"meaningful": false,
+			},
+		},
+		false
+	)
+	state_changed.emit()
+	return true
+
+
+func advance_raider_class(
+	raider_id: String, advanced_class_id: String, specialization_id: String = ""
+) -> bool:
+	var states: Dictionary = campaign.get("raider_states", {})
+	var state_value: Variant = states.get(raider_id, {})
+
+	if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
+		return false
+
+	var state: Dictionary = state_value
+	var previous_class := String(state.get("advanced_class_id", ""))
+	state["advanced_class_id"] = advanced_class_id
+	state["specialization_id"] = specialization_id
+	states[raider_id] = state
+	campaign["raider_states"] = states
+	emit_notable_event(
+		{
+			"event_type": "class_advanced",
+			"source_system": "class_advancement",
+			"participants": [raider_id],
+			"memory_category": "personal_reflection",
+			"subject_key": "class_advancement:%s" % advanced_class_id,
+			"significance": 88,
+			"is_milestone": true,
+			"permanent_eligible": true,
+			"promotion_reason": "important_class_milestone",
+			"force_episode": true,
+			"structured_data": {
+				"previous_advanced_class_id": previous_class,
+				"advanced_class_id": advanced_class_id,
+				"specialization_id": specialization_id,
+			},
+			"life_prose_template_id": "important_class_milestone",
+		},
+		false
+	)
+	state_changed.emit()
+	return true
+
+
+func advance_memory_lifecycle(now_unix_time: int = 0) -> void:
+	var now := now_unix_time if now_unix_time > 0 else int(Time.get_unix_time_from_system())
+	CampV2EventSystemScript.advance_lifecycle(campaign, now)
+	save_campaign()
+	state_changed.emit()
+
+
 func record_attempt(summary: Dictionary) -> void:
 	if summary.is_empty():
 		return
@@ -540,6 +892,7 @@ func record_attempt(summary: Dictionary) -> void:
 		_record_victory(encounter_id)
 
 	_record_active_raider_combat_history(String(summary.get("outcome", "")))
+	_emit_attempt_notable_events(summary)
 	save_campaign()
 	attempt_recorded.emit(summary.duplicate(true))
 	state_changed.emit()
@@ -628,6 +981,7 @@ func consume_visit_reaction() -> bool:
 func ensure_debug_reserves() -> int:
 	var states: Dictionary = campaign.get("raider_states", {})
 	var recruited_count := 0
+	var recruited_ids: Array[String] = []
 
 	for raider_id in get_future_recruit_ids():
 		var state_value: Variant = states.get(raider_id, {})
@@ -644,12 +998,29 @@ func ensure_debug_reserves() -> int:
 		state["recruitment_source"] = "debug_recruitment"
 		states[raider_id] = state
 		recruited_count += 1
+		recruited_ids.append(raider_id)
 
 	if recruited_count <= 0:
 		return 0
 
 	campaign["raider_states"] = states
 	_augment_visit_reactions("recruitment", recruited_count)
+	emit_notable_event(
+		{
+			"event_type": "raider_recruited",
+			"source_system": "debug_recruitment",
+			"participants": recruited_ids,
+			"memory_category": "roster",
+			"subject_key": "recruitment",
+			"significance": 70,
+			"structured_data": {
+				"recruitment_source": "debug_recruitment",
+				"recruited_count": recruited_count,
+			},
+			"prose_template_id": "large_recruitment",
+		},
+		false
+	)
 	save_campaign()
 	roster_changed.emit()
 	state_changed.emit()
@@ -727,6 +1098,114 @@ func print_campaign_cast_report() -> void:
 	print("[Camp V2 Campaign Cast]\n" + JSON.stringify(get_campaign_cast_report(), "\t"))
 
 
+func get_camp_v2_event_debug_report() -> Dictionary:
+	return CampV2EventSystemScript.get_debug_report(campaign)
+
+
+func print_camp_v2_event_debug_report() -> void:
+	print(
+		"[Camp V2 Events, Memories, Relationships]\n"
+		+ JSON.stringify(get_camp_v2_event_debug_report(), "\t")
+	)
+
+
+func run_camp_v2_event_debug_smoke() -> Dictionary:
+	if not OS.is_debug_build():
+		return {"ok": false, "reason": "debug_build_required"}
+
+	var active_ids := get_active_member_ids()
+
+	if active_ids.size() < 3:
+		return {"ok": false, "reason": "at_least_three_active_raiders_required"}
+
+	var first_id := active_ids[0]
+	var second_id := active_ids[1]
+	var third_id := active_ids[2]
+
+	for repeat_index in range(3):
+		emit_notable_event(
+			{
+				"event_type": "mechanic_failed",
+				"source_system": "debug_smoke",
+				"participants": [first_id],
+				"memory_category": "combat",
+				"subject_key": "debug_mechanic:iron_collar",
+				"significance": 65,
+				"memory_strength": 0.38,
+				"structured_data": {"debug_repeat": repeat_index + 1},
+			},
+			false
+		)
+
+	emit_notable_event(
+		{
+			"event_type": "mechanic_successfully_resolved",
+			"source_system": "debug_smoke",
+			"participants": [first_id],
+			"memory_category": "combat",
+			"subject_key": "debug_mechanic:iron_collar",
+			"significance": 82,
+			"memory_strength": 0.65,
+			"force_episode": true,
+			"structured_data": {"resolves_thread": true},
+			"life_prose_template_id": "overcame_repeated_mechanic_failures",
+		},
+		false
+	)
+
+	record_completed_conversation(
+		first_id,
+		second_id,
+		{
+			"outcome_id": "debug_mutual_understanding",
+			"controlled_outcome": true,
+			"qualifies_for_relationship_change": true,
+			"meaningful": true,
+			"significance": 75,
+			"relationship_deltas": {
+				first_id: {"affinity": 58, "trust": 55, "respect": 22},
+				second_id: {"affinity": 50, "trust": 45, "respect": 24},
+			},
+		}
+	)
+
+	emit_notable_event(
+		{
+			"event_type": "boss_attempt_completed",
+			"source_system": "debug_smoke",
+			"participants": [first_id, second_id, third_id],
+			"distinctive_participants": [
+				{
+					"raider_id": third_id,
+					"admission_reasons": ["unusual_for_raider", "meaningful_agency"],
+					"memory_strength": 0.6,
+				}
+			],
+			"memory_category": "combat",
+			"subject_key": "debug_group_event",
+			"significance": 70,
+			"structured_data": {"debug": true},
+		},
+		false
+	)
+
+	record_lore_knowledge(
+		third_id,
+		"debug_beast_crucible_origin",
+		"partial",
+		"The Crucible may predate its keepers.",
+		"debug_archive_fragment",
+		false
+	)
+	state_changed.emit()
+	return {
+		"ok": true,
+		"raider_id": first_id,
+		"partner_id": second_id,
+		"chronicle_participants": [first_id, second_id, third_id],
+	}
+
+
 func _create_default_campaign(seed_override: int = 0) -> Dictionary:
 	var campaign_seed := seed_override if seed_override != 0 else _generate_campaign_seed()
 	var generation := CampaignCastGeneratorScript.generate(
@@ -777,11 +1256,12 @@ func _create_default_campaign(seed_override: int = 0) -> Dictionary:
 			"migrated_raider_ids": [],
 			"missing_definition_ids": [],
 		},
-		# These empty stores establish ownership without implementing their later systems.
-		"memory_store": {},
-		"relationship_store": {},
-		"lore_knowledge_store": {},
+		"memory_store": CampV2EventSystemScript.create_memory_store(),
+		"relationship_store": CampV2EventSystemScript.create_relationship_store(),
+		"lore_knowledge_store": CampV2EventSystemScript.create_lore_store(),
 		"notable_event_records": [],
+		"raid_chronicle": [],
+		"notable_event_sequence": 0,
 		"raid_plan":
 		{
 			"region_id": FIRST_REGION_ID,
@@ -901,12 +1381,16 @@ func _migrate_campaign(source: Dictionary) -> Dictionary:
 	raid_plan.erase("formations")
 	migrated["raid_plan"] = raid_plan
 
-	if source_version < SCHEMA_VERSION or not _has_layered_raider_data(migrated):
+	if not _has_layered_raider_data(migrated):
 		if not _migrate_legacy_raider_data(migrated, defaults, source_version):
 			return defaults
 	else:
 		_sanitize_layered_raider_data(migrated, defaults, source_version)
 
+	CampV2EventSystemScript.sanitize_campaign_stores(
+		migrated,
+		_string_array(migrated.get("campaign_cast", {}).get("selected_raider_ids", []))
+	)
 	migrated.erase("roster")
 	migrated.erase("next_member_serial")
 	migrated["attempt_history"] = _normalize_attempt_history(
@@ -1380,7 +1864,7 @@ func _record_victory(encounter_id: String) -> void:
 	var boss_resources: Dictionary = campaign.get("boss_resources", {})
 	boss_resources[encounter_id] = int(boss_resources.get(encounter_id, 0)) + 1
 	campaign["boss_resources"] = boss_resources
-	var definition := GameState.get_encounter_definition(encounter_id)
+	var definition = GameState.get_encounter_definition(encounter_id)
 	campaign["latest_victory"] = {
 		"encounter_id": encounter_id,
 		"display_name": encounter_id if definition == null else definition.display_name,
@@ -1416,6 +1900,214 @@ func _record_active_raider_combat_history(outcome: String) -> void:
 		states[raider_id] = state
 
 	campaign["raider_states"] = states
+
+
+func _emit_attempt_notable_events(summary: Dictionary) -> void:
+	var active_ids := get_active_member_ids()
+	var attempt_id := String(summary.get("attempt_id", "attempt"))
+	var encounter_id := String(summary.get("encounter_id", get_selected_encounter_id()))
+	var outcome := String(summary.get("outcome", "wipe"))
+	var deaths := _dictionary_array(summary.get("deaths", []))
+	emit_notable_event(
+		{
+			"event_type": "boss_attempt_completed",
+			"source_system": "combat_attempt",
+			"participants": active_ids,
+			"memory_category": "combat",
+			"subject_key": "boss_attempt:%s" % encounter_id,
+			"significance": 65 if outcome == "victory" else 50,
+			"structured_data": {
+				"attempt_id": attempt_id,
+				"encounter_id": encounter_id,
+				"outcome": outcome,
+				"boss_progress_percent": float(summary.get("boss_progress_percent", 0.0)),
+				"death_count": deaths.size(),
+				"severe_wipe": outcome != "victory" and deaths.size() >= 10,
+			},
+			"prose_template_id": "boss_attempt_completed",
+			"prose_parameters": {"encounter_id": encounter_id, "outcome": outcome},
+		},
+		false
+	)
+
+	if outcome == "victory":
+		emit_notable_event(
+			{
+				"event_type": "boss_defeated",
+				"source_system": "combat_attempt",
+				"participants": active_ids,
+				"memory_category": "combat",
+				"subject_key": "boss_victory:%s" % encounter_id,
+				"significance": 90 if get_victory_count(encounter_id) == 1 else 72,
+				"is_milestone": get_victory_count(encounter_id) == 1,
+				"structured_data": {
+					"attempt_id": attempt_id,
+					"encounter_id": encounter_id,
+					"first_victory": get_victory_count(encounter_id) == 1,
+				},
+				"prose_template_id": "boss_defeated",
+				"prose_parameters": {"encounter_id": encounter_id},
+			},
+			false
+		)
+
+	for interrupt_value in summary.get("successful_interrupts", []):
+		if not interrupt_value is Dictionary:
+			continue
+
+		var interrupt: Dictionary = interrupt_value
+		var interrupter_id := String(interrupt.get("member_id", ""))
+
+		if interrupter_id.is_empty():
+			continue
+
+		emit_notable_event(
+			{
+				"event_type": "interrupt_succeeded",
+				"source_system": "combat_attempt",
+				"participants": [interrupter_id],
+				"memory_category": "combat",
+				"subject_key": "interrupt:%s:%s" % [
+					encounter_id, String(interrupt.get("ability_id", "unknown"))
+				],
+				"significance": 62,
+				"memory_strength": 0.4,
+				"structured_data": interrupt.duplicate(true),
+				"prose_template_id": "interrupt_succeeded",
+			},
+			false
+		)
+
+	for mechanic_value in summary.get("mechanic_outcomes", []):
+		if not mechanic_value is Dictionary:
+			continue
+
+		var mechanic: Dictionary = mechanic_value
+		var mechanic_participants := _string_array(mechanic.get("participant_ids", []))
+
+		if mechanic_participants.is_empty():
+			continue
+
+		var succeeded := String(mechanic.get("outcome", "failed")) == "resolved"
+		emit_notable_event(
+			{
+				"event_type": (
+					"mechanic_successfully_resolved" if succeeded else "mechanic_failed"
+				),
+				"source_system": "combat_attempt",
+				"participants": mechanic_participants,
+				"memory_category": "combat",
+				"subject_key": "mechanic:%s:%s" % [
+					encounter_id, String(mechanic.get("ability_id", "unknown"))
+				],
+				"significance": 68 if succeeded else 64,
+				"structured_data": mechanic.duplicate(true),
+				"prose_template_id": (
+					"mechanic_successfully_resolved" if succeeded else "mechanic_failed"
+				),
+			},
+			false
+		)
+
+	for rescue_value in summary.get("exceptional_heals", []):
+		if not rescue_value is Dictionary:
+			continue
+
+		var rescue: Dictionary = rescue_value
+		var healer_id := String(rescue.get("healer_id", ""))
+		var target_id := String(rescue.get("target_id", ""))
+
+		if healer_id.is_empty() or target_id.is_empty() or healer_id == target_id:
+			continue
+
+		var rescue_data := rescue.duplicate(true)
+		rescue_data["threshold_worthy"] = bool(rescue.get("rescue", false))
+		rescue_data["relationship_deltas"] = {
+			healer_id: {"affinity": 2, "trust": 1, "respect": 2},
+			target_id: {"affinity": 4, "trust": 8, "respect": 4},
+		}
+		emit_notable_event(
+			{
+				"event_type": "exceptional_heal_or_rescue",
+				"source_system": "combat_attempt",
+				"participants": [healer_id, target_id],
+				"personal_participants": [healer_id] if bool(rescue.get("rescue", false)) else [],
+				"admission_reasons": ["meaningful_agency", "involved_specific_person"],
+				"memory_category": "combat",
+				"subject_key": "rescue:%s" % target_id,
+				"significance": 74 if bool(rescue.get("rescue", false)) else 62,
+				"structured_data": rescue_data,
+				"prose_template_id": "exceptional_heal_or_rescue",
+			},
+			false
+		)
+
+	if deaths.size() <= 2:
+		for death in deaths:
+			var defeated_id := String(death.get("member_id", ""))
+
+			if defeated_id.is_empty():
+				continue
+
+			emit_notable_event(
+				{
+					"event_type": "raider_defeated",
+					"source_system": "combat_attempt",
+					"participants": [defeated_id],
+					"memory_category": "combat",
+					"subject_key": "defeat:%s:%s" % [
+						encounter_id, String(death.get("cause_ability_id", "unknown"))
+					],
+					"significance": 58,
+					"structured_data": death.duplicate(true),
+					"prose_template_id": "raider_defeated",
+				},
+				false
+			)
+
+	var death_ids: Array[String] = []
+
+	for death in deaths:
+		_append_unique_id(death_ids, String(death.get("member_id", "")))
+
+	var living_ids: Array[String] = []
+
+	for raider_id in active_ids:
+		if not death_ids.has(raider_id):
+			living_ids.append(raider_id)
+
+	var last_survivor_id := ""
+
+	if outcome == "victory" and living_ids.size() == 1:
+		last_survivor_id = living_ids[0]
+	elif outcome != "victory" and deaths.size() >= 3:
+		var latest_death: Dictionary = deaths[0]
+
+		for death in deaths:
+			if float(death.get("time", 0.0)) > float(latest_death.get("time", 0.0)):
+				latest_death = death
+
+		last_survivor_id = String(latest_death.get("member_id", ""))
+
+	if not last_survivor_id.is_empty():
+		emit_notable_event(
+			{
+				"event_type": "last_survivor",
+				"source_system": "combat_attempt",
+				"participants": [last_survivor_id],
+				"memory_category": "combat",
+				"subject_key": "last_survivor:%s" % encounter_id,
+				"significance": 88 if outcome == "victory" else 76,
+				"memory_strength": 0.75,
+				"structured_data": {
+					"attempt_id": attempt_id,
+					"encounter_id": encounter_id,
+					"outcome": outcome,
+				},
+				"prose_template_id": "last_survivor",
+			},
+			false
+		)
 
 
 func _project_member(raider_id: String, state: Dictionary) -> Dictionary:
@@ -1529,6 +2221,17 @@ func _string_array(value: Variant) -> Array[String]:
 	if value is Array:
 		for entry in value:
 			result.append(String(entry))
+
+	return result
+
+
+func _dictionary_array(value: Variant) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+
+	if value is Array:
+		for entry in value:
+			if entry is Dictionary:
+				result.append(Dictionary(entry).duplicate(true))
 
 	return result
 

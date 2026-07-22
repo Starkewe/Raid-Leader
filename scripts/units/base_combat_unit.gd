@@ -108,9 +108,23 @@ func receive_heal(
 	health += maxi(amount, 0)
 	health = min(health, max_health)
 	var actual_amount := health - previous_health
+	var event_metadata := metadata.duplicate(true)
+	var previous_health_percent := (
+		float(previous_health) / float(max_health) if max_health > 0 else 0.0
+	)
+	var restored_percent := float(actual_amount) / float(max_health) if max_health > 0 else 0.0
+	event_metadata["previous_health"] = previous_health
+	event_metadata["resulting_health"] = health
+	event_metadata["max_health"] = max_health
+	event_metadata["previous_health_percent"] = previous_health_percent
+	event_metadata["restored_health_percent"] = restored_percent
+	event_metadata["exceptional_heal"] = (
+		previous_health_percent <= 0.35 and restored_percent >= 0.25
+	)
+	event_metadata["rescue"] = previous_health_percent <= 0.20 and health > previous_health
 
 	update_health_bar()
-	emit_combat_event("healing", source, ability_id, actual_amount, metadata)
+	emit_combat_event("healing", source, ability_id, actual_amount, event_metadata)
 
 	print(get_display_name(), "healed for", actual_amount, ". HP:", health)
 
