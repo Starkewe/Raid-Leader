@@ -6,6 +6,9 @@ const RosterMemberCardScript := preload("res://scripts/ui/roster_member_card.gd"
 const RosterDropZoneScript := preload("res://scripts/ui/roster_drop_zone.gd")
 const CampaignRosterActionsScript := preload("res://scripts/core/campaign_roster_actions.gd")
 
+const COMMAND_CLASS_COLUMN_WIDTH := 170.0
+const COMMAND_NAME_COLUMN_WIDTH := 300.0
+
 signal journal_visibility_changed(visible_now: bool)
 signal embark_requested
 
@@ -197,8 +200,8 @@ func _build_command_tent() -> void:
 	roster_row.add_theme_constant_override("separation", 18)
 	command_page.add_child(roster_row)
 
-	var active_members := CampaignState.get_active_members()
-	var reserve_members := CampaignState.get_reserve_members()
+	var active_members := CampaignState.get_active_members_for_roster()
+	var reserve_members := CampaignState.get_reserve_members_for_roster()
 	var role_counts := CampaignState.get_role_counts()
 	var active_column := _build_roster_column(
 		(
@@ -335,10 +338,15 @@ func _build_roster_column(
 	margin.add_theme_constant_override("margin_top", 8)
 	margin.add_theme_constant_override("margin_bottom", 8)
 	panel.add_child(margin)
+	var table := VBoxContainer.new()
+	table.add_theme_constant_override("separation", 4)
+	margin.add_child(table)
+	table.add_child(_make_command_roster_header())
 
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	margin.add_child(scroll)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	table.add_child(scroll)
 
 	var drop_zone := RosterDropZoneScript.new() as RosterDropZone
 	drop_zone.configure(zone_id)
@@ -346,22 +354,25 @@ func _build_roster_column(
 	drop_zone.member_dropped.connect(_on_roster_member_dropped)
 	scroll.add_child(drop_zone)
 
-	for member_index in range(members.size()):
-		var member: Dictionary = members[member_index]
-		var member_id := String(member.get("member_id", ""))
-		var prefix := "%02d" % (member_index + 1) if zone_id == "active" else "○"
+	for member in members:
+		var member_id := str(member.get("member_id", "")).strip_edges()
+		var class_text := str(member.get("unit_class", "")).strip_edges()
+		var name_text := str(member.get("display_name", "")).strip_edges()
+
+		if class_text.is_empty():
+			class_text = "Unknown"
+
+		if name_text.is_empty():
+			name_text = "Unknown"
+
 		var card := RosterMemberCardScript.new() as RosterMemberCard
 		card.configure(
 			member_id,
 			zone_id,
-			(
-				"%s  %-24s  %s"
-				% [
-					prefix,
-					CampaignState.format_member_label(member),
-					_humanize(String(member.get("role", "")))
-				]
-			)
+			class_text,
+			name_text,
+			COMMAND_CLASS_COLUMN_WIDTH,
+			COMMAND_NAME_COLUMN_WIDTH
 		)
 		card.member_inspect_requested.connect(_on_member_inspect_requested)
 		card.member_transfer_requested.connect(_on_roster_member_dropped)
@@ -380,6 +391,27 @@ func _build_roster_column(
 		drop_zone.add_child(empty)
 
 	return column
+
+
+func _make_command_roster_header() -> Control:
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	header.custom_minimum_size = Vector2(505, 32)
+	var inset := Control.new()
+	inset.custom_minimum_size = Vector2(4, 0)
+	header.add_child(inset)
+	header.add_child(_make_command_header_label("Class", COMMAND_CLASS_COLUMN_WIDTH))
+	header.add_child(_make_command_header_label("Name", COMMAND_NAME_COLUMN_WIDTH))
+	return header
+
+
+func _make_command_header_label(label_text: String, width: float) -> Label:
+	var label := Label.new()
+	label.text = label_text
+	label.custom_minimum_size = Vector2(width, 0)
+	label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	label.add_theme_color_override("font_color", Color("d5c18a"))
+	return label
 
 
 func _build_formation_yard() -> void:

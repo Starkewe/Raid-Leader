@@ -4,8 +4,8 @@ class_name FormationEditorPanel
 const FormationMapScript := preload("res://scripts/ui/formation_map.gd")
 const FormationMemberCardScript := preload("res://scripts/ui/formation_member_card.gd")
 
-const ID_COLUMN_WIDTH := 50.0
-const NAME_COLUMN_WIDTH := 250.0
+const CLASS_COLUMN_WIDTH := 125.0
+const NAME_COLUMN_WIDTH := 175.0
 const MINIREGION_COLUMN_WIDTH := 160.0
 
 signal formation_changed
@@ -44,7 +44,7 @@ func _rebuild() -> void:
 	var placements: Dictionary = (
 		Dictionary(placements_value) if placements_value is Dictionary else {}
 	)
-	var active_members := CampaignState.get_active_members()
+	var active_members := CampaignState.get_active_members_for_roster()
 	var editor_row := HBoxContainer.new()
 	editor_row.add_theme_constant_override("separation", 18)
 	editor_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -76,8 +76,7 @@ func _rebuild() -> void:
 	roster_cards.add_theme_constant_override("separation", 4)
 	roster_scroll.add_child(roster_cards)
 
-	for member_index in range(active_members.size()):
-		var member: Dictionary = active_members[member_index]
+	for member in active_members:
 		var member_id := _string_or_default(member.get("member_id", ""), "")
 		var placement_value: Variant = placements.get(member_id, {})
 		var placement: Dictionary = (
@@ -90,10 +89,10 @@ func _rebuild() -> void:
 		var card := FormationMemberCardScript.new() as FormationMemberCard
 		card.configure(
 			member_id,
-			_string_or_default(member.get("recruit_order", null), str(member_index + 1)),
-			CampaignState.format_member_label(member),
+			_string_or_default(member.get("unit_class", null), "Unknown"),
+			_string_or_default(member.get("display_name", null), "Unknown"),
 			miniregion,
-			ID_COLUMN_WIDTH,
+			CLASS_COLUMN_WIDTH,
 			NAME_COLUMN_WIDTH,
 			MINIREGION_COLUMN_WIDTH
 		)
@@ -135,8 +134,11 @@ func _make_roster_header() -> Control:
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 8)
 	header.custom_minimum_size = Vector2(510, 32)
-	header.add_child(_make_header_label("ID", ID_COLUMN_WIDTH))
-	header.add_child(_make_header_label("Name (Class)", NAME_COLUMN_WIDTH))
+	var inset := Control.new()
+	inset.custom_minimum_size = Vector2(4, 0)
+	header.add_child(inset)
+	header.add_child(_make_header_label("Class", CLASS_COLUMN_WIDTH))
+	header.add_child(_make_header_label("Name", NAME_COLUMN_WIDTH))
 	header.add_child(_make_header_label("Miniregion", MINIREGION_COLUMN_WIDTH))
 	return header
 
