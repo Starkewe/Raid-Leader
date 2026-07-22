@@ -2,10 +2,12 @@ extends Node
 class_name CampConversationDirector
 
 const CampContentCatalogScript := preload("res://scripts/core/camp_content_catalog.gd")
+const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
+const TUNING := CampV2TuningScript.CONVERSATIONS
 
-const DEBUG_HISTORY_LIMIT := 80
-const DEFAULT_BUBBLE_DURATION := 3.8
-const DEFAULT_PAUSE_DURATION := 0.75
+const DEBUG_HISTORY_LIMIT: int = TUNING["debug_history_limit"]
+const DEFAULT_BUBBLE_DURATION: float = TUNING["bubble_duration_seconds"]
+const DEFAULT_PAUSE_DURATION: float = TUNING["pause_between_bubbles_seconds"]
 
 var population_controller: Node = null
 var frames: Array[Dictionary] = []
@@ -69,6 +71,13 @@ func force_lore_exchange() -> Dictionary:
 	return {"ok": false, "reason": "lore_frame_missing"}
 
 
+func get_frame_ids() -> Array[String]:
+	var result: Array[String] = []
+	for frame in frames:
+		result.append(String(frame.get("frame_id", "")))
+	return result
+
+
 func cancel_all(reason: String = "manual_cancel") -> int:
 	var conversation_ids: Array = active_conversations.keys()
 
@@ -79,7 +88,11 @@ func cancel_all(reason: String = "manual_cancel") -> int:
 
 
 func set_accelerated_timing(enabled: bool) -> void:
-	timing_multiplier = 6.0 if enabled else 1.0
+	timing_multiplier = (
+		float(CampV2TuningScript.ACTIVITIES.get("accelerated_timing_multiplier", 6.0))
+		if enabled
+		else 1.0
+	)
 
 
 func get_debug_report() -> Dictionary:
@@ -123,7 +136,7 @@ func _try_start_scheduled_conversation(kind: String, ignore_cooldowns: bool) -> 
 		var frame: Dictionary = frame_value
 		if kind == "ordinary" and String(frame.get("kind", "ordinary")) == "lore":
 			# Lore is rare but remains part of the ordinary scheduler at a lower weight.
-			if rng.randf() > 0.22:
+			if rng.randf() > float(TUNING.get("lore_schedule_chance", 0.16)):
 				_record_rejection(frame, "lore_rarity_gate")
 				continue
 
@@ -209,11 +222,43 @@ func _evaluate_frame(
 	if not _meets_lore_requirement(frame, first, second):
 		return {"ok": false, "reason": "lore_knowledge_requirement"}
 
-	var cooldown_keys := _cooldown_keys(frame, participants_by_role, first, delivery)
+	var memory_context := _resolve_memory_context(frame, participants_by_role)
+	if (
+		frame.get("memory_requirement", {}) is Dictionary
+		and not Dictionary(frame.get("memory_requirement", {})).is_empty()
+		and memory_context.is_empty()
+		and not force_focused
+	):
+		return {"ok": false, "reason": "memory_requirement"}
+
+	var cooldown_keys := _cooldown_keys(
+		frame, participants_by_role, first, delivery, memory_context
+	)
 	if not ignore_cooldowns:
 		for key in cooldown_keys.values():
 			if CampaignState.get_conversation_cooldown_remaining(String(key)) > 0.0:
 				return {"ok": false, "reason": "cooldown:%s" % String(key)}
+
+	var selection_weight := 1.0
+	if (
+		not String(first.get("room_assignment_id", "")).is_empty()
+		and String(first.get("room_assignment_id", ""))
+		== String(second.get("room_assignment_id", ""))
+	):
+		selection_weight *= float(TUNING.get("roommate_selection_multiplier", 1.25))
+	if (
+		first.get("authored_connection_ids", []).has(second_id)
+		or second.get("authored_connection_ids", []).has(first_id)
+	):
+		selection_weight *= float(
+			TUNING.get("authored_connection_selection_multiplier", 1.35)
+		)
+	selection_weight *= _repetition_multiplier(
+		frame,
+		[first_id, second_id],
+		String(first.get("station_id", "")) if delivery == "embedded" else "",
+		String(first.get("activity_id", "")) if delivery == "embedded" else ""
+	)
 
 	return {
 		"ok": true,
@@ -223,14 +268,9 @@ func _evaluate_frame(
 		"delivery": delivery,
 		"station_id": String(first.get("station_id", "")) if delivery == "embedded" else "",
 		"activity_id": String(first.get("activity_id", "")) if delivery == "embedded" else "",
+		"referenced_memory": memory_context,
 		"cooldown_keys": cooldown_keys,
-		"selection_weight": (
-			1.45
-			if not String(first.get("room_assignment_id", "")).is_empty()
-			and String(first.get("room_assignment_id", ""))
-			== String(second.get("room_assignment_id", ""))
-			else 1.0
-		),
+		"selection_weight": selection_weight,
 	}
 
 
@@ -308,6 +348,22 @@ func _meets_lore_requirement(frame: Dictionary, first: Dictionary, second: Dicti
 		return false
 	var learner_topics: Dictionary = Dictionary(CampaignState.get_raider_lore_knowledge(String(second.get("raider_id", ""))).get("topics", {}))
 	return not learner_topics.has(topic_id)
+
+
+func _resolve_memory_context(frame: Dictionary, roles: Dictionary) -> Dictionary:
+	var requirement_value: Variant = frame.get("memory_requirement", {})
+	if not requirement_value is Dictionary or Dictionary(requirement_value).is_empty():
+		return {}
+	var requirement: Dictionary = requirement_value
+	var role := String(requirement.get("role", ""))
+	var raider_id := String(roles.get(role, ""))
+	if raider_id.is_empty():
+		return {}
+	var selected := CampaignState.select_conversation_memory(raider_id, requirement)
+	if not selected.is_empty():
+		selected["raider_id"] = raider_id
+		selected["role"] = role
+	return selected
 
 
 func _start_conversation(selection: Dictionary) -> bool:
@@ -427,6 +483,9 @@ func _complete_conversation(conversation_id: String) -> void:
 		"tone": String(frame.get("tone", "neutral")),
 		"subject_key": "conversation:%s" % String(frame.get("category", "social")),
 		"significance": 68 if bool(outcome.get("meaningful", false)) else 38,
+		"referenced_memory_thread_id": String(
+			session.get("referenced_memory", {}).get("thread_id", "")
+		),
 	}
 	CampaignState.record_completed_conversation(participant_ids[0], participant_ids[1], controlled_outcome)
 	_transfer_authored_lore(frame, roles)
@@ -442,6 +501,11 @@ func _complete_conversation(conversation_id: String) -> void:
 			"activity_id": String(session.get("activity_id", "")),
 			"station_id": String(session.get("station_id", "")),
 			"lore_topic_id": String(frame.get("lore_topic_id", "")),
+			"callback_memory_key": String(frame.get("referenced_memory_key", "")),
+			"referenced_memory_thread_id": String(
+				session.get("referenced_memory", {}).get("thread_id", "")
+			),
+			"summary_metadata": Dictionary(frame.get("summary_metadata", {})).duplicate(true),
 			"summary_text": summary_text,
 			"completed_camp_time": float(CampaignState.get_camp_conversation_debug_report().get("camp_time_seconds", 0.0)),
 			"completed_unix_time": int(Time.get_unix_time_from_system()),
@@ -511,7 +575,7 @@ func _resolve_authored_line(beat: Dictionary, speaker_id: String, session: Dicti
 	var member := CampaignState.get_member(speaker_id)
 	var character_overrides: Dictionary = Dictionary(beat.get("character_overrides", {})) if beat.get("character_overrides", {}) is Dictionary else {}
 	if character_overrides.has(speaker_id):
-		return _format_template(String(character_overrides[speaker_id]), session.get("participants_by_role", {}))
+		return _safe_line(String(character_overrides[speaker_id]), session)
 	var personality: Array = member.get("attributes", [])
 	for value in beat.get("variants", []):
 		if not value is Dictionary:
@@ -519,8 +583,18 @@ func _resolve_authored_line(beat: Dictionary, speaker_id: String, session: Dicti
 		var variant: Dictionary = value
 		var required := _string_array(variant.get("personality_any", []))
 		if required.is_empty() or _arrays_intersect(personality, required):
-			return _format_template(String(variant.get("text", beat.get("text", ""))), session.get("participants_by_role", {}))
-	return _format_template(String(beat.get("text", "")), session.get("participants_by_role", {}))
+			return _safe_line(String(variant.get("text", beat.get("text", ""))), session)
+	return _safe_line(String(beat.get("text", "")), session)
+
+
+func _safe_line(text: String, session: Dictionary) -> String:
+	if text.strip_edges().is_empty():
+		text = String(
+			session.get("frame", {}).get("safe_fallback", {}).get(
+				"text", "We can finish this conversation later."
+			)
+		)
+	return _format_template(text, session.get("participants_by_role", {}))
 
 
 func _format_template(template: String, roles: Dictionary) -> String:
@@ -536,7 +610,11 @@ func _format_template(template: String, roles: Dictionary) -> String:
 
 
 func _cooldown_keys(
-	frame: Dictionary, roles: Dictionary, first: Dictionary, delivery: String
+	frame: Dictionary,
+	roles: Dictionary,
+	first: Dictionary,
+	delivery: String,
+	referenced_memory: Dictionary = {}
 ) -> Dictionary:
 	var frame_id := String(frame.get("frame_id", ""))
 	var role_names: Array = roles.keys()
@@ -551,7 +629,8 @@ func _cooldown_keys(
 	}
 	var memory_key := String(frame.get("referenced_memory_key", ""))
 	if not memory_key.is_empty():
-		result["referenced_memory"] = "memory:%s" % memory_key
+		var thread_id := String(referenced_memory.get("thread_id", memory_key))
+		result["referenced_memory"] = "memory:%s" % thread_id
 	if not String(frame.get("lore_topic_id", "")).is_empty():
 		result["lore_topic"] = "lore:%s" % topic_id
 		result["lore_delivery"] = "lore_delivery:%s" % topic_id
@@ -597,7 +676,46 @@ func _record_rejection(
 
 func _maximum_concurrent_conversations() -> int:
 	var population := int(population_controller.call("get_actor_count"))
-	return 2 if population >= 25 else 1
+	return (
+		int(TUNING.get("maximum_conversations_large_camp", 2))
+		if population >= int(TUNING.get("population_for_second_conversation", 25))
+		else int(TUNING.get("maximum_conversations_small_camp", 1))
+	)
+
+
+func _repetition_multiplier(
+	frame: Dictionary, participant_ids: Array[String], station_id: String, activity_id: String
+) -> float:
+	var recent := CampaignState.get_conversation_summaries("", 12)
+	var result := 1.0
+	var frame_id := String(frame.get("frame_id", ""))
+	var sorted_ids := participant_ids.duplicate()
+	sorted_ids.sort()
+	for offset in range(recent.size()):
+		var index := recent.size() - 1 - offset
+		var summary: Dictionary = recent[index]
+		if offset < 8 and String(summary.get("frame_id", "")) == frame_id:
+			result *= float(TUNING.get("recent_frame_repetition_multiplier", 0.35))
+			break
+	for offset in range(mini(recent.size(), 6)):
+		var summary: Dictionary = recent[recent.size() - 1 - offset]
+		var summary_ids := _string_array(summary.get("participant_ids", []))
+		summary_ids.sort()
+		if summary_ids == sorted_ids:
+			result *= float(TUNING.get("recent_pair_repetition_multiplier", 0.55))
+			break
+	if not station_id.is_empty() or not activity_id.is_empty():
+		for offset in range(mini(recent.size(), 5)):
+			var summary: Dictionary = recent[recent.size() - 1 - offset]
+			if (
+				String(summary.get("station_id", "")) == station_id
+				and String(summary.get("activity_id", "")) == activity_id
+			):
+				result *= float(
+					TUNING.get("recent_context_repetition_multiplier", 0.65)
+				)
+				break
+	return maxf(result, 0.05)
 
 
 func _arrays_intersect(first: Array, second: Array) -> bool:

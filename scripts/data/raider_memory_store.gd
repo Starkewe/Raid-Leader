@@ -1,36 +1,19 @@
 extends RefCounted
 class_name RaiderMemoryStore
 
-const DAY_SECONDS := 86400
-const NORMAL_REINFORCEMENT_CEILING_DAYS := 120
-const SELF_REINFORCEMENT_LIMIT := 3
-const REJECTION_LIMIT := 100
-const LIFE_MEMORY_CAPACITY := 24
-const LATENT_MULTIPLIER := 2
-
-const CATEGORY_CAPACITIES := {
-	"combat": 6,
-	"social": 5,
-	"roster": 4,
-	"camp_life": 4,
-	"personal_reflection": 3,
-}
-
-const CATEGORY_ACTIVE_DAYS := {
-	"combat": 35,
-	"social": 50,
-	"roster": 45,
-	"camp_life": 40,
-	"personal_reflection": 55,
-}
-
-const CATEGORY_LATENT_DAYS := {
-	"combat": 100,
-	"social": 140,
-	"roster": 120,
-	"camp_life": 110,
-	"personal_reflection": 150,
-}
+const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
+const TUNING := CampV2TuningScript.MEMORY
+const DAY_SECONDS: int = TUNING["day_seconds"]
+const NORMAL_REINFORCEMENT_CEILING_DAYS: int = TUNING[
+	"normal_reinforcement_ceiling_days"
+]
+const SELF_REINFORCEMENT_LIMIT: int = TUNING["self_reinforcement_limit"]
+const REJECTION_LIMIT: int = TUNING["rejection_limit"]
+const LIFE_MEMORY_CAPACITY: int = TUNING["life_memory_capacity"]
+const LATENT_MULTIPLIER: int = TUNING["latent_multiplier"]
+const CATEGORY_CAPACITIES: Dictionary = TUNING["category_capacities"]
+const CATEGORY_ACTIVE_DAYS: Dictionary = TUNING["category_active_days"]
+const CATEGORY_LATENT_DAYS: Dictionary = TUNING["category_latent_days"]
 
 
 static func create_store() -> Dictionary:
@@ -170,6 +153,58 @@ static func get_raider_memory(store: Dictionary, raider_id: String) -> Dictionar
 	return Dictionary(value).duplicate(true) if value is Dictionary else {}
 
 
+static func select_relevant_thread(
+	store: Dictionary, raider_id: String, criteria: Dictionary, now: int
+) -> Dictionary:
+	var memory := get_raider_memory(store, raider_id)
+	var category := String(criteria.get("category", ""))
+	var subject_prefix := String(criteria.get("subject_prefix", ""))
+	var allowed_states := _string_array(
+		criteria.get("states", ["active", "latent", "permanent"])
+	)
+	var state_weights: Dictionary = Dictionary(
+		TUNING.get("selection_state_weights", {})
+	)
+	var best: Dictionary = {}
+	var best_score := -1.0
+	for value in Dictionary(memory.get("threads", {})).values():
+		if not value is Dictionary:
+			continue
+		var thread: Dictionary = value
+		var state := String(thread.get("state", "active"))
+		if not allowed_states.is_empty() and state not in allowed_states:
+			continue
+		if not category.is_empty() and String(thread.get("category", "")) != category:
+			continue
+		if (
+			not subject_prefix.is_empty()
+			and not String(thread.get("subject_key", "")).begins_with(subject_prefix)
+		):
+			continue
+		var age_days := maxf(
+			float(now - int(thread.get("last_reinforced_at", now))) / float(DAY_SECONDS),
+			0.0
+		)
+		var recency_window := maxf(
+			float(TUNING.get("selection_recency_window_days", 90.0)), 1.0
+		)
+		var score := float(state_weights.get(state, 0.25))
+		score += float(thread.get("strength", 0.0)) * float(
+			TUNING.get("selection_strength_weight", 1.4)
+		)
+		score += minf(
+			float(thread.get("reinforcement_count", 0))
+			* float(TUNING.get("selection_reinforcement_weight", 0.12)),
+			0.8
+		)
+		score += maxf(1.0 - age_days / recency_window, 0.0)
+		if score > best_score:
+			best = thread.duplicate(true)
+			best["selection_score"] = score
+			best_score = score
+	return best
+
+
 static func get_debug_report(store: Dictionary, now: int) -> Dictionary:
 	var raider_reports: Dictionary = {}
 	var raiders: Dictionary = store.get("raiders", {})
@@ -258,7 +293,12 @@ static func _reinforce_thread(
 	var reinforcement_count := int(thread.get("reinforcement_count", 0))
 	var active_duration := _active_duration_seconds(String(thread.get("category", "combat")))
 	var diminishing_extension := int(
-		float(active_duration) / (1.0 + float(reinforcement_count) * 0.7)
+		float(active_duration)
+		/ (
+			1.0
+			+ float(reinforcement_count)
+			* float(TUNING.get("diminishing_extension_rate", 0.85))
+		)
 	)
 	var ceiling := int(thread.get("normal_ceiling_at", now))
 
@@ -361,7 +401,8 @@ static func _should_suppress_duplicate_episode(
 		if (
 			String(episode.get("thread_id", "")) == thread_id
 			and String(episode.get("event_type", "")) == String(event.get("event_type", ""))
-			and now - int(episode.get("occurred_at", 0)) <= 14 * DAY_SECONDS
+			and now - int(episode.get("occurred_at", 0))
+			<= int(TUNING.get("duplicate_episode_window_days", 10)) * DAY_SECONDS
 		):
 			return true
 
@@ -376,14 +417,16 @@ static func _promotion_reason(thread: Dictionary, event: Dictionary) -> String:
 
 	if (
 		bool(event.get("structured_data", {}).get("resolves_thread", false))
-		and int(thread.get("external_reinforcement_count", 0)) >= 3
+		and int(thread.get("external_reinforcement_count", 0))
+		>= int(TUNING.get("resolution_external_reinforcements", 4))
 	):
 		return "repeated_pattern_resolved"
 
 	if (
 		int(thread.get("self_reinforcement_count", 0)) >= SELF_REINFORCEMENT_LIMIT
 		and bool(event.get("authored_significance", false))
-		and float(thread.get("strength", 0.0)) >= 0.8
+		and float(thread.get("strength", 0.0))
+		>= float(TUNING.get("identity_promotion_strength", 0.88))
 	):
 		return "repeated_reflection_became_identity"
 

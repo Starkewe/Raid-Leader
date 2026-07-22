@@ -10,6 +10,7 @@ static var _stations: Array[Dictionary] = []
 static var _frames: Array[Dictionary] = []
 static var _lore_by_id: Dictionary = {}
 static var _warnings: Array[String] = []
+static var _validation_report: Dictionary = {}
 
 
 static func get_station_definitions() -> Array[Dictionary]:
@@ -32,6 +33,11 @@ static func get_warnings() -> Array[String]:
 	return _warnings.duplicate()
 
 
+static func get_validation_report() -> Dictionary:
+	_ensure_loaded()
+	return _validation_report.duplicate(true)
+
+
 static func _ensure_loaded() -> void:
 	if _loaded:
 		return
@@ -50,6 +56,15 @@ static func _ensure_loaded() -> void:
 		var station_id := String(station.get("station_id", "")).strip_edges()
 		if station_id.is_empty() or station_ids.has(station_id):
 			_warnings.append("Camp station has a missing or duplicate ID: " + station_id)
+			continue
+		if String(station.get("facility_id", "")).is_empty():
+			_warnings.append("Camp station is missing facility_id: " + station_id)
+			continue
+		if int(station.get("capacity", 0)) <= 0:
+			_warnings.append("Camp station has invalid capacity: " + station_id)
+			continue
+		if _string_array(station.get("supported_activity_ids", [])).is_empty():
+			_warnings.append("Camp station supports no activities: " + station_id)
 			continue
 		station_ids[station_id] = true
 		_stations.append(station)
@@ -73,6 +88,9 @@ static func _ensure_loaded() -> void:
 		if not _has_alternating_valid_beats(beats, roles):
 			_warnings.append("Conversation frame has non-alternating or invalid beats: " + frame_id)
 			continue
+		if not _frame_metadata_is_complete(frame):
+			_warnings.append("Conversation frame is missing required metadata: " + frame_id)
+			continue
 		frame_ids[frame_id] = true
 		_frames.append(frame)
 
@@ -91,6 +109,15 @@ static func _ensure_loaded() -> void:
 			_warnings.append("Lore topic has an invalid knowledge type: " + topic_id)
 			continue
 		_lore_by_id[topic_id] = topic
+
+	_validate_cross_references(station_ids, frame_ids)
+	_validation_report = {
+		"valid": _warnings.is_empty(),
+		"station_count": _stations.size(),
+		"conversation_frame_count": _frames.size(),
+		"lore_topic_count": _lore_by_id.size(),
+		"issues": _warnings.duplicate(),
+	}
 
 
 static func _load_json(path: String) -> Dictionary:
@@ -117,6 +144,53 @@ static func _has_alternating_valid_beats(beats: Array, roles: Array[String]) -> 
 			return false
 		previous_role = role
 	return true
+
+
+static func _frame_metadata_is_complete(frame: Dictionary) -> bool:
+	for key in ["eligibility", "safe_fallback", "cooldowns", "summary_metadata", "outcome"]:
+		if not frame.get(key, {}) is Dictionary or Dictionary(frame.get(key, {})).is_empty():
+			return false
+	var fallback: Dictionary = frame.get("safe_fallback", {})
+	if String(fallback.get("text", "")).strip_edges().is_empty():
+		return false
+	var outcome: Dictionary = frame.get("outcome", {})
+	if (
+		String(outcome.get("type", "")).is_empty()
+		or String(outcome.get("summary_template", "")).is_empty()
+	):
+		return false
+	var cooldowns: Dictionary = frame.get("cooldowns", {})
+	for key in ["frame", "topic", "pair", "speaker_role"]:
+		if float(cooldowns.get(key, 0.0)) <= 0.0:
+			return false
+	return true
+
+
+static func _validate_cross_references(
+	station_ids: Dictionary, frame_ids: Dictionary
+) -> void:
+	for frame in _frames:
+		var frame_id := String(frame.get("frame_id", ""))
+		for station_id in _string_array(frame.get("required_station_ids", [])):
+			if not station_ids.has(station_id):
+				_warnings.append(
+					"Conversation frame references missing station %s: %s"
+					% [station_id, frame_id]
+				)
+		var lore_topic_id := String(frame.get("lore_topic_id", ""))
+		if not lore_topic_id.is_empty() and not _lore_by_id.has(lore_topic_id):
+			_warnings.append(
+				"Conversation frame references missing lore topic %s: %s"
+				% [lore_topic_id, frame_id]
+			)
+
+	for topic in _lore_by_id.values():
+		var exchange_id := String(Dictionary(topic).get("authored_exchange_id", ""))
+		if exchange_id.is_empty() or not frame_ids.has(exchange_id):
+			_warnings.append(
+				"Lore topic has no valid authored exchange: %s"
+				% String(Dictionary(topic).get("topic_id", ""))
+			)
 
 
 static func _string_array(value: Variant) -> Array[String]:

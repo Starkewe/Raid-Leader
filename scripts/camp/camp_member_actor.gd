@@ -327,6 +327,13 @@ func _draw() -> void:
 				draw_line(Vector2(9, -5), Vector2(16, 5), Color("aab2b5"), 3)
 			"apothecary_work":
 				draw_rect(Rect2(10, -5, 6, 9), Color("688b72"))
+			"socialize":
+				draw_circle(Vector2(13, 0), 4.0, Color("b88b5d"))
+			"rest":
+				draw_line(Vector2(9, 5), Vector2(18, 5), Color("8b7765"), 3)
+			"reflect":
+				draw_circle(Vector2(13, -1), 3.0, Color("7f8fa5"))
+				draw_line(Vector2(13, 2), Vector2(13, 8), Color("7f8fa5"), 2)
 			"rehearse", "train":
 				draw_line(Vector2(10, -7), Vector2(18, 8), Color("8b7355"), 3)
 			"victory_gather":

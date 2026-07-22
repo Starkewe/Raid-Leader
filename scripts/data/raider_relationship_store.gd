@@ -1,13 +1,15 @@
 extends RefCounted
 class_name RaiderRelationshipStore
 
+const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
+const TUNING := CampV2TuningScript.RELATIONSHIPS
 const DIMENSIONS := ["affinity", "trust", "respect", "tension"]
-const VALUE_MIN := -100
-const VALUE_MAX := 100
-const PAIR_MEMORY_LIMIT := 24
-const PERMANENT_PAIR_MEMORY_LIMIT := 12
-const RECENT_CONVERSATION_LIMIT := 8
-const THRESHOLDS := [-75, -50, -25, 25, 50, 75]
+const VALUE_MIN: int = TUNING["value_minimum"]
+const VALUE_MAX: int = TUNING["value_maximum"]
+const PAIR_MEMORY_LIMIT: int = TUNING["pair_memory_limit"]
+const PERMANENT_PAIR_MEMORY_LIMIT: int = TUNING["permanent_pair_memory_limit"]
+const RECENT_CONVERSATION_LIMIT: int = TUNING["recent_conversation_limit"]
+const THRESHOLDS: Array = TUNING["thresholds"]
 
 
 static func create_store() -> Dictionary:
@@ -274,7 +276,11 @@ static func _apply_qualifying_changes(
 				continue
 
 			var before := int(values.get(dimension, 0))
-			var after := clampi(before + int(viewer_deltas[dimension]), VALUE_MIN, VALUE_MAX)
+			var delta := int(viewer_deltas[dimension])
+			if not bool(data.get("allow_large_relationship_delta", false)):
+				var maximum_delta := int(TUNING.get("maximum_normal_dimension_delta", 8))
+				delta = clampi(delta, -maximum_delta, maximum_delta)
+			var after := clampi(before + delta, VALUE_MIN, VALUE_MAX)
 			values[dimension] = after
 
 			for threshold in THRESHOLDS:
