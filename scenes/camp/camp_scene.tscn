@@ -94,6 +94,7 @@ script = ExtResource("4_facility")
 facility_id = "quarters"
 display_name = "Member Quarters"
 responsibility = "Reserve rest, reading, work, and social activity."
+interactive = true
 atlas_cell = Vector2i(1, 1)
 footprint = Vector2(245, 140)
 activity_slot_offsets = Array[Vector2]([Vector2(-180, 135), Vector2(-110, 155), Vector2(-35, 165), Vector2(45, 165), Vector2(120, 150), Vector2(185, 125), Vector2(-185, 15), Vector2(185, 15)])

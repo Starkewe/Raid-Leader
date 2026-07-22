@@ -2,7 +2,13 @@
 	"catalog_version": 1,
 	"defaults": {
 		"speech_profile_id": "writ_default",
-		"visual_assets": {},
+		"visual_assets": {
+			"profile_sprite": "",
+			"profile_portrait": "",
+			"portrait": "",
+			"class_fallback_portrait": "",
+			"neutral_fallback_portrait": ""
+		},
 		"preferred_activity_tags": [],
 		"permitted_class_paths": [],
 		"lore_knowledge_tags": [],
@@ -19,6 +25,7 @@
 		"Warrior": {
 			"visual_assets": {
 				"portrait": "res://icons/Warrior.png",
+				"class_fallback_portrait": "res://icons/Warrior.png",
 				"camp_sprite": "",
 				"combat_scene": "res://scenes/units/warrior.tscn"
 			},
@@ -28,6 +35,7 @@
 		"Priest": {
 			"visual_assets": {
 				"portrait": "res://icons/Priest.png",
+				"class_fallback_portrait": "res://icons/Priest.png",
 				"camp_sprite": "",
 				"combat_scene": "res://scenes/units/priest.tscn"
 			},
@@ -37,6 +45,7 @@
 		"Rogue": {
 			"visual_assets": {
 				"portrait": "res://icons/Rogue.png",
+				"class_fallback_portrait": "res://icons/Rogue.png",
 				"camp_sprite": "",
 				"combat_scene": "res://scenes/units/rogue.tscn"
 			},
@@ -46,6 +55,7 @@
 		"Mage": {
 			"visual_assets": {
 				"portrait": "res://icons/Mage.png",
+				"class_fallback_portrait": "res://icons/Mage.png",
 				"camp_sprite": "",
 				"combat_scene": "res://scenes/units/mage.tscn"
 			},

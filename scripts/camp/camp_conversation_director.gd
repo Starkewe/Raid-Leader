@@ -142,7 +142,7 @@ func _try_start_scheduled_conversation(kind: String, ignore_cooldowns: bool) -> 
 	if eligible.is_empty():
 		return false
 
-	var selected: Dictionary = eligible[rng.randi_range(0, eligible.size() - 1)]
+	var selected := _select_weighted_evaluation(eligible)
 	return _start_conversation(selected)
 
 
@@ -224,7 +224,27 @@ func _evaluate_frame(
 		"station_id": String(first.get("station_id", "")) if delivery == "embedded" else "",
 		"activity_id": String(first.get("activity_id", "")) if delivery == "embedded" else "",
 		"cooldown_keys": cooldown_keys,
+		"selection_weight": (
+			1.45
+			if not String(first.get("room_assignment_id", "")).is_empty()
+			and String(first.get("room_assignment_id", ""))
+			== String(second.get("room_assignment_id", ""))
+			else 1.0
+		),
 	}
+
+
+func _select_weighted_evaluation(eligible: Array[Dictionary]) -> Dictionary:
+	var total_weight := 0.0
+	for evaluation in eligible:
+		total_weight += maxf(float(evaluation.get("selection_weight", 1.0)), 0.01)
+	var roll := rng.randf_range(0.0, total_weight)
+	var running := 0.0
+	for evaluation in eligible:
+		running += maxf(float(evaluation.get("selection_weight", 1.0)), 0.01)
+		if roll <= running:
+			return evaluation
+	return eligible[-1]
 
 
 func _resolve_delivery(

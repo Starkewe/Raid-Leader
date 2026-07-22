@@ -10,6 +10,9 @@ static func sanitize(source: Dictionary) -> Dictionary:
 	definition["display_name"] = String(definition.get("display_name", "Unnamed Raider")).strip_edges()
 	definition["biography"] = String(definition.get("biography", ""))
 	definition["personality_tags"] = _string_array(definition.get("personality_tags", []))
+	definition["personality_description"] = String(
+		definition.get("personality_description", "")
+	).strip_edges()
 	definition["speech_profile_id"] = String(
 		definition.get("speech_profile_id", "writ_default")
 	)
@@ -51,6 +54,9 @@ static func fallback(raider_id: String, legacy_snapshot: Dictionary = {}) -> Dic
 			),
 			"personality_tags": legacy_snapshot.get(
 				"attributes", legacy_snapshot.get("personality_tags", [])
+			),
+			"personality_description": String(
+				legacy_snapshot.get("personality_description", "")
 			),
 			"speech_profile_id": String(
 				legacy_snapshot.get("speech_profile_id", "writ_fallback")

@@ -264,6 +264,9 @@ func _find_shared_participants(
 	activity: CampActivityDefinition, starter_id: String, maximum_additional: int
 ) -> Array[String]:
 	var candidates: Array[Dictionary] = []
+	var starter_room := String(
+		CampaignState.get_raider_campaign_state(starter_id).get("room_assignment_id", "")
+	)
 
 	for other_id_value in actors_by_id.keys():
 		var other_id := String(other_id_value)
@@ -281,6 +284,10 @@ func _find_shared_participants(
 			weight += 1.0
 		if _arrays_intersect(member.get("attributes", []), activity.personality_preferences):
 			weight += 0.75
+		var other_room := String(member.get("room_assignment_id", ""))
+		if not starter_room.is_empty() and starter_room == other_room:
+			# Roommates are slightly more likely to share camp time, never combat power.
+			weight += 0.65
 		candidates.append({"raider_id": other_id, "weight": weight})
 
 	var result: Array[String] = []
@@ -700,8 +707,27 @@ func get_conversation_candidates() -> Array[Dictionary]:
 				"lore_knowledge_tags": Array(member.get("lore_knowledge_tags", [])).duplicate(),
 				"unit_class": String(member.get("unit_class", "")),
 				"role": String(member.get("role", "")),
+				"room_assignment_id": String(member.get("room_assignment_id", "")),
 			}
 		)
+	return result
+
+
+func get_profile_runtime_snapshots() -> Dictionary:
+	var result: Dictionary = {}
+	for raider_id_value in runtime_states_by_id.keys():
+		var raider_id := String(raider_id_value)
+		var state: Dictionary = runtime_states_by_id[raider_id]
+		result[raider_id] = {
+			"primary_activity": Dictionary(state.get("primary_activity", {})).duplicate(true),
+			"social_interaction": Dictionary(state.get("social_interaction", {})).duplicate(true),
+			"context_channel": Dictionary(state.get("context_channel", {})).duplicate(true),
+			"reservation_level": String(state.get("reservation_level", "free")),
+			"station_id": String(state.get("station_id", "")),
+			"current_activity_id": String(state.get("current_activity_id", "")),
+			"animation_state": String(state.get("animation_state", "idle")),
+			"conversation_partner_id": String(state.get("conversation_partner_id", "")),
+		}
 	return result
 
 
