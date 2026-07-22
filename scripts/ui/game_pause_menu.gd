@@ -43,6 +43,8 @@ func _input(event: InputEvent) -> void:
 
 	if overlay.visible and formation_editor != null:
 		_cancel_formation_edit()
+	elif overlay.visible and SceneFlow.mode == "campaign_combat" and content_holder.visible:
+		_show_button_menu()
 	elif overlay.visible:
 		_close_menu()
 	else:
@@ -229,7 +231,7 @@ func _show_formation_editor() -> void:
 	formation_snapshot = CampaignState.get_formation()
 	formation_editor = FormationEditorPanelScript.new() as FormationEditorPanel
 	formation_editor.configure(
-		"Edits apply only after Save and Restart Fight. Back discards them and resumes this attempt.",
+		"Edits apply only after Save and Restart Fight. Back discards them and returns to the Raid Menu.",
 		true
 	)
 	content_holder.add_child(formation_editor)
@@ -256,7 +258,7 @@ func _cancel_formation_edit() -> void:
 	if not formation_snapshot.is_empty():
 		CampaignState.replace_current_formation(formation_snapshot)
 
-	_close_menu()
+	_show_button_menu()
 
 
 func _save_formation_and_restart() -> void:
@@ -441,7 +443,7 @@ func _handle_manual_save_result(result: Dictionary) -> void:
 	var message := String(result.get("message", "Save failed."))
 
 	if bool(result.get("ok", false)):
-		call_deferred("_refresh_save_game_after_save", message)
+		_close_menu()
 	else:
 		status_label.text = message
 
@@ -470,14 +472,6 @@ func _on_overwrite_confirmed() -> void:
 
 func _on_overwrite_canceled() -> void:
 	pending_overwrite_name = ""
-
-
-func _refresh_save_game_after_save(message: String) -> void:
-	if not overlay.visible or SceneFlow.mode != "camp":
-		return
-
-	_show_save_game()
-	status_label.text = message
 
 
 func _return_to_camp() -> void:
