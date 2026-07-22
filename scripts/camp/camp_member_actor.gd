@@ -29,6 +29,9 @@ var bubble_time_remaining: float = 0.0
 var last_activity_id: String = ""
 var facing_left: bool = false
 var step_phase: float = 0.0
+var timing_multiplier: float = 1.0
+var focused_activity_snapshot: Dictionary = {}
+var activity_facing_direction: Vector2 = Vector2.DOWN
 
 
 func _ready() -> void:
@@ -55,18 +58,24 @@ func configure(member_data: Dictionary, spawn_position: Vector2, start_delay: fl
 
 
 func start_activity(
-	activity_id: String, activity_name: String, waypoints: Array[Vector2], duration: float
+	activity_id: String,
+	activity_name: String,
+	waypoints: Array[Vector2],
+	duration: float,
+	facing_direction: Vector2 = Vector2.DOWN
 ) -> void:
 	current_activity_id = activity_id
 	current_activity_name = activity_name
 	path = waypoints.duplicate()
 	perform_time_remaining = duration
+	activity_facing_direction = facing_direction
 	navigation_time_remaining = 24.0
 	state = "walking" if not path.is_empty() else "performing"
 	queue_redraw()
 
 
 func interrupt_activity() -> void:
+	focused_activity_snapshot.clear()
 	path.clear()
 	state = "idle"
 	idle_time_remaining = randf_range(0.8, 2.0)
@@ -86,6 +95,85 @@ func show_bubble(text: String, duration: float = 4.5) -> bool:
 	return true
 
 
+func hide_bubble() -> void:
+	if bubble == null or not bubble.visible:
+		return
+
+	bubble.visible = false
+	bubble_time_remaining = 0.0
+	bubble_visibility_changed.emit(false)
+
+
+func begin_focused_conversation(other_position: Vector2) -> bool:
+	if state == "focused_conversation":
+		return false
+
+	focused_activity_snapshot = {
+		"state": state,
+		"path": path.duplicate(),
+		"perform_time_remaining": perform_time_remaining,
+		"idle_time_remaining": idle_time_remaining,
+		"navigation_time_remaining": navigation_time_remaining,
+		"current_activity_id": current_activity_id,
+		"current_activity_name": current_activity_name,
+	}
+	path.clear()
+	state = "focused_conversation"
+	face_toward(other_position)
+	queue_redraw()
+	return true
+
+
+func end_focused_conversation() -> void:
+	if state != "focused_conversation":
+		focused_activity_snapshot.clear()
+		return
+
+	if focused_activity_snapshot.is_empty():
+		state = "idle"
+		idle_time_remaining = randf_range(0.8, 1.8)
+	else:
+		state = String(focused_activity_snapshot.get("state", "idle"))
+		path.clear()
+		for waypoint in focused_activity_snapshot.get("path", []):
+			if waypoint is Vector2:
+				path.append(waypoint)
+		perform_time_remaining = float(focused_activity_snapshot.get("perform_time_remaining", 0.0))
+		idle_time_remaining = float(focused_activity_snapshot.get("idle_time_remaining", 1.0))
+		navigation_time_remaining = float(focused_activity_snapshot.get("navigation_time_remaining", 24.0))
+		current_activity_id = String(focused_activity_snapshot.get("current_activity_id", ""))
+		current_activity_name = String(focused_activity_snapshot.get("current_activity_name", ""))
+
+	focused_activity_snapshot.clear()
+	queue_redraw()
+
+
+func face_toward(position: Vector2) -> void:
+	if not is_equal_approx(position.x, global_position.x):
+		facing_left = position.x < global_position.x
+	queue_redraw()
+
+
+func set_timing_multiplier(multiplier: float) -> void:
+	timing_multiplier = clampf(multiplier, 1.0, 12.0)
+
+
+func get_activity_state() -> String:
+	return state
+
+
+func get_current_activity_id() -> String:
+	return current_activity_id
+
+
+func has_visible_bubble() -> bool:
+	return bubble != null and bubble.visible
+
+
+func is_available_for_shared_activity() -> bool:
+	return state == "idle" and focused_activity_snapshot.is_empty()
+
+
 func get_member_id() -> String:
 	return member_id
 
@@ -99,6 +187,7 @@ func get_member_data() -> Dictionary:
 
 
 func _process(delta: float) -> void:
+	delta *= timing_multiplier
 	_update_hover_label()
 	_update_bubble(delta)
 	z_index = clampi(int(global_position.y / 3.0), 0, 1000)
@@ -141,6 +230,7 @@ func _update_walking(delta: float) -> void:
 
 	if path.is_empty():
 		state = "performing"
+		face_toward(global_position + activity_facing_direction)
 		queue_redraw()
 		return
 

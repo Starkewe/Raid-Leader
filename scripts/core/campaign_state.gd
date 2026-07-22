@@ -15,6 +15,9 @@ const RaiderRelationshipStoreScript := preload(
 const RaiderLoreKnowledgeStoreScript := preload(
 	"res://scripts/data/raider_lore_knowledge_store.gd"
 )
+const CampConversationStateScript := preload(
+	"res://scripts/data/camp_conversation_state.gd"
+)
 const RaidPlanValidatorScript := preload("res://scripts/core/raid_plan_validator.gd")
 
 signal state_changed
@@ -27,7 +30,7 @@ signal memory_promoted(event: Dictionary)
 signal relationship_threshold_reached(event: Dictionary)
 
 const SAVE_PATH := "user://raid_leader_campaign_v1.json"
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 const ACTIVE_RAID_SIZE := 20
 const ATTEMPT_HISTORY_LIMIT := 5
 const FIRST_REGION_ID := "beast_crucible"
@@ -572,6 +575,12 @@ func emit_notable_event(raw_event: Dictionary, emit_change: bool = true) -> Dict
 			"relationship_threshold_reached":
 				relationship_threshold_reached.emit(derived.duplicate(true))
 
+		CampConversationStateScript.apply_event_pressure(
+			_get_camp_conversation_store(), derived
+		)
+
+	CampConversationStateScript.apply_event_pressure(_get_camp_conversation_store(), event)
+
 	save_campaign()
 
 	if emit_change:
@@ -727,6 +736,73 @@ func record_lore_knowledge(
 				"shared_with_raid": shared_with_raid,
 			},
 		}
+	)
+
+
+func advance_camp_conversation_time(delta: float, concurrent_conversations: int = 0) -> void:
+	CampConversationStateScript.advance(
+		_get_camp_conversation_store(), delta, concurrent_conversations
+	)
+
+
+func is_ordinary_conversation_due() -> bool:
+	return CampConversationStateScript.is_due(_get_camp_conversation_store())
+
+
+func get_next_conversation_cooldown(variance: float = 0.0) -> float:
+	return CampConversationStateScript.get_next_cooldown(
+		_get_camp_conversation_store(), variance
+	)
+
+
+func schedule_next_ordinary_conversation(cooldown: float) -> void:
+	CampConversationStateScript.schedule_next(_get_camp_conversation_store(), cooldown)
+
+
+func set_conversation_cooldowns(cooldown_durations: Dictionary) -> void:
+	CampConversationStateScript.set_cooldowns(
+		_get_camp_conversation_store(), cooldown_durations
+	)
+
+
+func get_conversation_cooldown_remaining(key: String) -> float:
+	return CampConversationStateScript.cooldown_remaining(
+		_get_camp_conversation_store(), key
+	)
+
+
+func note_conversation_schedule_miss(reason: String) -> void:
+	CampConversationStateScript.note_schedule_miss(
+		_get_camp_conversation_store(), reason
+	)
+
+
+func record_conversation_summary(summary: Dictionary) -> Dictionary:
+	if summary.is_empty():
+		return {}
+	return CampConversationStateScript.add_summary(
+		_get_camp_conversation_store(), summary
+	)
+
+
+func get_conversation_summaries(raider_id: String = "", limit: int = 20) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var summaries: Array = _get_camp_conversation_store().get("recent_summaries", [])
+	var first_index := maxi(summaries.size() - maxi(limit, 0), 0)
+
+	for value in summaries.slice(first_index):
+		if not value is Dictionary:
+			continue
+		var summary := Dictionary(value)
+		if raider_id.is_empty() or summary.get("participant_ids", []).has(raider_id):
+			result.append(summary.duplicate(true))
+
+	return result
+
+
+func get_camp_conversation_debug_report() -> Dictionary:
+	return CampConversationStateScript.get_debug_report(
+		_get_camp_conversation_store()
 	)
 
 
@@ -956,6 +1032,9 @@ func begin_visit(context_type: String = "normal", details: Dictionary = {}) -> v
 		"details": details.duplicate(true),
 		"started_unix_time": int(Time.get_unix_time_from_system())
 	}
+	CampConversationStateScript.apply_visit_pressure(
+		_get_camp_conversation_store(), context_type
+	)
 	save_campaign()
 	visit_context_changed.emit(get_visit_context())
 	state_changed.emit()
@@ -1259,6 +1338,7 @@ func _create_default_campaign(seed_override: int = 0) -> Dictionary:
 		"memory_store": CampV2EventSystemScript.create_memory_store(),
 		"relationship_store": CampV2EventSystemScript.create_relationship_store(),
 		"lore_knowledge_store": CampV2EventSystemScript.create_lore_store(),
+		"camp_conversation_state": CampConversationStateScript.create_store(),
 		"notable_event_records": [],
 		"raid_chronicle": [],
 		"notable_event_sequence": 0,
@@ -1389,6 +1469,10 @@ func _migrate_campaign(source: Dictionary) -> Dictionary:
 
 	CampV2EventSystemScript.sanitize_campaign_stores(
 		migrated,
+		_string_array(migrated.get("campaign_cast", {}).get("selected_raider_ids", []))
+	)
+	migrated["camp_conversation_state"] = CampConversationStateScript.sanitize_store(
+		migrated.get("camp_conversation_state", {}),
 		_string_array(migrated.get("campaign_cast", {}).get("selected_raider_ids", []))
 	)
 	migrated.erase("roster")
@@ -2275,3 +2359,10 @@ func _augment_visit_reactions(context_type: String, magnitude: int) -> void:
 func _append_unique_value(target: Array, value: Variant) -> void:
 	if not target.has(value):
 		target.append(value)
+
+
+func _get_camp_conversation_store() -> Dictionary:
+	var value: Variant = campaign.get("camp_conversation_state", {})
+	if not value is Dictionary:
+		campaign["camp_conversation_state"] = CampConversationStateScript.create_store()
+	return campaign["camp_conversation_state"]

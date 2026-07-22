@@ -327,6 +327,21 @@ func _build_command_tent() -> void:
 		event_smoke_button.pressed.connect(_on_run_camp_v2_event_smoke)
 		footer.add_child(event_smoke_button)
 
+		var activity_debug_menu := MenuButton.new()
+		activity_debug_menu.text = "Debug: Activities"
+		activity_debug_menu.tooltip_text = (
+			"Inspect or control Camp V2 activities, stations, conversations, pressure, and cooldowns."
+		)
+		var activity_popup := activity_debug_menu.get_popup()
+		activity_popup.add_item("Print activity/conversation report", 0)
+		activity_popup.add_item("Force ordinary conversation", 1)
+		activity_popup.add_item("Force authored lore exchange", 2)
+		activity_popup.add_item("Toggle accelerated timing", 3)
+		activity_popup.add_item("Cancel active conversations", 4)
+		activity_popup.add_item("Force embedded smith conversation", 5)
+		activity_popup.id_pressed.connect(_on_activity_debug_action)
+		footer.add_child(activity_debug_menu)
+
 	var embark_button := Button.new()
 	embark_button.text = "Embark with this Raid Plan"
 	embark_button.custom_minimum_size = Vector2(320, 52)
@@ -809,6 +824,38 @@ func _on_print_camp_v2_event_report() -> void:
 func _on_run_camp_v2_event_smoke() -> void:
 	print("[Camp V2 Memory Smoke] ", CampaignState.run_camp_v2_event_debug_smoke())
 	CampaignState.print_camp_v2_event_debug_report()
+
+
+func _on_activity_debug_action(action_id: int) -> void:
+	var controller := _get_population_controller()
+	if controller == null:
+		print("[Camp V2 Activities] Camp population controller is unavailable.")
+		return
+
+	match action_id:
+		0:
+			controller.call("print_camp_v2_runtime_debug_report")
+		1:
+			print("[Camp V2 Force Conversation] ", controller.call("force_conversation"))
+		2:
+			print("[Camp V2 Force Lore] ", controller.call("force_lore_exchange"))
+		3:
+			var report: Dictionary = controller.call("get_camp_v2_runtime_debug_report")
+			var enabled := not bool(report.get("accelerated_timing", false))
+			controller.call("set_accelerated_activity_timing", enabled)
+			print("[Camp V2 Accelerated Timing] ", enabled)
+		4:
+			print("[Camp V2 Cancel Conversations] ", controller.call("cancel_active_conversations"))
+		5:
+			print(
+				"[Camp V2 Force Smith Conversation] ",
+				controller.call("force_conversation", "smith_embedded_hammer")
+			)
+
+
+func _get_population_controller() -> Node:
+	var nodes := get_tree().get_nodes_in_group("camp_population_controller")
+	return nodes[0] if not nodes.is_empty() else null
 
 
 func _on_embark_pressed() -> void:

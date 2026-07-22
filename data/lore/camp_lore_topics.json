@@ -1,0 +1,15 @@
+{
+	"schema_version": 1,
+	"knowledge_types": ["confirmed_fact", "common_belief", "disputed_account", "personal_theory", "misinformation"],
+	"topics": [
+		{
+			"topic_id": "beast_crucible_full_writ",
+			"display_name": "A Full Writ",
+			"knowledge_type": "confirmed_fact",
+			"canonical_fact": "The Beast Crucible's surviving arena ledgers define a full writ as twenty marked fighters.",
+			"source_id": "beast_crucible_arena_ledgers",
+			"introducer_tags": ["regional_native", "historian", "scholar", "monster_hunter", "former_arena_worker", "outsider", "archive_research_completed", "beast_crucible"],
+			"authored_exchange_id": "lore_full_writ_ledgers"
+		}
+	]
+}
