@@ -2,6 +2,7 @@ extends Node
 class_name CampPopulationController
 
 const CampMemberScene := preload("res://scenes/camp/camp_member.tscn")
+const RuntimeRaiderStateScript := preload("res://scripts/data/runtime_raider_state.gd")
 const ACTIVITIES := [
 	preload("res://data/camp/activities/prepare_plan.tres"),
 	preload("res://data/camp/activities/rehearse.tres"),
@@ -18,6 +19,7 @@ var actors_by_id: Dictionary = {}
 var reservations_by_member: Dictionary = {}
 var activity_by_member: Dictionary = {}
 var cooldowns_by_member: Dictionary = {}
+var runtime_states_by_id: Dictionary = {}
 var rng := RandomNumberGenerator.new()
 var reaction_timer: float = 2.0
 var visible_bubble_count: int = 0
@@ -51,6 +53,7 @@ func rebuild_population() -> void:
 	actors_by_id.clear()
 	activity_by_member.clear()
 	cooldowns_by_member.clear()
+	runtime_states_by_id.clear()
 	visible_bubble_count = 0
 
 	var roster := CampaignState.get_roster_members()
@@ -75,6 +78,9 @@ func rebuild_population() -> void:
 		actor.navigation_failed.connect(_on_navigation_failed)
 		actor.bubble_visibility_changed.connect(_on_bubble_visibility_changed)
 		actors_by_id[member_id] = actor
+		var runtime_state := RuntimeRaiderStateScript.create(member_id)
+		runtime_state["temporary_scene_reference"] = actor
+		runtime_states_by_id[member_id] = runtime_state
 
 
 func get_actor_count() -> int:
@@ -104,6 +110,14 @@ func _on_actor_ready_for_activity(member_id: String) -> void:
 	reservations_by_member[member_id] = facility.facility_id
 	activity_by_member[member_id] = activity.activity_id
 	var destination: Vector2 = reservation.get("position", actor.global_position)
+	var runtime_state: Dictionary = runtime_states_by_id.get(
+		member_id, RuntimeRaiderStateScript.create(member_id)
+	)
+	runtime_state["current_activity_id"] = activity.activity_id
+	runtime_state["destination"] = destination
+	runtime_state["animation_state"] = "walking"
+	runtime_state["activity_reservation_id"] = facility.facility_id
+	runtime_states_by_id[member_id] = runtime_state
 	var camp_root := get_parent()
 	var waypoints: Array[Vector2] = [destination]
 
@@ -195,6 +209,9 @@ func _activity_weight(
 		if activity.favored_attributes.has(String(attribute)):
 			weight *= 1.3
 
+	if member.get("preferred_activity_tags", []).has(activity.activity_id):
+		weight *= 1.25
+
 	var visit_type := String(CampaignState.get_visit_context().get("type", "normal"))
 
 	if visit_type == "wipe" and activity.activity_id in ["rehearse", "study_target"]:
@@ -221,6 +238,7 @@ func _activity_weight(
 func _on_activity_completed(member_id: String, activity_id: String) -> void:
 	_release_reservation(member_id)
 	activity_by_member.erase(member_id)
+	_reset_runtime_activity(member_id)
 	var activity := _get_activity(activity_id)
 
 	if activity != null:
@@ -250,6 +268,7 @@ func _on_activity_completed(member_id: String, activity_id: String) -> void:
 func _on_navigation_failed(member_id: String, activity_id: String) -> void:
 	_release_reservation(member_id)
 	activity_by_member.erase(member_id)
+	_reset_runtime_activity(member_id)
 	_set_cooldown(member_id, activity_id, 2.0)
 
 
@@ -281,6 +300,20 @@ func _try_two_person_exchange(member_id: String, activity: CampActivityDefinitio
 
 	if nearest_actor == null:
 		return
+
+	var partner_id := nearest_actor.get_member_id()
+	var actor_runtime: Dictionary = runtime_states_by_id.get(
+		member_id, RuntimeRaiderStateScript.create(member_id)
+	)
+	actor_runtime["conversation_partner_id"] = partner_id
+	actor_runtime["pending_interaction"] = {"type": "ambient_exchange"}
+	runtime_states_by_id[member_id] = actor_runtime
+	var partner_runtime: Dictionary = runtime_states_by_id.get(
+		partner_id, RuntimeRaiderStateScript.create(partner_id)
+	)
+	partner_runtime["conversation_partner_id"] = member_id
+	partner_runtime["pending_interaction"] = {"type": "ambient_exchange"}
+	runtime_states_by_id[partner_id] = partner_runtime
 
 	actor.show_bubble(
 		String(activity.feedback_lines[rng.randi_range(0, activity.feedback_lines.size() - 1)])
@@ -398,6 +431,18 @@ func _set_cooldown(member_id: String, activity_id: String, duration: float) -> v
 	var member_cooldowns: Dictionary = cooldowns_by_member.get(member_id, {})
 	member_cooldowns[activity_id] = duration
 	cooldowns_by_member[member_id] = member_cooldowns
+
+
+func _reset_runtime_activity(member_id: String) -> void:
+	if not runtime_states_by_id.has(member_id):
+		return
+
+	var runtime_state: Dictionary = runtime_states_by_id[member_id]
+	runtime_state["current_activity_id"] = ""
+	runtime_state["destination"] = Vector2.ZERO
+	runtime_state["animation_state"] = "idle"
+	runtime_state["activity_reservation_id"] = ""
+	runtime_states_by_id[member_id] = runtime_state
 
 
 func _is_on_cooldown(member_id: String, activity_id: String) -> bool:

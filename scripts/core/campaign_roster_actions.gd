@@ -16,6 +16,7 @@ static func add_active_member(member_id: String) -> bool:
 
 	active_ids.append(member_id)
 	CampaignState.campaign["raid_plan"]["active_member_ids"] = active_ids
+	CampaignState._sync_active_state_flags()
 	_sanitize_formations()
 	_commit_change()
 	return true
@@ -29,6 +30,7 @@ static func remove_active_member(member_id: String) -> bool:
 
 	active_ids.erase(member_id)
 	CampaignState.campaign["raid_plan"]["active_member_ids"] = active_ids
+	CampaignState._sync_active_state_flags()
 	_sanitize_formations()
 	_commit_change()
 	return true

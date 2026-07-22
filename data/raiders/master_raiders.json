@@ -1,0 +1,458 @@
+{
+	"catalog_version": 1,
+	"defaults": {
+		"speech_profile_id": "writ_default",
+		"visual_assets": {},
+		"preferred_activity_tags": [],
+		"permitted_class_paths": [],
+		"lore_knowledge_tags": [],
+		"authored_connection_ids": [],
+		"recruitment": {
+			"initial_eligible": false,
+			"future_eligible": true,
+			"restriction_tags": [],
+			"source_hint": "campaign_recruit",
+			"selection_weight": 1.0
+		}
+	},
+	"class_defaults": {
+		"Warrior": {
+			"visual_assets": {
+				"portrait": "res://icons/Warrior.png",
+				"camp_sprite": "",
+				"combat_scene": "res://scenes/units/warrior.tscn"
+			},
+			"preferred_activity_tags": ["train", "smith_work", "rehearse"],
+			"permitted_class_paths": ["Warrior"]
+		},
+		"Priest": {
+			"visual_assets": {
+				"portrait": "res://icons/Priest.png",
+				"camp_sprite": "",
+				"combat_scene": "res://scenes/units/priest.tscn"
+			},
+			"preferred_activity_tags": ["apothecary_work", "study_target", "socialize"],
+			"permitted_class_paths": ["Priest"]
+		},
+		"Rogue": {
+			"visual_assets": {
+				"portrait": "res://icons/Rogue.png",
+				"camp_sprite": "",
+				"combat_scene": "res://scenes/units/rogue.tscn"
+			},
+			"preferred_activity_tags": ["train", "rehearse", "socialize"],
+			"permitted_class_paths": ["Rogue"]
+		},
+		"Mage": {
+			"visual_assets": {
+				"portrait": "res://icons/Mage.png",
+				"camp_sprite": "",
+				"combat_scene": "res://scenes/units/mage.tscn"
+			},
+			"preferred_activity_tags": ["study_target", "prepare_plan", "rest"],
+			"permitted_class_paths": ["Mage"]
+		}
+	},
+	"raiders": [
+		{
+			"raider_id": "writ_001",
+			"display_name": "Brann",
+			"biography": "Brann is a warrior of the first Writ: steady, protective, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["steady", "protective"],
+			"default_class": "Warrior",
+			"default_role": "tank",
+			"catalog_order": 1,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_002",
+			"display_name": "Mara",
+			"biography": "Mara is a priest of the first Writ: patient, observant, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["patient", "observant"],
+			"default_class": "Priest",
+			"default_role": "healer",
+			"catalog_order": 2,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_003",
+			"display_name": "Vey",
+			"biography": "Vey is a rogue of the first Writ: bold, restless, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["bold", "restless"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 3,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_004",
+			"display_name": "Ash",
+			"biography": "Ash is a mage of the first Writ: curious, reserved, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["curious", "reserved"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 4,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_005",
+			"display_name": "Merrow",
+			"biography": "Merrow is a mage of the first Writ: practical, sociable, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["practical", "sociable"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 5,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_006",
+			"display_name": "Tamsin",
+			"biography": "Tamsin is a warrior of the first Writ: vigilant, stubborn, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["vigilant", "stubborn"],
+			"default_class": "Warrior",
+			"default_role": "tank",
+			"catalog_order": 6,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_007",
+			"display_name": "Elian",
+			"biography": "Elian is a priest of the first Writ: calm, scholarly, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["calm", "scholarly"],
+			"default_class": "Priest",
+			"default_role": "healer",
+			"catalog_order": 7,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_008",
+			"display_name": "Nessa",
+			"biography": "Nessa is a rogue of the first Writ: wry, vigilant, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["wry", "vigilant"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 8,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_009",
+			"display_name": "Lysa",
+			"biography": "Lysa is a mage of the first Writ: precise, quiet, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["precise", "quiet"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 9,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_010",
+			"display_name": "Thale",
+			"biography": "Thale is a mage of the first Writ: bold, curious, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["bold", "curious"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 10,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_011",
+			"display_name": "Sabine",
+			"biography": "Sabine is a priest of the first Writ: practical, warm, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["practical", "warm"],
+			"default_class": "Priest",
+			"default_role": "healer",
+			"catalog_order": 11,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_012",
+			"display_name": "Rook",
+			"biography": "Rook is a rogue of the first Writ: steady, competitive, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["steady", "competitive"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 12,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_013",
+			"display_name": "Ilya",
+			"biography": "Ilya is a rogue of the first Writ: observant, reserved, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["observant", "reserved"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 13,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_014",
+			"display_name": "Yara",
+			"biography": "Yara is a mage of the first Writ: patient, scholarly, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["patient", "scholarly"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 14,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_015",
+			"display_name": "Pell",
+			"biography": "Pell is a mage of the first Writ: restless, sociable, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["restless", "sociable"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 15,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_016",
+			"display_name": "Oren",
+			"biography": "Oren is a priest of the first Writ: vigilant, compassionate, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["vigilant", "compassionate"],
+			"default_class": "Priest",
+			"default_role": "healer",
+			"catalog_order": 16,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_017",
+			"display_name": "Calder",
+			"biography": "Calder is a priest of the first Writ: direct, steady, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["direct", "steady"],
+			"default_class": "Priest",
+			"default_role": "healer",
+			"catalog_order": 17,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_018",
+			"display_name": "Fen",
+			"biography": "Fen is a rogue of the first Writ: practical, quiet, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["practical", "quiet"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 18,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_019",
+			"display_name": "Corin",
+			"biography": "Corin is a rogue of the first Writ: bold, wry, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["bold", "wry"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 19,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_020",
+			"display_name": "Sable",
+			"biography": "Sable is a mage of the first Writ: precise, reserved, and already accustomed to fighting as one of twenty.",
+			"personality_tags": ["precise", "reserved"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 20,
+			"lore_knowledge_tags": ["first_writ", "beast_crucible"],
+			"recruitment": {"initial_eligible": true, "source_hint": "starting_writ"}
+		},
+		{
+			"raider_id": "writ_021",
+			"display_name": "Ada",
+			"biography": "Ada is a steady, practical warrior available to be recruited into this campaign's Writ.",
+			"personality_tags": ["steady", "practical"],
+			"default_class": "Warrior",
+			"default_role": "tank",
+			"catalog_order": 21
+		},
+		{
+			"raider_id": "writ_022",
+			"display_name": "Holt",
+			"biography": "Holt is a curious, quiet warrior available to be recruited into this campaign's Writ.",
+			"personality_tags": ["curious", "quiet"],
+			"default_class": "Warrior",
+			"default_role": "tank",
+			"catalog_order": 22
+		},
+		{
+			"raider_id": "writ_023",
+			"display_name": "Kestrel",
+			"biography": "Kestrel is a bold, sociable warrior available to be recruited into this campaign's Writ.",
+			"personality_tags": ["bold", "sociable"],
+			"default_class": "Warrior",
+			"default_role": "tank",
+			"catalog_order": 23
+		},
+		{
+			"raider_id": "writ_024",
+			"display_name": "Beren",
+			"biography": "Beren is a patient, observant priest available to be recruited into this campaign's Writ.",
+			"personality_tags": ["patient", "observant"],
+			"default_class": "Priest",
+			"default_role": "healer",
+			"catalog_order": 24
+		},
+		{
+			"raider_id": "writ_025",
+			"display_name": "Della",
+			"biography": "Della is a vigilant, reserved priest available to be recruited into this campaign's Writ.",
+			"personality_tags": ["vigilant", "reserved"],
+			"default_class": "Priest",
+			"default_role": "healer",
+			"catalog_order": 25
+		},
+		{
+			"raider_id": "writ_026",
+			"display_name": "Eris",
+			"biography": "Eris is a steady, practical priest available to be recruited into this campaign's Writ.",
+			"personality_tags": ["steady", "practical"],
+			"default_class": "Priest",
+			"default_role": "healer",
+			"catalog_order": 26
+		},
+		{
+			"raider_id": "writ_027",
+			"display_name": "Galen",
+			"biography": "Galen is a curious, quiet priest available to be recruited into this campaign's Writ.",
+			"personality_tags": ["curious", "quiet"],
+			"default_class": "Priest",
+			"default_role": "healer",
+			"catalog_order": 27
+		},
+		{
+			"raider_id": "writ_028",
+			"display_name": "Hesta",
+			"biography": "Hesta is a bold, sociable priest available to be recruited into this campaign's Writ.",
+			"personality_tags": ["bold", "sociable"],
+			"default_class": "Priest",
+			"default_role": "healer",
+			"catalog_order": 28
+		},
+		{
+			"raider_id": "writ_029",
+			"display_name": "Jori",
+			"biography": "Jori is a patient, observant rogue available to be recruited into this campaign's Writ.",
+			"personality_tags": ["patient", "observant"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 29
+		},
+		{
+			"raider_id": "writ_030",
+			"display_name": "Kiva",
+			"biography": "Kiva is a vigilant, reserved rogue available to be recruited into this campaign's Writ.",
+			"personality_tags": ["vigilant", "reserved"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 30
+		},
+		{
+			"raider_id": "writ_031",
+			"display_name": "Lark",
+			"biography": "Lark is a steady, practical rogue available to be recruited into this campaign's Writ.",
+			"personality_tags": ["steady", "practical"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 31
+		},
+		{
+			"raider_id": "writ_032",
+			"display_name": "Miro",
+			"biography": "Miro is a curious, quiet rogue available to be recruited into this campaign's Writ.",
+			"personality_tags": ["curious", "quiet"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 32
+		},
+		{
+			"raider_id": "writ_033",
+			"display_name": "Nim",
+			"biography": "Nim is a bold, sociable rogue available to be recruited into this campaign's Writ.",
+			"personality_tags": ["bold", "sociable"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 33
+		},
+		{
+			"raider_id": "writ_034",
+			"display_name": "Pike",
+			"biography": "Pike is a patient, observant rogue available to be recruited into this campaign's Writ.",
+			"personality_tags": ["patient", "observant"],
+			"default_class": "Rogue",
+			"default_role": "dps",
+			"catalog_order": 34
+		},
+		{
+			"raider_id": "writ_035",
+			"display_name": "Quill",
+			"biography": "Quill is a vigilant, reserved mage available to be recruited into this campaign's Writ.",
+			"personality_tags": ["vigilant", "reserved"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 35
+		},
+		{
+			"raider_id": "writ_036",
+			"display_name": "Rhea",
+			"biography": "Rhea is a steady, practical mage available to be recruited into this campaign's Writ.",
+			"personality_tags": ["steady", "practical"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 36
+		},
+		{
+			"raider_id": "writ_037",
+			"display_name": "Sol",
+			"biography": "Sol is a curious, quiet mage available to be recruited into this campaign's Writ.",
+			"personality_tags": ["curious", "quiet"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 37
+		},
+		{
+			"raider_id": "writ_038",
+			"display_name": "Tova",
+			"biography": "Tova is a bold, sociable mage available to be recruited into this campaign's Writ.",
+			"personality_tags": ["bold", "sociable"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 38
+		},
+		{
+			"raider_id": "writ_039",
+			"display_name": "Una",
+			"biography": "Una is a patient, observant mage available to be recruited into this campaign's Writ.",
+			"personality_tags": ["patient", "observant"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 39
+		},
+		{
+			"raider_id": "writ_040",
+			"display_name": "Wren",
+			"biography": "Wren is a vigilant, reserved mage available to be recruited into this campaign's Writ.",
+			"personality_tags": ["vigilant", "reserved"],
+			"default_class": "Mage",
+			"default_role": "dps",
+			"catalog_order": 40
+		}
+	]
+}

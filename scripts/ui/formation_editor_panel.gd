@@ -12,13 +12,27 @@ signal formation_changed
 
 var note_text: String = ""
 var allow_reorder: bool = true
+var show_map_heading: bool = true
+var show_validation: bool = true
+var map_header_builder: Callable = Callable()
 var refresh_queued: bool = false
 
 
-func configure(new_note_text: String = "", new_allow_reorder: bool = true) -> void:
+func configure(
+	new_note_text: String = "",
+	new_allow_reorder: bool = true,
+	new_show_map_heading: bool = true,
+	new_show_validation: bool = true
+) -> void:
 	note_text = new_note_text
 	allow_reorder = new_allow_reorder
+	show_map_heading = new_show_map_heading
+	show_validation = new_show_validation
 	_rebuild()
+
+
+func set_map_header_builder(builder: Callable) -> void:
+	map_header_builder = builder
 
 
 func refresh() -> void:
@@ -51,7 +65,7 @@ func _rebuild() -> void:
 	add_child(editor_row)
 
 	var member_column := VBoxContainer.new()
-	member_column.custom_minimum_size = Vector2(530, 560)
+	member_column.custom_minimum_size = Vector2(530, 580)
 	member_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	editor_row.add_child(member_column)
 
@@ -103,14 +117,20 @@ func _rebuild() -> void:
 		roster_cards.add_child(card)
 
 	var map_column := VBoxContainer.new()
-	map_column.custom_minimum_size = Vector2(720, 560)
+	map_column.custom_minimum_size = Vector2(720, 580)
 	map_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	map_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	editor_row.add_child(map_column)
 
-	var map_heading := Label.new()
-	map_heading.text = "All 24 starting mini-regions · C close · M mid · F far"
-	map_column.add_child(map_heading)
+	if map_header_builder.is_valid():
+		var map_header_value: Variant = map_header_builder.call()
+
+		if map_header_value is Control:
+			map_column.add_child(map_header_value)
+	elif show_map_heading:
+		var map_heading := Label.new()
+		map_heading.text = "All 24 starting mini-regions · C close · M mid · F far"
+		map_column.add_child(map_heading)
 
 	var formation_map := FormationMapScript.new() as FormationMap
 	formation_map.custom_minimum_size = Vector2(700, 520)
@@ -120,14 +140,15 @@ func _rebuild() -> void:
 	formation_map.member_dropped.connect(_on_member_dropped)
 	map_column.add_child(formation_map)
 
-	var validation := CampaignState.validate_raid_plan()
-	var validation_label := Label.new()
-	validation_label.text = _validation_text(validation)
-	validation_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	validation_label.add_theme_color_override(
-		"font_color", Color("9fc18b") if bool(validation.get("valid", false)) else Color("d78d7d")
-	)
-	add_child(validation_label)
+	if show_validation:
+		var validation := CampaignState.validate_raid_plan()
+		var validation_label := Label.new()
+		validation_label.text = _validation_text(validation)
+		validation_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		validation_label.add_theme_color_override(
+			"font_color", Color("9fc18b") if bool(validation.get("valid", false)) else Color("d78d7d")
+		)
+		add_child(validation_label)
 
 
 func _make_roster_header() -> Control:
