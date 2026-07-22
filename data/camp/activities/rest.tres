@@ -6,6 +6,7 @@
 script = ExtResource("1")
 activity_id = "rest"
 display_name = "Using the quarters"
+category = "Rest"
 facility_id = "quarters"
 base_weight = 1.1
 active_multiplier = 0.55
@@ -13,6 +14,9 @@ reserve_multiplier = 2.0
 minimum_duration = 8.0
 maximum_duration = 15.0
 cooldown = 10.0
+conversation_compatible = false
 favored_classes = Array[String]([])
 favored_attributes = Array[String](["quiet", "reserved", "patient"])
+personality_preferences = Array[String](["quiet", "reserved"])
+completion_outcomes = Array[String](["narrative_summary"])
 feedback_lines = Array[String](["Wake me if the plan changes.", "A dry blanket is enough.", "Quiet for a moment."])

@@ -1,0 +1,125 @@
+{
+	"schema_version": 1,
+	"frames": [
+		{
+			"frame_id": "generic_camp_check_in",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded", "focused"],
+			"tone": "neutral",
+			"category": "social",
+			"roles": ["observer", "subject"],
+			"beats": [
+				{"speaker_role": "observer", "text": "You have been quiet since we came in."},
+				{"speaker_role": "subject", "text": "Just sorting the useful thoughts from the loud ones."},
+				{"speaker_role": "observer", "text": "Keep the useful ones. The rest can wait."}
+			],
+			"outcome": {"outcome_id": "quiet_check_in", "type": "neutral", "meaningful": false, "summary_template": "{observer} checked in with {subject}."},
+			"cooldowns": {"frame": 110, "topic": 75, "pair": 65, "speaker_role": 42, "station_activity": 50}
+		},
+		{
+			"frame_id": "ordinary_camp_routine",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded", "focused"],
+			"tone": "positive",
+			"category": "social",
+			"roles": ["observer", "subject"],
+			"beats": [
+				{"speaker_role": "observer", "text": "The camp feels settled tonight.", "variants": [{"personality_any": ["wry"], "text": "Nothing is on fire that should not be. A fine evening."}]},
+				{"speaker_role": "subject", "text": "That usually means someone is planning tomorrow."},
+				{"speaker_role": "observer", "text": "Then let them plan. We can have one quiet minute."}
+			],
+			"outcome": {"outcome_id": "shared_quiet", "type": "positive", "meaningful": false, "summary_template": "{observer} and {subject} shared a quiet moment in camp."},
+			"cooldowns": {"frame": 120, "topic": 80, "pair": 70, "speaker_role": 45, "station_activity": 55}
+		},
+		{
+			"frame_id": "smith_embedded_hammer",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded"],
+			"tone": "teasing",
+			"category": "work",
+			"roles": ["teaser", "target"],
+			"required_activity_ids": ["smith_work"],
+			"required_station_ids": ["smith_shared_forge"],
+			"beats": [
+				{"speaker_role": "teaser", "text": "You keep reaching for the large hammer."},
+				{"speaker_role": "target", "text": "It makes the problem reconsider its position."},
+				{"speaker_role": "teaser", "text": "The problem is a buckle."},
+				{"speaker_role": "target", "text": "Then it should reconsider quickly."}
+			],
+			"outcome": {"outcome_id": "smithing_joke", "type": "positive", "meaningful": false, "summary_template": "{teaser} joked with {target} while they worked at the smith."},
+			"cooldowns": {"frame": 150, "topic": 100, "pair": 75, "speaker_role": 50, "station_activity": 115}
+		},
+		{
+			"frame_id": "focused_roster_return",
+			"kind": "ordinary",
+			"delivery_modes": ["focused"],
+			"tone": "encouraging",
+			"category": "relationship",
+			"roles": ["encourager", "discouraged"],
+			"required_visit_contexts": ["roster_change", "recruitment"],
+			"beats": [
+				{"speaker_role": "encourager", "text": "Your marker is back on the active board."},
+				{"speaker_role": "discouraged", "text": "For this attempt. I know how quickly it can move."},
+				{"speaker_role": "encourager", "text": "Then make this attempt the one they remember."},
+				{"speaker_role": "discouraged", "text": "I will. Thank you for saying it plainly."}
+			],
+			"outcome": {"outcome_id": "roster_encouragement", "type": "reflective", "meaningful": true, "personal_roles": ["discouraged"], "qualifies_for_relationship_change": true, "relationship_deltas": {"encourager": {"affinity": 3, "trust": 4}, "discouraged": {"affinity": 5, "trust": 3}}, "summary_template": "{encourager} encouraged {discouraged} after the roster changed."},
+			"cooldowns": {"frame": 240, "topic": 180, "pair": 110, "speaker_role": 80, "referenced_memory": 210, "station_activity": 75}
+		},
+		{
+			"frame_id": "combat_memory_failed_timing",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded", "focused"],
+			"tone": "reflective",
+			"category": "combat_memory",
+			"roles": ["confidant", "speaker"],
+			"required_visit_contexts": ["wipe"],
+			"referenced_memory_key": "recent_failed_mechanic",
+			"beats": [
+				{"speaker_role": "speaker", "text": "I moved when the warning came. It was still late."},
+				{"speaker_role": "confidant", "text": "Then the warning is not your cue. Find the breath before it."},
+				{"speaker_role": "speaker", "text": "You think the pattern starts earlier?"},
+				{"speaker_role": "confidant", "text": "I think we can look for it together."}
+			],
+			"outcome": {"outcome_id": "mechanic_reflection", "type": "reflective", "meaningful": true, "personal_roles": ["speaker"], "summary_template": "{speaker} discussed the last failed mechanic with {confidant}."},
+			"cooldowns": {"frame": 210, "topic": 150, "pair": 90, "speaker_role": 65, "referenced_memory": 190, "station_activity": 70}
+		},
+		{
+			"frame_id": "relationship_respectful_rivals",
+			"kind": "ordinary",
+			"delivery_modes": ["embedded", "focused"],
+			"tone": "competitive",
+			"category": "relationship",
+			"roles": ["rival_a", "rival_b"],
+			"minimum_relationship": {"respect": 18},
+			"beats": [
+				{"speaker_role": "rival_a", "text": "You corrected the lane before I called it."},
+				{"speaker_role": "rival_b", "text": "You were busy pretending not to need the help."},
+				{"speaker_role": "rival_a", "text": "Next pull, I see it first."},
+				{"speaker_role": "rival_b", "text": "Good. I would hate to win this argument cheaply."}
+			],
+			"outcome": {"outcome_id": "rival_respect", "type": "competitive", "meaningful": true, "qualifies_for_relationship_change": true, "relationship_deltas": {"rival_a": {"respect": 4, "tension": 1}, "rival_b": {"respect": 4, "tension": 1}}, "summary_template": "{rival_a} and {rival_b} renewed their friendly rivalry."},
+			"cooldowns": {"frame": 260, "topic": 180, "pair": 130, "speaker_role": 85, "station_activity": 90}
+		},
+		{
+			"frame_id": "lore_full_writ_ledgers",
+			"kind": "lore",
+			"delivery_modes": ["embedded", "focused"],
+			"tone": "informative",
+			"category": "lore",
+			"roles": ["teacher", "learner"],
+			"required_activity_ids": ["study_target", "socialize"],
+			"speaker_lore_tags": ["historian", "scholar", "regional_native", "monster_hunter", "former_arena_worker", "outsider", "archive_research_completed", "beast_crucible"],
+			"lore_topic_id": "beast_crucible_full_writ",
+			"beats": [
+				{"speaker_role": "teacher", "text": "The old arena ledgers call twenty fighters a full writ."},
+				{"speaker_role": "learner", "text": "So our name is not ceremonial."},
+				{"speaker_role": "teacher", "text": "No. The tally was logistical: twenty entrants, each given a mark."},
+				{"speaker_role": "learner", "text": "And the marks without a return?"},
+				{"speaker_role": "teacher", "text": "Left blank. The ledger records what happened; it does not invent an answer."}
+			],
+			"outcome": {"outcome_id": "learned_full_writ", "type": "informative", "meaningful": true, "summary_template": "{teacher} taught {learner} about the Beast Crucible's old arena ledgers."},
+			"cooldowns": {"frame": 420, "topic": 420, "pair": 150, "speaker_role": 110, "lore_topic": 600, "lore_delivery": 480, "station_activity": 120}
+		}
+	]
+}
