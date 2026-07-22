@@ -5,6 +5,7 @@ const FormationEditorPanelScript := preload("res://scripts/ui/formation_editor_p
 const RosterMemberCardScript := preload("res://scripts/ui/roster_member_card.gd")
 const RosterDropZoneScript := preload("res://scripts/ui/roster_drop_zone.gd")
 const CampaignRosterActionsScript := preload("res://scripts/core/campaign_roster_actions.gd")
+const MemberQuartersPanelScript := preload("res://scripts/ui/member_quarters_panel.gd")
 
 const COMMAND_CLASS_COLUMN_WIDTH := 170.0
 const COMMAND_NAME_COLUMN_WIDTH := 300.0
@@ -19,6 +20,7 @@ var page: VBoxContainer = null
 var member_detail_label: Label = null
 var refresh_queued: bool = false
 var archive_view_encounter_id: String = ""
+var member_quarters_panel: MemberQuartersPanel = null
 
 
 func _ready() -> void:
@@ -29,7 +31,7 @@ func _ready() -> void:
 
 
 func open_facility(facility_id: String) -> void:
-	if facility_id not in ["command_tent", "formation_yard", "archive"]:
+	if facility_id not in ["command_tent", "formation_yard", "archive", "quarters"]:
 		return
 
 	current_facility_id = facility_id
@@ -135,6 +137,7 @@ func _refresh_current_facility() -> void:
 
 	page = null
 	member_detail_label = null
+	member_quarters_panel = null
 
 	match current_facility_id:
 		"command_tent":
@@ -143,6 +146,8 @@ func _refresh_current_facility() -> void:
 			_build_formation_yard()
 		"archive":
 			_build_archive()
+		"quarters":
+			_build_member_quarters()
 
 
 func _begin_scrolling_page() -> VBoxContainer:
@@ -492,6 +497,16 @@ func _build_formation_yard() -> void:
 	editor.set_map_header_builder(_build_formation_name_controls.bind(preset_dropdown))
 	editor.configure("", true, false, false)
 	formation_page.add_child(editor)
+
+
+func _build_member_quarters() -> void:
+	header_title.text = "Member Quarters — Raider Profiles"
+	member_quarters_panel = MemberQuartersPanelScript.new() as MemberQuartersPanel
+	member_quarters_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	member_quarters_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	member_quarters_panel.back_requested.connect(close_journal)
+	body.add_child(member_quarters_panel)
+	member_quarters_panel.configure(_get_population_controller())
 
 
 func _build_formation_name_controls(preset_dropdown: OptionButton) -> Control:
@@ -885,6 +900,14 @@ func _on_archive_target_selected(encounter_id: String) -> void:
 
 
 func _on_campaign_state_changed() -> void:
+	if (
+		visible
+		and current_facility_id == "quarters"
+		and member_quarters_panel != null
+		and is_instance_valid(member_quarters_panel)
+	):
+		member_quarters_panel.refresh_campaign_state()
+		return
 	_queue_refresh()
 
 

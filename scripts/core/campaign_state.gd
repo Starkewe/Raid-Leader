@@ -30,11 +30,13 @@ signal memory_promoted(event: Dictionary)
 signal relationship_threshold_reached(event: Dictionary)
 
 const SAVE_PATH := "user://raid_leader_campaign_v1.json"
-const SCHEMA_VERSION := 6
+const SCHEMA_VERSION := 7
 const ACTIVE_RAID_SIZE := 20
 const ATTEMPT_HISTORY_LIMIT := 5
 const FIRST_REGION_ID := "beast_crucible"
 const DEFAULT_FORMATION_NAME := "Default"
+const QUARTERS_ROOM_COUNT := 20
+const QUARTERS_ROOM_CAPACITY := 2
 
 var campaign: Dictionary = {}
 var missing_definition_warnings_emitted: Dictionary = {}
@@ -560,6 +562,8 @@ func emit_notable_event(raw_event: Dictionary, emit_change: bool = true) -> Dict
 	if event.is_empty():
 		return {}
 
+	_mark_profile_updates(event.get("participants", []))
+
 	notable_event_recorded.emit(event.duplicate(true))
 
 	for derived_value in result.get("derived_events", []):
@@ -567,6 +571,7 @@ func emit_notable_event(raw_event: Dictionary, emit_change: bool = true) -> Dict
 			continue
 
 		var derived: Dictionary = derived_value
+		_mark_profile_updates(derived.get("participants", []))
 		notable_event_recorded.emit(derived.duplicate(true))
 
 		match String(derived.get("event_type", "")):
@@ -636,6 +641,76 @@ func get_raider_lore_knowledge(raider_id: String) -> Dictionary:
 	return RaiderLoreKnowledgeStoreScript.get_raider_knowledge(
 		Dictionary(campaign.get("lore_knowledge_store", {})), raider_id
 	)
+
+
+func get_room_options(for_raider_id: String = "") -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var occupants_by_room := _room_occupants_by_id(campaign)
+
+	for room_number in range(1, QUARTERS_ROOM_COUNT + 1):
+		var room_id := _room_id(room_number)
+		var occupant_ids: Array = occupants_by_room.get(room_id, [])
+		result.append(
+			{
+				"room_id": room_id,
+				"label": room_label(room_id),
+				"capacity": QUARTERS_ROOM_CAPACITY,
+				"occupant_ids": occupant_ids.duplicate(),
+				"available": (
+					occupant_ids.has(for_raider_id)
+					or occupant_ids.size() < QUARTERS_ROOM_CAPACITY
+				),
+			}
+		)
+
+	return result
+
+
+func room_label(room_assignment_id: String) -> String:
+	if not _is_valid_room_id(room_assignment_id):
+		return "Unassigned"
+	return "Room %02d" % int(room_assignment_id.get_slice("_", 1))
+
+
+func get_room_assignment_label(raider_id: String) -> String:
+	return room_label(String(get_raider_campaign_state(raider_id).get("room_assignment_id", "")))
+
+
+func get_roommate_summary(raider_id: String) -> String:
+	var state := get_raider_campaign_state(raider_id)
+	var room_id := String(state.get("room_assignment_id", ""))
+	if room_id.is_empty():
+		return "Automatic assignment pending."
+
+	for occupant_id in _room_occupants_by_id(campaign).get(room_id, []):
+		if String(occupant_id) == raider_id:
+			continue
+		var roommate := get_member(String(occupant_id))
+		return "Roommate: %s" % String(roommate.get("display_name", occupant_id))
+	return "Private for now."
+
+
+func has_unseen_profile_development(raider_id: String) -> bool:
+	return get_unseen_profile_development_count(raider_id) > 0
+
+
+func get_unseen_profile_development_count(raider_id: String) -> int:
+	var quarters: Dictionary = campaign.get("member_quarters_state", {})
+	var current := int(quarters.get("profile_revisions", {}).get(raider_id, 0))
+	var seen := int(quarters.get("seen_profile_revisions", {}).get(raider_id, 0))
+	return maxi(current - seen, 0)
+
+
+func mark_raider_profile_seen(raider_id: String) -> bool:
+	if get_member(raider_id).is_empty():
+		return false
+	var quarters := _get_member_quarters_state()
+	var current := int(quarters.get("profile_revisions", {}).get(raider_id, 0))
+	var seen: Dictionary = quarters.get("seen_profile_revisions", {})
+	seen[raider_id] = current
+	quarters["seen_profile_revisions"] = seen
+	campaign["member_quarters_state"] = quarters
+	return true
 
 
 func record_completed_conversation(
@@ -818,6 +893,7 @@ func recruit_raider(raider_id: String, recruitment_source: String) -> bool:
 	state["recruitment_source"] = recruitment_source
 	states[raider_id] = state
 	campaign["raider_states"] = states
+	_assign_room_automatically_internal(raider_id)
 	emit_notable_event(
 		{
 			"event_type": "raider_recruited",
@@ -839,26 +915,45 @@ func recruit_raider(raider_id: String, recruitment_source: String) -> bool:
 func set_room_assignment(
 	raider_id: String, room_assignment_id: String, roommate_id: String = ""
 ) -> bool:
+	if room_assignment_id == "auto" or room_assignment_id.is_empty():
+		return assign_raider_room_automatically(raider_id)
+	if not _is_valid_room_id(room_assignment_id):
+		return false
+
 	var states: Dictionary = campaign.get("raider_states", {})
 	var state_value: Variant = states.get(raider_id, {})
 
 	if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
 		return false
 
-	var state: Dictionary = state_value
-	var previous_room := String(state.get("room_assignment_id", ""))
-	state["room_assignment_id"] = room_assignment_id
-	states[raider_id] = state
 	var participants: Array[String] = [raider_id]
+	if not roommate_id.is_empty() and roommate_id != raider_id:
+		var roommate_value: Variant = states.get(roommate_id, {})
+		if not roommate_value is Dictionary or not bool(roommate_value.get("recruited", false)):
+			return false
+		participants.append(roommate_id)
 
-	if not roommate_id.is_empty() and roommate_id != raider_id and states.has(roommate_id):
-		var roommate_state_value: Variant = states[roommate_id]
+	var existing_occupants: Array = _room_occupants_by_id(campaign).get(room_assignment_id, [])
+	for participant_id in participants:
+		existing_occupants.erase(participant_id)
+	if existing_occupants.size() + participants.size() > QUARTERS_ROOM_CAPACITY:
+		return false
 
-		if roommate_state_value is Dictionary and bool(roommate_state_value.get("recruited", false)):
-			var roommate_state: Dictionary = roommate_state_value
-			roommate_state["room_assignment_id"] = room_assignment_id
-			states[roommate_id] = roommate_state
-			participants.append(roommate_id)
+	var previous_room := String(Dictionary(state_value).get("room_assignment_id", ""))
+	var changed := false
+	for participant_id in participants:
+		var participant_state: Dictionary = Dictionary(states[participant_id])
+		if String(participant_state.get("room_assignment_id", "")) != room_assignment_id:
+			participant_state["room_assignment_id"] = room_assignment_id
+			states[participant_id] = participant_state
+			changed = true
+
+	if not changed:
+		return true
+
+	for occupant_id in existing_occupants:
+		if not participants.has(String(occupant_id)):
+			participants.append(String(occupant_id))
 
 	campaign["raider_states"] = states
 	emit_notable_event(
@@ -880,6 +975,25 @@ func set_room_assignment(
 	)
 	state_changed.emit()
 	return true
+
+
+func assign_raider_room_automatically(raider_id: String) -> bool:
+	var state := get_raider_campaign_state(raider_id)
+	if state.is_empty() or not bool(state.get("recruited", false)):
+		return false
+	var occupants_by_room := _room_occupants_by_id(campaign)
+	var current_room := String(state.get("room_assignment_id", ""))
+	if _is_valid_room_id(current_room):
+		var current_occupants: Array = occupants_by_room.get(current_room, [])
+		if current_occupants.size() <= QUARTERS_ROOM_CAPACITY:
+			return true
+
+	for room_number in range(1, QUARTERS_ROOM_COUNT + 1):
+		var room_id := _room_id(room_number)
+		var occupants: Array = occupants_by_room.get(room_id, [])
+		if occupants.size() < QUARTERS_ROOM_CAPACITY:
+			return set_room_assignment(raider_id, room_id)
+	return false
 
 
 func advance_raider_class(
@@ -1083,6 +1197,7 @@ func ensure_debug_reserves() -> int:
 		return 0
 
 	campaign["raider_states"] = states
+	_ensure_valid_room_assignments(campaign)
 	_augment_visit_reactions("recruitment", recruited_count)
 	emit_notable_event(
 		{
@@ -1307,6 +1422,11 @@ func _create_default_campaign(seed_override: int = 0) -> Dictionary:
 				recruitment.get("source_hint", "starting_writ" if is_initial else "unrecruited")
 			)
 		)
+		if is_initial:
+			var initial_index := active_member_ids.find(raider_id)
+			state["room_assignment_id"] = _room_id(
+				floori(float(initial_index) / float(QUARTERS_ROOM_CAPACITY)) + 1
+			)
 		states[raider_id] = state
 
 		if is_initial:
@@ -1339,6 +1459,10 @@ func _create_default_campaign(seed_override: int = 0) -> Dictionary:
 		"relationship_store": CampV2EventSystemScript.create_relationship_store(),
 		"lore_knowledge_store": CampV2EventSystemScript.create_lore_store(),
 		"camp_conversation_state": CampConversationStateScript.create_store(),
+		"member_quarters_state": {
+			"profile_revisions": {},
+			"seen_profile_revisions": {},
+		},
 		"notable_event_records": [],
 		"raid_chronicle": [],
 		"notable_event_sequence": 0,
@@ -1475,6 +1599,12 @@ func _migrate_campaign(source: Dictionary) -> Dictionary:
 		migrated.get("camp_conversation_state", {}),
 		_string_array(migrated.get("campaign_cast", {}).get("selected_raider_ids", []))
 	)
+	migrated["member_quarters_state"] = _sanitize_member_quarters_state(
+		migrated.get("member_quarters_state", {}),
+		_string_array(migrated.get("campaign_cast", {}).get("selected_raider_ids", [])),
+		migrated
+	)
+	_ensure_valid_room_assignments(migrated)
 	migrated.erase("roster")
 	migrated.erase("next_member_serial")
 	migrated["attempt_history"] = _normalize_attempt_history(
@@ -2211,6 +2341,7 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 		"role": String(definition.get("default_role", "dps")),
 		"attributes": Array(definition.get("personality_tags", [])).duplicate(),
 		"personality_tags": Array(definition.get("personality_tags", [])).duplicate(),
+		"personality_description": String(definition.get("personality_description", "")),
 		"description": String(definition.get("biography", "")),
 		"biography": String(definition.get("biography", "")),
 		"speech_profile_id": String(definition.get("speech_profile_id", "writ_default")),
@@ -2260,6 +2391,164 @@ func _get_definition_with_fallback(raider_id: String) -> Dictionary:
 		)
 
 	return definition
+
+
+func _get_member_quarters_state() -> Dictionary:
+	var value: Variant = campaign.get("member_quarters_state", {})
+	if not value is Dictionary:
+		campaign["member_quarters_state"] = {
+			"profile_revisions": {},
+			"seen_profile_revisions": {},
+		}
+	return campaign["member_quarters_state"]
+
+
+func _mark_profile_updates(participant_ids_value: Variant) -> void:
+	var quarters := _get_member_quarters_state()
+	var revisions: Dictionary = quarters.get("profile_revisions", {})
+	for raider_id in _unique_string_array(participant_ids_value):
+		if not get_selected_cast_ids().has(raider_id):
+			continue
+		revisions[raider_id] = int(revisions.get(raider_id, 0)) + 1
+	quarters["profile_revisions"] = revisions
+	campaign["member_quarters_state"] = quarters
+
+
+func _sanitize_member_quarters_state(
+	source: Variant, valid_raider_ids: Array[String], campaign_source: Dictionary
+) -> Dictionary:
+	var raw: Dictionary = Dictionary(source) if source is Dictionary else {}
+	var revisions: Dictionary = {}
+	var seen: Dictionary = {}
+	var raw_revisions: Dictionary = (
+		Dictionary(raw.get("profile_revisions", {}))
+		if raw.get("profile_revisions", {}) is Dictionary
+		else {}
+	)
+	var raw_seen: Dictionary = (
+		Dictionary(raw.get("seen_profile_revisions", {}))
+		if raw.get("seen_profile_revisions", {}) is Dictionary
+		else {}
+	)
+
+	for raider_id in valid_raider_ids:
+		var revision := maxi(int(raw_revisions.get(raider_id, 0)), 0)
+		if revision > 0:
+			revisions[raider_id] = revision
+		var seen_revision := clampi(int(raw_seen.get(raider_id, 0)), 0, revision)
+		if seen_revision > 0:
+			seen[raider_id] = seen_revision
+
+	if revisions.is_empty():
+		for event_value in campaign_source.get("notable_event_records", []):
+			if not event_value is Dictionary:
+				continue
+			for raider_id in _unique_string_array(Dictionary(event_value).get("participants", [])):
+				if valid_raider_ids.has(raider_id):
+					revisions[raider_id] = int(revisions.get(raider_id, 0)) + 1
+
+	return {
+		"profile_revisions": revisions,
+		"seen_profile_revisions": seen,
+	}
+
+
+func _ensure_valid_room_assignments(target_campaign: Dictionary) -> void:
+	var states_value: Variant = target_campaign.get("raider_states", {})
+	if not states_value is Dictionary:
+		return
+	var states: Dictionary = states_value
+	var selected_ids := _string_array(
+		target_campaign.get("campaign_cast", {}).get("selected_raider_ids", [])
+	)
+	var occupants_by_room: Dictionary = {}
+	var needs_assignment: Array[String] = []
+
+	for raider_id in selected_ids:
+		var state_value: Variant = states.get(raider_id, {})
+		if not state_value is Dictionary:
+			continue
+		var state: Dictionary = state_value
+		if not bool(state.get("recruited", false)):
+			state["room_assignment_id"] = ""
+			states[raider_id] = state
+			continue
+		var room_id := String(state.get("room_assignment_id", ""))
+		var occupants: Array = occupants_by_room.get(room_id, [])
+		if not _is_valid_room_id(room_id) or occupants.size() >= QUARTERS_ROOM_CAPACITY:
+			state["room_assignment_id"] = ""
+			states[raider_id] = state
+			needs_assignment.append(raider_id)
+			continue
+		occupants.append(raider_id)
+		occupants_by_room[room_id] = occupants
+
+	for raider_id in needs_assignment:
+		for room_number in range(1, QUARTERS_ROOM_COUNT + 1):
+			var room_id := _room_id(room_number)
+			var occupants: Array = occupants_by_room.get(room_id, [])
+			if occupants.size() >= QUARTERS_ROOM_CAPACITY:
+				continue
+			var state: Dictionary = Dictionary(states[raider_id])
+			state["room_assignment_id"] = room_id
+			states[raider_id] = state
+			occupants.append(raider_id)
+			occupants_by_room[room_id] = occupants
+			break
+
+	target_campaign["raider_states"] = states
+
+
+func _assign_room_automatically_internal(raider_id: String) -> bool:
+	var state_value: Variant = campaign.get("raider_states", {}).get(raider_id, {})
+	if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
+		return false
+	var state: Dictionary = state_value
+	var current_room := String(state.get("room_assignment_id", ""))
+	var occupants_by_room := _room_occupants_by_id(campaign)
+	if _is_valid_room_id(current_room):
+		var current_occupants: Array = occupants_by_room.get(current_room, [])
+		if current_occupants.size() <= QUARTERS_ROOM_CAPACITY:
+			return true
+
+	for room_number in range(1, QUARTERS_ROOM_COUNT + 1):
+		var room_id := _room_id(room_number)
+		if Array(occupants_by_room.get(room_id, [])).size() >= QUARTERS_ROOM_CAPACITY:
+			continue
+		state["room_assignment_id"] = room_id
+		campaign["raider_states"][raider_id] = state
+		return true
+	return false
+
+
+func _room_occupants_by_id(target_campaign: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+	var states_value: Variant = target_campaign.get("raider_states", {})
+	if not states_value is Dictionary:
+		return result
+	var states: Dictionary = states_value
+	for raider_id_value in states.keys():
+		var state_value: Variant = states[raider_id_value]
+		if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
+			continue
+		var room_id := String(state_value.get("room_assignment_id", ""))
+		if not _is_valid_room_id(room_id):
+			continue
+		var occupants: Array = result.get(room_id, [])
+		occupants.append(String(raider_id_value))
+		result[room_id] = occupants
+	return result
+
+
+func _is_valid_room_id(room_assignment_id: String) -> bool:
+	if not room_assignment_id.begins_with("quarters_"):
+		return false
+	var room_number := int(room_assignment_id.get_slice("_", 1))
+	return room_number >= 1 and room_number <= QUARTERS_ROOM_COUNT
+
+
+func _room_id(room_number: int) -> String:
+	return "quarters_%02d" % clampi(room_number, 1, QUARTERS_ROOM_COUNT)
 
 
 func _sync_active_state_flags() -> void:
