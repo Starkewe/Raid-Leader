@@ -180,7 +180,6 @@ func _finish_recording_and_transcribe() -> void:
 	print("Voice inferred capture rate: ", inferred_capture_rate)
 
 	var frames_to_save: PackedVector2Array = _recorded_frames
-	frames_to_save = _trim_to_elapsed_duration(frames_to_save, elapsed_seconds, sample_rate)
 
 	if remove_capture_padding:
 		var padded_frame_count: int = frames_to_save.size()
@@ -230,25 +229,30 @@ func _remove_hard_zero_padding(frames: PackedVector2Array) -> PackedVector2Array
 	if frames.is_empty():
 		return frames
 
-	var first_nonzero := -1
-	var last_nonzero := -1
+	var cleaned_frames := PackedVector2Array()
+	var hard_zero_run: int = 0
+	var zero_frames_to_keep: int = maxi(max_hard_zero_run_kept, 0)
+	var found_audio: bool = false
 
-	for frame_index in range(frames.size()):
-		var frame: Vector2 = frames[frame_index]
-		var mono_abs: float = absf((frame.x + frame.y) * 0.5)
+	for frame in frames:
+		if _is_hard_zero_frame(frame):
+			if hard_zero_run < zero_frames_to_keep:
+				cleaned_frames.append(frame)
+			hard_zero_run += 1
+			continue
 
-		if mono_abs > hard_zero_threshold:
-			if first_nonzero == -1:
-				first_nonzero = frame_index
+		hard_zero_run = 0
+		found_audio = true
+		cleaned_frames.append(frame)
 
-			last_nonzero = frame_index
-
-	if first_nonzero == -1:
+	if not found_audio:
 		return PackedVector2Array()
 
-	var start_index := maxi(first_nonzero - max_hard_zero_run_kept, 0)
-	var end_index := mini(last_nonzero + max_hard_zero_run_kept + 1, frames.size())
-	return _copy_frame_range(frames, start_index, end_index)
+	return cleaned_frames
+
+
+func _is_hard_zero_frame(frame: Vector2) -> bool:
+	return absf(frame.x) <= hard_zero_threshold and absf(frame.y) <= hard_zero_threshold
 
 func _discard_capture_buffer() -> void:
 	if _capture_effect == null:
@@ -271,23 +275,6 @@ func _drain_capture_buffer() -> void:
 
 	var frames := _capture_effect.get_buffer(frames_available)
 	_recorded_frames.append_array(frames)
-
-
-func _trim_to_elapsed_duration(frames: PackedVector2Array, elapsed_seconds: float, sample_rate: int) -> PackedVector2Array:
-	var expected_frame_count: int = int(round(elapsed_seconds * float(sample_rate)))
-	var tolerance_frames: int = int(0.15 * float(sample_rate))
-	var max_allowed_frames: int = expected_frame_count + tolerance_frames
-
-	if expected_frame_count <= 0:
-		return frames
-
-	if frames.size() <= max_allowed_frames:
-		return frames
-
-	print("Voice capture had extra frames. Trimming from ", frames.size(), " to ", expected_frame_count)
-
-	var start_index: int = maxi(0, frames.size() - expected_frame_count)
-	return _copy_frame_range(frames, start_index, frames.size())
 
 
 func _trim_silence(frames: PackedVector2Array, sample_rate: int) -> PackedVector2Array:
