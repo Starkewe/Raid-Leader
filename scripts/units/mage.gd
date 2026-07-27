@@ -80,6 +80,7 @@ func command_attack(new_target: Node2D):
 		stop_action()
 		return
 
+	begin_attack_action()
 	target = new_target
 
 	print(get_display_name(), "ordered to cast at:", get_node_display_name(target))
@@ -90,7 +91,7 @@ func update_cooldown(delta: float):
 
 
 func has_valid_cast_target() -> bool:
-	return can_damage_target(target)
+	return is_attack_action_active() and can_damage_target(target)
 
 
 func handle_active_cast(delta: float):
@@ -116,6 +117,11 @@ func handle_cast_positioning() -> void:
 
 	stop_movement()
 	try_start_cast()
+
+
+func on_forced_movement_finished() -> void:
+	if has_valid_cast_target():
+		handle_cast_positioning()
 
 
 func try_start_cast():
