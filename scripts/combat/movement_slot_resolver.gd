@@ -134,8 +134,24 @@ static func get_mini_region_from_position(
 		}
 
 	var boss_2d := boss_node as Node2D
-	var region := get_nearest_region_from_position(boss_2d.global_position, unit_position)
-	var range_name := get_nearest_range_from_position(boss_node, unit_position)
+	return get_mini_region_from_origin(
+		boss_node,
+		boss_2d.global_position,
+		unit_position
+	)
+
+
+static func get_mini_region_from_origin(
+	boss_node: Node,
+	boss_position: Vector2,
+	unit_position: Vector2
+) -> Dictionary:
+	var region := get_nearest_region_from_position(boss_position, unit_position)
+	var range_name := get_nearest_range_from_origin(
+		boss_node,
+		boss_position,
+		unit_position
+	)
 
 	return {
 		"region": region,
@@ -251,8 +267,23 @@ static func get_nearest_range_from_position(boss_node: Node, unit_position: Vect
 		return RANGE_MID
 
 	var boss_2d := boss_node as Node2D
+	return get_nearest_range_from_origin(
+		boss_node,
+		boss_2d.global_position,
+		unit_position
+	)
+
+
+static func get_nearest_range_from_origin(
+	boss_node: Node,
+	boss_position: Vector2,
+	unit_position: Vector2
+) -> String:
+	if boss_node == null or not is_instance_valid(boss_node):
+		return RANGE_MID
+
 	var boss_radius: float = get_boss_combat_radius(boss_node)
-	var center_distance: float = boss_2d.global_position.distance_to(unit_position)
+	var center_distance: float = boss_position.distance_to(unit_position)
 	var edge_distance_pixels: float = maxf(center_distance - boss_radius, 0.0)
 	var edge_distance_units: float = CombatMeasurementsScript.pixels_to_range_units(edge_distance_pixels)
 

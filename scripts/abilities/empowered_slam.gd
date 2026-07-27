@@ -33,6 +33,9 @@ func on_cast_start(boss: Node, party_members: Array) -> void:
 	if boss != null and is_instance_valid(boss) and boss is Node2D:
 		locked_origin = (boss as Node2D).global_position
 
+		if boss.has_method("get_combat_origin_position"):
+			locked_origin = boss.get_combat_origin_position()
+
 		if boss.has_method("get_current_target"):
 			var target = boss.get_current_target()
 
@@ -41,6 +44,18 @@ func on_cast_start(boss: Node, party_members: Array) -> void:
 					locked_origin,
 					(target as Node2D).global_position
 				)
+
+		if boss.has_method("play_region_telegraph"):
+			var telegraph_duration := cast_time
+
+			if boss.has_method("get_current_cast_time"):
+				telegraph_duration = float(boss.get_current_cast_time())
+
+			boss.play_region_telegraph(
+				locked_region,
+				affected_ranges,
+				telegraph_duration
+			)
 
 	debug_log(boss, ability_name + " started and locked the " + locked_region + " lane.")
 
@@ -64,8 +79,9 @@ func resolve(boss: Node, party_members: Array) -> void:
 			locked_origin,
 			unit_2d.global_position
 		)
-		var unit_range := MovementSlotResolverScript.get_nearest_range_from_position(
+		var unit_range := MovementSlotResolverScript.get_nearest_range_from_origin(
 			boss,
+			locked_origin,
 			unit_2d.global_position
 		)
 

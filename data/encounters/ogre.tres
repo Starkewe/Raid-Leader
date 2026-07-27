@@ -75,6 +75,14 @@ damage = 10
 interruptible = false
 requires_active_target = false
 
+[sub_resource type="Resource" id="Status_SlamVulnerability"]
+script = ExtResource("4_status_type")
+effect_id = "slam_vulnerability"
+display_name = "Slam Vulnerability"
+duration = 10.0
+max_stacks = 100
+incoming_damage_percent_per_stack = 0.1
+
 [sub_resource type="Resource" id="Status_CrackedGround"]
 script = ExtResource("4_status_type")
 effect_id = "cracked_ground_slow"
@@ -96,6 +104,7 @@ edge_color = Color(1, 0.3, 0.055, 0.92)
 
 [sub_resource type="Resource" id="Ability_EmpoweredSlam"]
 script = ExtResource("14_slam_definition")
+affected_ranges = Array[String](["close", "mid", "far"])
 fissure_definition = SubResource("Hazard_CrackedGround")
 runtime_script = ExtResource("15_slam_runtime")
 ability_id = "empowered_slam"
@@ -106,14 +115,6 @@ cast_time = 2.5
 cooldown = 6.0
 damage = 18
 interruptible = false
-
-[sub_resource type="Resource" id="Status_SlamVulnerability"]
-script = ExtResource("4_status_type")
-effect_id = "slam_vulnerability"
-display_name = "Slam Vulnerability"
-duration = 10.0
-max_stacks = 10
-incoming_damage_percent_per_stack = 0.1
 
 [sub_resource type="Resource" id="Phase_One"]
 script = ExtResource("3_phase_type")
@@ -141,7 +142,8 @@ ability_cooldown_multiplier = 0.75
 attack_damage_multiplier = 1.25
 ability_damage_multiplier = 1.25
 ability_target_count_bonus = 2
-enabled_ability_ids = Array[String](["earthshaker_stomp", "boulder_toss", "empowered_slam"])
+basic_attack_trigger_threshold_override = 5
+enabled_ability_ids = Array[String](["earthshaker_stomp", "boulder_toss"])
 
 [resource]
 script = ExtResource("1_encounter")
@@ -149,12 +151,18 @@ encounter_id = "ogre"
 display_name = "Ogre: The Earthgnasher"
 description = "The first complete V1 encounter: tank-swap Slams, Twin Sweeping Pull, curable Grabbing Roar, outward Earthshaker Stomps, formation-scattering Boulder Tosses, persistent Cracked Ground, and a final Frenzy."
 boss_display_name = "The Earthgnasher"
-max_health = 500
-attack_damage = 10
+max_health = 8500
+movement_mode = "anchored"
+attack_damage = 25
 attack_cooldown = 2.0
 basic_attack_id = "ogre_slam"
 basic_attack_display_name = "Slam"
 basic_attack_status_effect = SubResource("Status_SlamVulnerability")
-abilities = Array[ExtResource("2_ability_type")]([SubResource("Ability_TwinSweepingPull"), SubResource("Ability_GrabbingRoar"), SubResource("Ability_EarthshakerStomp"), SubResource("Ability_BoulderToss"), SubResource("Ability_EmpoweredSlam")])
+basic_attack_targeting_mode = "exact_mini_region"
+basic_attack_secondary_damage = 10
+basic_attack_triggered_ability = SubResource("Ability_EmpoweredSlam")
+basic_attack_trigger_threshold = 10
+basic_attack_trigger_when_target_outside_required_range = true
+abilities = Array[ExtResource("2_ability_type")]([SubResource("Ability_TwinSweepingPull"), SubResource("Ability_GrabbingRoar"), SubResource("Ability_EarthshakerStomp"), SubResource("Ability_BoulderToss")])
 phases = Array[ExtResource("3_phase_type")]([SubResource("Phase_One"), SubResource("Phase_Two"), SubResource("Phase_Frenzy")])
 initial_ability_delay = 6.0
