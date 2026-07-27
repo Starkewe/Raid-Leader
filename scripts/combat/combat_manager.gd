@@ -11,6 +11,7 @@ const AttemptRecorderScript := preload("res://scripts/combat/attempt_recorder.gd
 @onready var boss = get_node_or_null("../Boss")
 @onready var ui = get_node_or_null("../UI")
 @onready var player = get_node_or_null("../Player")
+@onready var movement_destination_visualizer = get_node_or_null("../MovementDestinationVisualizer")
 @onready var fail_screen: FailScreen = get_node_or_null("../UI/FailScreen")
 
 @export var voice_transcriber_path: NodePath
@@ -169,6 +170,12 @@ func initialize_combat():
 
 	if command_controller != null:
 		command_controller.setup(party_members, boss, player)
+
+	if (
+		movement_destination_visualizer != null
+		and movement_destination_visualizer.has_method("setup")
+	):
+		movement_destination_visualizer.setup(party_members)
 
 	if status_presenter != null:
 		status_presenter.setup(ui, boss, Callable(self, "is_unit_alive"))

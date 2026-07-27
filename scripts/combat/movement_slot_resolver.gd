@@ -74,6 +74,13 @@ const CLOSE_SLOT_RANGE_UNITS: float = 5.0
 const MID_SLOT_RANGE_UNITS: float = 20.0
 const FAR_SLOT_RANGE_UNITS: float = 40.0
 
+
+static func get_mini_region_spacing_pixels() -> float:
+	var close_to_mid_units: float = absf(MID_SLOT_RANGE_UNITS - CLOSE_SLOT_RANGE_UNITS)
+	var mid_to_far_units: float = absf(FAR_SLOT_RANGE_UNITS - MID_SLOT_RANGE_UNITS)
+	var spacing_units: float = minf(close_to_mid_units, mid_to_far_units)
+	return CombatMeasurementsScript.range_units_to_pixels(spacing_units)
+
 static func get_adjacent_region(current_region: String, rotation_direction: String) -> String:
 	var current_index: int = REGION_ORDER.find(current_region)
 

@@ -9,6 +9,7 @@ signal temporary_status_requested(unit: Node, text: String, duration: float)
 var boss: Node = null
 var player: Node = null
 var is_unit_alive_callable: Callable = Callable()
+var execute_as_dodge: bool = false
 
 
 func setup(new_boss: Node, new_player: Node, new_is_unit_alive_callable: Callable) -> void:
@@ -18,40 +19,56 @@ func setup(new_boss: Node, new_player: Node, new_is_unit_alive_callable: Callabl
 
 
 func execute_move(selected_units: Array, command_data: Dictionary) -> bool:
+	return execute_movement_action(selected_units, command_data, false)
+
+
+func execute_dodge(selected_units: Array, command_data: Dictionary) -> bool:
+	return execute_movement_action(selected_units, command_data, true)
+
+
+func execute_movement_action(
+	selected_units: Array,
+	command_data: Dictionary,
+	as_dodge: bool
+) -> bool:
+	execute_as_dodge = as_dodge
 	var where: String = String(command_data.get("where", "none"))
+	var issued := false
 
 	match where:
 		"me":
-			return execute_move_to_player(selected_units)
+			issued = execute_move_to_player(selected_units)
 
 		"movement_slot":
 			var region := String(command_data.get("movement_region", "north"))
 			var range_name := String(command_data.get("movement_range", "mid"))
-			return execute_move_to_slot(selected_units, region, range_name)
+			issued = execute_move_to_slot(selected_units, region, range_name)
 
 		"movement_region":
 			var region := String(command_data.get("movement_region", "north"))
-			return execute_move_to_region(selected_units, region)
+			issued = execute_move_to_region(selected_units, region)
 
 		"movement_rotate":
 			var region := String(command_data.get("movement_region", "north"))
-			return execute_rotate_to_region(selected_units, region)
+			issued = execute_rotate_to_region(selected_units, region)
 
 		"movement_rotate_step":
 			var direction := String(command_data.get("movement_direction", "clockwise"))
-			return execute_rotate_step(selected_units, direction)
+			issued = execute_rotate_step(selected_units, direction)
 
 		"movement_range":
 			var range_name := String(command_data.get("movement_range", "mid"))
-			return execute_move_to_range(selected_units, range_name)
+			issued = execute_move_to_range(selected_units, range_name)
 
 		"movement_range_step":
 			var direction := String(command_data.get("movement_direction", "out"))
-			return execute_range_step(selected_units, direction)
+			issued = execute_range_step(selected_units, direction)
 
 		_:
 			print("Unsupported movement destination:", where)
-			return false
+
+	execute_as_dodge = false
+	return issued
 
 
 func execute_move_to_player(selected_units: Array) -> bool:
@@ -64,11 +81,15 @@ func execute_move_to_player(selected_units: Array) -> bool:
 		return false
 
 	var player_2d := player as Node2D
+	var destination_context := build_destination_context_from_position(
+		player_2d.global_position
+	)
 
 	return command_units_to_shared_position(
 		selected_units,
 		player_2d.global_position,
-		"Moving to Player"
+		"Moving to Player",
+		destination_context
 	)
 
 
@@ -88,7 +109,8 @@ func execute_move_to_slot(selected_units: Array, region: String, range_name: Str
 	return command_units_to_positions(
 		living_units,
 		destinations,
-		"Moving " + region.capitalize() + " " + range_name.capitalize()
+		"Moving " + region.capitalize() + " " + range_name.capitalize(),
+		build_destination_context(region, range_name)
 	)
 
 
@@ -97,7 +119,6 @@ func execute_move_to_region(selected_units: Array, region: String) -> bool:
 		print("Boss is missing. Cannot move to region.")
 		return false
 
-	var boss_2d := boss as Node2D
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
 
@@ -122,7 +143,11 @@ func execute_move_to_region(selected_units: Array, region: String) -> bool:
 			region
 		)
 
-		unit.command_move_to_position(destination)
+		issue_position_command(
+			unit,
+			destination,
+			build_destination_context(region, current_range)
+		)
 
 		temporary_status_requested.emit(
 			unit,
@@ -180,7 +205,11 @@ func execute_rotate_step(selected_units: Array, rotation_direction: String) -> b
 			next_region
 		)
 
-		unit.command_move_to_position(destination)
+		issue_position_command(
+			unit,
+			destination,
+			build_destination_context(next_region, current_range)
+		)
 
 		temporary_status_requested.emit(
 			unit,
@@ -246,10 +275,18 @@ func execute_rotate_to_region(selected_units: Array, region: String) -> bool:
 		if destinations.is_empty():
 			continue
 
-		if unit.has_method("command_move_through_positions"):
-			unit.command_move_through_positions(destinations)
+		var destination_context := build_destination_context(region, current_range)
+
+		if execute_as_dodge and unit.has_method("command_dodge_through_positions"):
+			unit.command_dodge_through_positions(destinations, destination_context)
+		elif unit.has_method("command_move_through_positions"):
+			unit.command_move_through_positions(destinations, destination_context)
 		else:
-			unit.command_move_to_position(destinations[destinations.size() - 1])
+			issue_position_command(
+				unit,
+				destinations[destinations.size() - 1],
+				destination_context
+			)
 
 		temporary_status_requested.emit(
 			unit,
@@ -297,7 +334,11 @@ func execute_move_to_range(selected_units: Array, range_name: String) -> bool:
 			current_region
 		)
 
-		unit.command_move_to_position(destination)
+		issue_position_command(
+			unit,
+			destination,
+			build_destination_context(current_region, range_name)
+		)
 
 		temporary_status_requested.emit(
 			unit,
@@ -366,7 +407,11 @@ func execute_range_step(selected_units: Array, range_direction: String) -> bool:
 			current_region
 		)
 
-		unit.command_move_to_position(destination)
+		issue_position_command(
+			unit,
+			destination,
+			build_destination_context(current_region, next_range)
+		)
 
 		var status_text := "Moving " + range_direction
 
@@ -387,7 +432,12 @@ func execute_range_step(selected_units: Array, range_direction: String) -> bool:
 	return true
 
 
-func command_units_to_shared_position(selected_units: Array, destination: Vector2, status_text: String) -> bool:
+func command_units_to_shared_position(
+	selected_units: Array,
+	destination: Vector2,
+	status_text: String,
+	command_context: Dictionary = {}
+) -> bool:
 	var living_units := get_living_movable_units(selected_units)
 	var outward_direction := Vector2.DOWN
 
@@ -400,13 +450,19 @@ func command_units_to_shared_position(selected_units: Array, destination: Vector
 		outward_direction
 	)
 
-	return command_units_to_positions(living_units, destinations, status_text)
+	return command_units_to_positions(
+		living_units,
+		destinations,
+		status_text,
+		command_context
+	)
 
 
 func command_units_to_positions(
 	selected_units: Array,
 	destinations: Array[Vector2],
-	status_text: String
+	status_text: String,
+	command_context: Dictionary = {}
 ) -> bool:
 	var issued_command := false
 
@@ -422,7 +478,7 @@ func command_units_to_positions(
 		if unit_index >= destinations.size():
 			continue
 
-		unit.command_move_to_position(destinations[unit_index])
+		issue_position_command(unit, destinations[unit_index], command_context)
 		temporary_status_requested.emit(unit, status_text, 0.75)
 		issued_command = true
 
@@ -432,6 +488,57 @@ func command_units_to_positions(
 
 	refresh_requested.emit()
 	return true
+
+
+func issue_position_command(
+	unit: Node,
+	destination: Vector2,
+	command_context: Dictionary
+) -> void:
+	if execute_as_dodge and unit.has_method("command_dodge_to_position"):
+		unit.command_dodge_to_position(destination, command_context)
+	else:
+		unit.command_move_to_position(destination, command_context)
+
+
+func build_destination_context(region: String, range_name: String) -> Dictionary:
+	var flag_position := Vector2.ZERO
+
+	if is_valid_node(boss):
+		flag_position = MovementSlotResolverScript.get_slot_position(
+			boss,
+			region,
+			range_name
+		)
+
+	return {
+		"boss": boss,
+		"destination_region": region,
+		"destination_range": range_name,
+		"destination_key": MovementSlotResolverScript.get_mini_region_key(
+			region,
+			range_name
+		),
+		"flag_position": flag_position
+	}
+
+
+func build_destination_context_from_position(destination: Vector2) -> Dictionary:
+	if not is_valid_node(boss):
+		return {}
+
+	var mini_region := MovementSlotResolverScript.get_mini_region_from_position(
+		boss,
+		destination
+	)
+
+	return {
+		"boss": boss,
+		"destination_region": String(mini_region.get("region", "")),
+		"destination_range": String(mini_region.get("range", "")),
+		"destination_key": String(mini_region.get("key", "")),
+		"flag_position": destination
+	}
 
 
 func get_formation_destination(

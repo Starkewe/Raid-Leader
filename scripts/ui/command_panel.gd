@@ -164,6 +164,10 @@ func populate_what_options() -> void:
 		"what": "move"
 	})
 
+	add_option(what_dropdown, "Dodge", {
+		"what": CommandSchemaScript.ACTION_DODGE
+	})
+
 	add_option(what_dropdown, "Interrupt", {
 		"what": "interrupt"
 	})
@@ -197,7 +201,7 @@ func populate_where_options_for_current_action() -> void:
 				"where": "boss"
 			})
 
-		"move":
+		"move", "dodge":
 			add_option(where_dropdown, "Me", {
 				"where": "me"
 			})

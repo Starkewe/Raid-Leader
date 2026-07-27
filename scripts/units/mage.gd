@@ -53,7 +53,7 @@ func _physics_process(delta):
 		move_and_slide()
 		return
 
-	if update_manual_move_order():
+	if update_manual_move_order(delta):
 		move_and_slide()
 		return
 
