@@ -35,9 +35,14 @@ func _run() -> void:
 	target.global_position = Vector2.ZERO
 	rogue.global_position = Vector2(228.0, 0.0)
 	rogue.command_attack(target)
-	rogue.commanded_hold_active = true
+	rogue.command_move_to_position(rogue.global_position)
+	rogue._physics_process(0.016)
+
+	if not rogue.is_attack_action_active():
+		_fail("A normal positioning command replaced the active attack action.")
+		return
+
 	rogue.start_forced_movement(Vector2(528.0, 0.0), 0.1)
-	rogue.active_action_kind = BaseCombatUnit.ACTION_NONE
 	rogue._physics_process(0.1)
 
 	if rogue.attack_target_node != target:

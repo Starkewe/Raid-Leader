@@ -218,7 +218,9 @@ func on_reset_unit():
 # -------------------------------------------------------------------
 
 func stop_action():
-	action_command_id += 1
+	if active_action_kind != ACTION_NONE or has_manual_move_order:
+		action_command_id += 1
+
 	active_action_kind = ACTION_NONE
 	clear_manual_move_order()
 	stop_movement()
@@ -304,7 +306,10 @@ func replace_manual_move_order(
 	command_context: Dictionary
 ) -> void:
 	action_command_id += 1
-	active_action_kind = ACTION_MOVE
+
+	if is_forced_moving() or not is_attack_action_active():
+		active_action_kind = ACTION_MOVE
+
 	movement_command_id += 1
 	has_manual_move_order = not destinations.is_empty()
 	manual_move_waypoints.clear()
@@ -1097,10 +1102,12 @@ func on_forced_movement_started() -> void:
 
 
 func complete_forced_movement() -> void:
-	if (
+	var should_restore_attack := (
 		forced_movement_action_kind == ACTION_ATTACK
 		and forced_movement_action_command_id == action_command_id
-	):
+	)
+
+	if should_restore_attack:
 		active_action_kind = ACTION_ATTACK
 		clear_commanded_hold()
 
