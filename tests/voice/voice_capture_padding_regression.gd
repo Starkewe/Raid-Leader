@@ -3,12 +3,16 @@ extends SceneTree
 const AUDIO_BLOCK_FRAMES := 512
 const PADDED_ZERO_FRAMES := 1536
 const KEPT_ZERO_FRAMES := 16
+const SAMPLE_RATE := 48000
+const MINIMUM_RECORD_SECONDS := 0.25
+const STALLED_CAPTURE_FRAMES := 720
 
 
 func _init() -> void:
 	var controller := VoiceCaptureController.new()
 	controller.hard_zero_threshold = 0.000001
 	controller.max_hard_zero_run_kept = KEPT_ZERO_FRAMES
+	controller.min_record_seconds = MINIMUM_RECORD_SECONDS
 
 	var padded_frames := PackedVector2Array()
 	_append_repeated_frame(padded_frames, Vector2(0.25, 0.25), AUDIO_BLOCK_FRAMES)
@@ -37,7 +41,25 @@ func _init() -> void:
 		_fail("An all-zero capture should still be treated as silent.")
 		return
 
-	print("Voice capture padding regression test passed.")
+	var stalled_capture := PackedVector2Array()
+	_append_repeated_frame(stalled_capture, Vector2(0.00001, 0.00001), STALLED_CAPTURE_FRAMES)
+
+	if controller._has_minimum_recording_duration(stalled_capture, SAMPLE_RATE):
+		_fail("A 15 ms stalled capture must not be sent to Whisper.")
+		return
+
+	var minimum_capture := PackedVector2Array()
+	_append_repeated_frame(
+		minimum_capture,
+		Vector2(0.25, 0.25),
+		int(SAMPLE_RATE * MINIMUM_RECORD_SECONDS)
+	)
+
+	if not controller._has_minimum_recording_duration(minimum_capture, SAMPLE_RATE):
+		_fail("A capture meeting the minimum duration should remain valid.")
+		return
+
+	print("Voice capture padding and duration regression test passed.")
 	quit(0)
 
 

@@ -16,6 +16,7 @@ signal recording_failed(reason: String)
 
 @export var min_record_seconds: float = 0.25
 @export var max_record_seconds: float = 6.0
+@export var microphone_restart_delay_frames: int = 2
 
 @export var normalize_output: bool = true
 @export var target_peak: float = 0.85
@@ -29,12 +30,17 @@ var _is_recording: bool = false
 var _stop_requested: bool = false
 var _record_started_at_msec: int = 0
 var _recorded_frames: PackedVector2Array = PackedVector2Array()
+var _capture_ready: bool = false
+var _capture_rearm_pending: bool = false
+var _capture_pushed_frames_at_start: int = 0
+var _capture_discarded_frames_at_start: int = 0
 
 @onready var _mic_player: AudioStreamPlayer = get_node_or_null(mic_player_path) as AudioStreamPlayer
 @onready var _transcriber: VoiceTranscriberClient = get_node_or_null(transcriber_path) as VoiceTranscriberClient
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	ensure_voice_input_action()
 
 	if _mic_player == null:
@@ -52,20 +58,19 @@ func _ready() -> void:
 		return
 
 	_capture_effect.buffer_length = max_record_seconds + 1.0
-	_capture_effect.clear_buffer()
 
 	if _mic_player.stream == null:
 		_mic_player.stream = AudioStreamMicrophone.new()
 
 	_mic_player.bus = capture_bus_name
 
-	if not _mic_player.playing:
-		_mic_player.play()
-
+	print("Voice capture controller instance: ", get_instance_id())
 	print("Voice mic player actual bus: ", _mic_player.bus)
 	print("Voice capture bus name: ", capture_bus_name)
 	print("Voice capture bus index: ", AudioServer.get_bus_index(capture_bus_name))
 	print("Voice capture bus effect count: ", AudioServer.get_bus_effect_count(AudioServer.get_bus_index(capture_bus_name)))
+
+	_schedule_capture_rearm("combat scene initialized")
 
 
 func _process(_delta: float) -> void:
@@ -84,9 +89,6 @@ func _process(_delta: float) -> void:
 
 	_recorded_frames.append_array(frames)
 
-	var sample_rate := int(AudioServer.get_mix_rate())
-	var max_frames := int(max_record_seconds * sample_rate)
-
 	var elapsed_seconds: float = float(Time.get_ticks_msec() - _record_started_at_msec) / 1000.0
 
 	if elapsed_seconds >= max_record_seconds:
@@ -95,6 +97,9 @@ func _process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if get_tree() == null or get_tree().paused:
+		return
+
 	if event.is_action_pressed(push_to_talk_action):
 		start_recording()
 
@@ -118,6 +123,15 @@ func start_recording() -> void:
 		recording_failed.emit("Missing capture effect.")
 		return
 
+	if not _capture_ready:
+		recording_failed.emit("Microphone capture is still initializing.")
+		return
+
+	if _mic_player == null or not _mic_player.playing:
+		_schedule_capture_rearm("microphone player was not active")
+		recording_failed.emit("Microphone capture was restarted. Try the command again.")
+		return
+
 	if _transcriber == null:
 		recording_failed.emit("Missing transcriber.")
 		return
@@ -138,6 +152,8 @@ func start_recording() -> void:
 
 	_is_recording = true
 	_record_started_at_msec = Time.get_ticks_msec()
+	_capture_pushed_frames_at_start = _capture_effect.get_pushed_frames()
+	_capture_discarded_frames_at_start = _capture_effect.get_discarded_frames()
 
 	recording_started.emit()
 	print("Voice recording started.")
@@ -178,6 +194,7 @@ func _finish_recording_and_transcribe() -> void:
 
 	print("Voice project sample rate: ", sample_rate)
 	print("Voice inferred capture rate: ", inferred_capture_rate)
+	_print_capture_counters()
 
 	var frames_to_save: PackedVector2Array = _recorded_frames
 
@@ -190,7 +207,7 @@ func _finish_recording_and_transcribe() -> void:
 		print("Voice padding cleanup seconds after: ", float(cleaned_frames.size()) / float(sample_rate))
 
 		if cleaned_frames.is_empty():
-			recording_failed.emit("Captured audio was silent.")
+			_reject_stalled_capture(elapsed_seconds, padded_frame_count, 0.0)
 			return
 		else:
 			frames_to_save = cleaned_frames
@@ -200,6 +217,12 @@ func _finish_recording_and_transcribe() -> void:
 
 	if frames_to_save.is_empty():
 		recording_failed.emit("Captured audio was silent after trimming.")
+		return
+
+	var recording_seconds := _get_recording_seconds(frames_to_save, sample_rate)
+
+	if not _has_minimum_recording_duration(frames_to_save, sample_rate):
+		_reject_stalled_capture(elapsed_seconds, _recorded_frames.size(), recording_seconds)
 		return
 
 	var voice_dir := "user://voice"
@@ -213,8 +236,6 @@ func _finish_recording_and_transcribe() -> void:
 		recording_failed.emit("Failed to save recording. Error: %s" % save_error)
 		return
 
-	var recording_seconds := float(frames_to_save.size()) / float(sample_rate)
-
 	recording_finished.emit(wav_path)
 
 	print("Voice elapsed seconds: ", elapsed_seconds)
@@ -225,6 +246,125 @@ func _finish_recording_and_transcribe() -> void:
 	print("Voice recording global path: ", ProjectSettings.globalize_path(wav_path))
 
 	_transcriber.transcribe_wav(wav_path)
+
+func _get_recording_seconds(frames: PackedVector2Array, sample_rate: int) -> float:
+	if sample_rate <= 0:
+		return 0.0
+
+	return float(frames.size()) / float(sample_rate)
+
+
+func _has_minimum_recording_duration(frames: PackedVector2Array, sample_rate: int) -> bool:
+	return _get_recording_seconds(frames, sample_rate) >= min_record_seconds
+
+
+func _reject_stalled_capture(
+	elapsed_seconds: float,
+	raw_frame_count: int,
+	cleaned_seconds: float
+) -> void:
+	print(
+		"Voice capture stalled. Wall time: %.3f, raw frames: %d, cleaned seconds: %.3f"
+		% [elapsed_seconds, raw_frame_count, cleaned_seconds]
+	)
+	_schedule_capture_rearm("capture produced no usable microphone stream")
+	recording_failed.emit("Microphone capture stalled and was reset. Try the command again.")
+
+
+func _print_capture_counters() -> void:
+	if _capture_effect == null:
+		return
+
+	var pushed_delta := maxi(
+		_capture_effect.get_pushed_frames() - _capture_pushed_frames_at_start,
+		0
+	)
+	var discarded_delta := maxi(
+		_capture_effect.get_discarded_frames() - _capture_discarded_frames_at_start,
+		0
+	)
+
+	print("Voice capture pushed frames during recording: ", pushed_delta)
+	print("Voice capture discarded frames during recording: ", discarded_delta)
+
+
+func _schedule_capture_rearm(reason: String) -> void:
+	if _capture_rearm_pending:
+		return
+
+	_capture_ready = false
+	_capture_rearm_pending = true
+	call_deferred("_rearm_capture", reason)
+
+
+func _rearm_capture(reason: String) -> void:
+	if not is_inside_tree() or _mic_player == null or _capture_effect == null:
+		_capture_rearm_pending = false
+		return
+
+	_reset_recording_state()
+
+	if _mic_player.playing:
+		_mic_player.stop()
+
+	_capture_effect.clear_buffer()
+	_discard_capture_buffer()
+
+	var tree := get_tree()
+
+	if tree == null:
+		_capture_rearm_pending = false
+		return
+
+	var delay_frames := maxi(microphone_restart_delay_frames, 1)
+
+	for _frame_index in range(delay_frames):
+		await tree.process_frame
+
+		if not is_inside_tree():
+			return
+
+	_capture_effect.clear_buffer()
+	_discard_capture_buffer()
+	_mic_player.play()
+	await tree.process_frame
+
+	if not is_inside_tree():
+		return
+
+	_capture_effect.clear_buffer()
+	_discard_capture_buffer()
+	_capture_ready = _mic_player.playing
+	_capture_rearm_pending = false
+
+	print("Voice microphone capture rearmed: ", reason)
+
+	if not _capture_ready:
+		recording_failed.emit("Microphone input could not be restarted.")
+
+
+func _reset_recording_state() -> void:
+	_is_recording = false
+	_stop_requested = false
+	_record_started_at_msec = 0
+	_recorded_frames.clear()
+
+
+func _exit_tree() -> void:
+	_capture_ready = false
+	_capture_rearm_pending = false
+	_reset_recording_state()
+
+	if _mic_player != null and is_instance_valid(_mic_player) and _mic_player.playing:
+		_mic_player.stop()
+
+	if _capture_effect != null:
+		print("Voice capture controller shutting down: ", get_instance_id())
+		print("Voice capture frames available on shutdown: ", _capture_effect.get_frames_available())
+		_capture_effect.clear_buffer()
+
+	_capture_effect = null
+
 func _remove_hard_zero_padding(frames: PackedVector2Array) -> PackedVector2Array:
 	if frames.is_empty():
 		return frames
