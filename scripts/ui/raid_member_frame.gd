@@ -1,6 +1,8 @@
 extends PanelContainer
 class_name RaidMemberFrame
 
+const DodgeTuningScript := preload("res://scripts/combat/dodge_tuning.gd")
+
 signal hovered(unit)
 signal unhovered(unit)
 
@@ -30,6 +32,57 @@ func _ready():
 
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
+
+
+func _process(_delta: float) -> void:
+	queue_redraw()
+
+
+func _draw() -> void:
+	if unit == null or not is_instance_valid(unit):
+		return
+
+	if not unit.has_method("get_dodge_charge_display"):
+		return
+
+	var segments: Array = unit.get_dodge_charge_display()
+
+	if segments.is_empty():
+		return
+
+	var gap := 2.0 if segments.size() > 1 else 0.0
+	var total_width := maxf(size.x - 4.0, 1.0)
+	var segment_width := (total_width - gap * float(segments.size() - 1)) / float(segments.size())
+	var bar_height := 2.0
+	var bar_y := size.y - bar_height
+	var empty_color := Color(0.32, 0.28, 0.12, 0.28)
+	var charging_color := Color(0.82, 0.66, 0.12, 0.78)
+	var ready_color := Color(1.0, 0.84, 0.12, 1.0)
+
+	for segment_index in range(segments.size()):
+		var segment: Dictionary = segments[segment_index]
+		var x := 2.0 + float(segment_index) * (segment_width + gap)
+		var segment_rect := Rect2(Vector2(x, bar_y), Vector2(segment_width, bar_height))
+		draw_rect(segment_rect, empty_color)
+
+		var fill := clampf(float(segment.get("fill", 0.0)), 0.0, 1.0)
+
+		if fill <= 0.0:
+			continue
+
+		var fill_color := ready_color if bool(segment.get("ready", false)) else charging_color
+
+		if bool(segment.get("flash", false)):
+			var flash_strength := float(segment.get("flash_strength", 0.0))
+			fill_color = fill_color.lightened(flash_strength)
+
+		draw_rect(
+			Rect2(
+				segment_rect.position,
+				Vector2(segment_width * fill, bar_height)
+			),
+			fill_color
+		)
 
 func setup(new_unit: Node, new_display_name: String):
 	unit = new_unit

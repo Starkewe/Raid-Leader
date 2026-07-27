@@ -18,6 +18,7 @@ const ACTION_ALIASES := {
 	CommandSchemaScript.ACTION_ATTACK: ["attack", "damage", "burn", "focus", "engage"],
 	CommandSchemaScript.ACTION_HEAL: ["heal", "healing"],
 	CommandSchemaScript.ACTION_CURE: ["cure", "dispel", "cleanse"],
+	CommandSchemaScript.ACTION_DODGE: ["dodge", "dash", "blink"],
 	CommandSchemaScript.ACTION_MOVE: ["move", "moves", "moving", "go", "come", "rotate", "turn", "spread", "stack"]
 }
 
@@ -123,46 +124,53 @@ func _parse_action(text: String) -> Dictionary:
 		CommandSchemaScript.ACTION_CURE:
 			return _action(action, CommandSchemaScript.DESTINATION_CURABLE_ALLIES, {}, matched_alias)
 
-		CommandSchemaScript.ACTION_MOVE:
-			return _parse_movement_action(text, matched_alias)
+		CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE:
+			return _parse_movement_action(text, matched_alias, action)
 
 	return {"ok": false, "reason": "Unsupported action: " + action}
 
 
-func _parse_movement_action(text: String, matched_alias: String) -> Dictionary:
-	if _has_any_phrase(text, ["come to me", "to me", "on me", "stack on me"]):
-		return _action("move", "me", {}, matched_alias)
+func _parse_movement_action(
+	text: String,
+	matched_alias: String,
+	movement_action: String = CommandSchemaScript.ACTION_MOVE
+) -> Dictionary:
+	if _has_any_phrase(
+		text,
+		["come to me", "to me", "on me", "stack on me", "to player", "to the player"]
+	):
+		return _action(movement_action, "me", {}, matched_alias)
 
 	if _has_any_phrase(text, ["move out", "go out", "spread out"]) or _has_word(text, "away"):
-		return _action("move", "movement_range_step", {"movement_direction": "out"}, matched_alias)
+		return _action(movement_action, "movement_range_step", {"movement_direction": "out"}, matched_alias)
 
 	if _has_any_phrase(text, ["move in", "go in", "come in"]) or _has_word(text, "closer"):
-		return _action("move", "movement_range_step", {"movement_direction": "in"}, matched_alias)
+		return _action(movement_action, "movement_range_step", {"movement_direction": "in"}, matched_alias)
 
 	if _has_word(text, "counterclockwise") or _has_word(text, "anticlockwise"):
-		return _action("move", "movement_rotate_step", {"movement_direction": "counterclockwise"}, matched_alias)
+		return _action(movement_action, "movement_rotate_step", {"movement_direction": "counterclockwise"}, matched_alias)
 
 	if _has_word(text, "clockwise"):
-		return _action("move", "movement_rotate_step", {"movement_direction": "clockwise"}, matched_alias)
+		return _action(movement_action, "movement_rotate_step", {"movement_direction": "clockwise"}, matched_alias)
 
 	var destination_text := _text_after_alias(text, matched_alias)
 	var region := _parse_region(destination_text)
 	var range_name := _parse_range(destination_text)
 
 	if not region.is_empty() and not range_name.is_empty():
-		return _action("move", "movement_slot", {
+		return _action(movement_action, "movement_slot", {
 			"movement_region": region,
 			"movement_range": range_name
 		}, matched_alias)
 
 	if not region.is_empty() and matched_alias in ["rotate", "turn"]:
-		return _action("move", "movement_rotate", {"movement_region": region}, matched_alias)
+		return _action(movement_action, "movement_rotate", {"movement_region": region}, matched_alias)
 
 	if not region.is_empty():
-		return _action("move", "movement_region", {"movement_region": region}, matched_alias)
+		return _action(movement_action, "movement_region", {"movement_region": region}, matched_alias)
 
 	if not range_name.is_empty():
-		return _action("move", "movement_range", {"movement_range": range_name}, matched_alias)
+		return _action(movement_action, "movement_range", {"movement_range": range_name}, matched_alias)
 
 	return {"ok": false, "reason": "Movement command is missing a destination."}
 
@@ -214,7 +222,10 @@ func _extract_selectors(text: String, allow_everyone: bool) -> Array:
 
 	for group_number in range(1, ceili(float(GameState.MAX_RAID_SIZE) / 5.0) + 1):
 		for number_alias in _number_aliases(group_number):
-			if _has_phrase(working, "group " + number_alias):
+			if (
+				_has_phrase(working, "group " + number_alias)
+				or _has_phrase(working, "row " + number_alias)
+			):
 				_add_selector(selectors, CommandSchemaScript.SELECTOR_GROUP, group_number)
 
 	working = _extract_unit_identities(working, selectors)

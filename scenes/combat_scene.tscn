@@ -14,6 +14,7 @@
 [ext_resource type="Script" uid="uid://b22uscmu6vno7" path="res://scripts/combat/combat_manager.gd" id="16_1f740"]
 [ext_resource type="PackedScene" path="res://scenes/ui/fail_screen.tscn" id="17_fail"]
 [ext_resource type="Script" path="res://scripts/ui/game_pause_menu.gd" id="18_pause"]
+[ext_resource type="Script" path="res://scripts/combat/movement_destination_visualizer.gd" id="19_paths"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
 
@@ -74,6 +75,10 @@ offset_top = -95.0
 offset_right = 50.0
 offset_bottom = -85.0
 show_percentage = false
+
+[node name="MovementDestinationVisualizer" type="Node2D" parent="."]
+z_index = -10
+script = ExtResource("19_paths")
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=1494368386]
 script = ExtResource("14_62tjo")

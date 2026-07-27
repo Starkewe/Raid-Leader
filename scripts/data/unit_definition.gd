@@ -2,6 +2,7 @@ extends Resource
 class_name UnitDefinition
 
 @export var unit_class: String = ""
+@export var base_class: String = ""
 @export var display_name: String = ""
 @export_file("*.tscn") var scene_path: String = ""
 
@@ -35,3 +36,8 @@ func get_action(action_id: String) -> UnitActionDefinition:
 			return action
 
 	return null
+
+
+func get_base_class() -> String:
+	var configured := base_class.strip_edges()
+	return unit_class if configured.is_empty() else configured

@@ -84,6 +84,9 @@ func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
 		"move":
 			return execute_panel_move(selected_units, command_data)
 
+		"dodge":
+			return execute_panel_dodge(selected_units, command_data)
+
 		"interrupt":
 			return execute_panel_interrupt(selected_units, where, boss_alive)
 
@@ -147,6 +150,14 @@ func execute_panel_move(selected_units: Array, command_data: Dictionary) -> bool
 		return false
 
 	return movement_executor.execute_move(selected_units, command_data)
+
+
+func execute_panel_dodge(selected_units: Array, command_data: Dictionary) -> bool:
+	if movement_executor == null:
+		print("Movement executor is missing.")
+		return false
+
+	return movement_executor.execute_dodge(selected_units, command_data)
 
 
 func execute_panel_interrupt(selected_units: Array, where: String, boss_alive: bool) -> bool:
