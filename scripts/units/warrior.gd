@@ -65,6 +65,7 @@ func command_attack(new_target: Node2D):
 		stop_action()
 		return
 
+	begin_attack_action()
 	target = new_target
 
 	print(get_display_name(), "attacking:", get_node_display_name(target))
@@ -75,7 +76,7 @@ func update_cooldown(delta: float):
 
 
 func has_valid_attack_target() -> bool:
-	return can_damage_target(target)
+	return is_attack_action_active() and can_damage_target(target)
 
 
 func handle_attack_movement():
@@ -89,6 +90,12 @@ func handle_attack_movement():
 
 	if distance_units <= attack_range_units:
 		attack_target()
+
+
+func on_forced_movement_finished() -> void:
+	if has_valid_attack_target():
+		handle_attack_movement()
+
 
 func attack_target():
 	if cooldown_timer > 0.0:

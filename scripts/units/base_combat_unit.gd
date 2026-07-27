@@ -10,6 +10,10 @@ const StatusEffectControllerScript := preload("res://scripts/combat/status_effec
 signal defeated(unit)
 signal combat_event(event: Dictionary)
 
+const ACTION_NONE := ""
+const ACTION_ATTACK := "attack"
+const ACTION_MOVE := "move"
+
 var max_health: int = 100
 var speed: float = 140.0
 @export var show_world_health_bar: bool = false
@@ -33,6 +37,10 @@ var manual_move_destination: Vector2 = Vector2.ZERO
 var manual_move_waypoints: Array[Vector2] = []
 var movement_command_id: int = 0
 
+var active_action_kind: String = ACTION_NONE
+var action_command_id: int = 0
+var forced_movement_action_kind: String = ACTION_NONE
+var forced_movement_action_command_id: int = -1
 var commanded_hold_active: bool = false
 var command_destination_boss: Node = null
 var command_destination_region: String = ""
@@ -210,12 +218,33 @@ func on_reset_unit():
 # -------------------------------------------------------------------
 
 func stop_action():
+	if active_action_kind != ACTION_NONE or has_manual_move_order:
+		action_command_id += 1
+
+	active_action_kind = ACTION_NONE
 	clear_manual_move_order()
 	stop_movement()
 
 
 func stop_movement():
 	velocity = Vector2.ZERO
+
+
+func begin_attack_action() -> void:
+	action_command_id += 1
+	active_action_kind = ACTION_ATTACK
+	clear_manual_move_order()
+	clear_commanded_hold()
+
+
+func is_attack_action_active() -> bool:
+	return active_action_kind == ACTION_ATTACK
+
+
+func clear_attack_action() -> void:
+	if is_attack_action_active():
+		action_command_id += 1
+		active_action_kind = ACTION_NONE
 
 
 func clear_manual_move_order() -> void:
@@ -229,7 +258,7 @@ func command_move_to_position(
 	destination: Vector2,
 	command_context: Dictionary = {}
 ) -> void:
-	if is_dead or is_forced_moving():
+	if is_dead:
 		return
 
 	replace_manual_move_order([destination], command_context)
@@ -240,7 +269,7 @@ func command_move_through_positions(
 	destinations: Array[Vector2],
 	command_context: Dictionary = {}
 ) -> void:
-	if is_dead or is_forced_moving():
+	if is_dead:
 		return
 
 	if destinations.is_empty():
@@ -276,6 +305,11 @@ func replace_manual_move_order(
 	destinations: Array[Vector2],
 	command_context: Dictionary
 ) -> void:
+	action_command_id += 1
+
+	if is_forced_moving() or not is_attack_action_active():
+		active_action_kind = ACTION_MOVE
+
 	movement_command_id += 1
 	has_manual_move_order = not destinations.is_empty()
 	manual_move_waypoints.clear()
@@ -348,7 +382,11 @@ func move_toward_node(target_node: Node2D, move_speed: float = -1.0):
 		stop_movement()
 		return
 
-	if commanded_hold_active and not has_manual_move_order:
+	if (
+		commanded_hold_active
+		and not has_manual_move_order
+		and not is_attack_action_active()
+	):
 		stop_movement()
 		return
 
@@ -1022,6 +1060,10 @@ func start_forced_movement(destination: Vector2, duration: float) -> void:
 	if is_dead:
 		return
 
+	if not is_forced_moving():
+		forced_movement_action_kind = active_action_kind
+		forced_movement_action_command_id = action_command_id
+
 	clear_manual_move_order()
 	stop_movement()
 	on_forced_movement_started()
@@ -1029,15 +1071,26 @@ func start_forced_movement(destination: Vector2, duration: float) -> void:
 
 
 func update_forced_movement(delta: float) -> bool:
-	return forced_movement_controller.update(delta)
+	var was_forced_moving := is_forced_moving()
+	var handled_forced_movement := forced_movement_controller.update(delta)
+
+	if was_forced_moving and not is_forced_moving():
+		complete_forced_movement()
+
+	return handled_forced_movement
 
 
 func finish_forced_movement() -> void:
+	var was_forced_moving := is_forced_moving()
 	forced_movement_controller.finish()
+
+	if was_forced_moving:
+		complete_forced_movement()
 
 
 func cancel_forced_movement() -> void:
 	forced_movement_controller.cancel()
+	clear_forced_movement_action()
 
 
 func is_forced_moving() -> bool:
@@ -1046,6 +1099,29 @@ func is_forced_moving() -> bool:
 
 func on_forced_movement_started() -> void:
 	on_manual_move_started()
+
+
+func complete_forced_movement() -> void:
+	var should_restore_attack := (
+		forced_movement_action_kind == ACTION_ATTACK
+		and forced_movement_action_command_id == action_command_id
+	)
+
+	if should_restore_attack:
+		active_action_kind = ACTION_ATTACK
+		clear_commanded_hold()
+
+	clear_forced_movement_action()
+	on_forced_movement_finished()
+
+
+func clear_forced_movement_action() -> void:
+	forced_movement_action_kind = ACTION_NONE
+	forced_movement_action_command_id = -1
+
+
+func on_forced_movement_finished() -> void:
+	pass
 
 
 # -------------------------------------------------------------------
