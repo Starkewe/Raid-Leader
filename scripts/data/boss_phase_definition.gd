@@ -15,6 +15,10 @@ class_name BossPhaseDefinition
 @export_range(0.0, 10.0, 0.01) var ability_damage_multiplier: float = 1.0
 @export var ability_target_count_bonus: int = 0
 
+@export_group("Basic Attack Rules")
+## Negative values retain the encounter-level threshold.
+@export_range(-1, 100, 1) var basic_attack_trigger_threshold_override: int = -1
+
 @export_group("Ability Rules")
 @export var enabled_ability_ids: Array[String] = []
 @export var disabled_ability_ids: Array[String] = []

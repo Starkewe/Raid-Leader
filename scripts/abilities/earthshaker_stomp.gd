@@ -34,6 +34,10 @@ func resolve(boss: Node, party_members: Array) -> void:
 	var destination_groups: Dictionary = {}
 	var destination_data: Dictionary = {}
 	var stationary_occupancy: Dictionary = {}
+	var current_target: Node = null
+
+	if boss.has_method("get_current_target"):
+		current_target = boss.get_current_target()
 
 	for unit in get_living_units(living_units):
 		if not unit is Node2D:
@@ -43,6 +47,14 @@ func resolve(boss: Node, party_members: Array) -> void:
 			boss,
 			(unit as Node2D).global_position
 		)
+
+		if unit == current_target:
+			var exempt_key := String(mini_region.get("key", ""))
+			stationary_occupancy[exempt_key] = int(
+				stationary_occupancy.get(exempt_key, 0)
+			) + 1
+			continue
+
 		var current_range := String(mini_region.get("range", "mid"))
 		var destination_range := MovementSlotResolverScript.get_adjacent_range(
 			current_range,
@@ -93,5 +105,10 @@ func resolve(boss: Node, party_members: Array) -> void:
 	debug_log(
 		boss,
 		ability_name + " hit " + str(living_units.size())
-		+ " unit(s) and pushed non-far units one ring outward."
+		+ " unit(s) and pushed eligible non-far units one ring outward; current target "
+		+ (
+			"was exempt from movement."
+			if current_target != null
+			else "was unavailable."
+		)
 	)

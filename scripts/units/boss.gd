@@ -26,10 +26,13 @@ var combat_radius: float = 128.0
 var attack_damage: int = 20
 var attack_cooldown: float = 1.5
 var special_cast_time: float = 2.5
+var movement_mode: String = "mobile"
 var basic_attack_id: String = "boss_auto_attack"
 var basic_attack_display_name: String = "Attack"
 var basic_attack_status_effect: StatusEffectDefinition = null
 var basic_attack_damage_type: String = "physical"
+var basic_attack_targeting_mode: String = "single_target"
+var basic_attack_secondary_damage: int = 0
 var basic_attack_secondary_target_count: int = 0
 var basic_attack_secondary_damage_multiplier: float = 1.0
 var basic_attack_secondary_closest_to_primary: bool = true
@@ -39,6 +42,10 @@ var basic_attack_raidwide_ability_id: String = ""
 var basic_attack_raidwide_display_name: String = ""
 var basic_attack_raidwide_damage_type: String = "physical"
 var basic_attack_raidwide_delay: float = 0.0
+var basic_attack_triggered_ability_definition: BossAbilityDefinition = null
+var basic_attack_trigger_threshold: int = 0
+var basic_attack_trigger_when_target_outside_required_range: bool = false
+var basic_attack_required_range: String = "close"
 var initial_ability_delay: float = -1.0
 
 @onready var health_bar = get_node_or_null("HealthBar")
@@ -71,10 +78,12 @@ var encounter_objects: Array[Node] = []
 var mechanic_state: Dictionary = {}
 var encounter_origin_position: Vector2 = Vector2.ZERO
 var basic_attack_sequence_count: int = 0
+var basic_attack_trigger_count: int = 0
 var pending_basic_raidwide_timer: float = -1.0
 var pending_phase_transition_definition: BossAbilityDefinition = null
 var phase_transition_pending: bool = false
 var current_ability_is_phase_transition: bool = false
+var current_ability_is_basic_attack_trigger: bool = false
 
 func _ready():
 	encounter_origin_position = global_position
@@ -117,6 +126,7 @@ func apply_selected_boss_profile() -> void:
 
 	boss_display_name = encounter_definition.boss_display_name
 	max_health = encounter_definition.max_health
+	movement_mode = encounter_definition.movement_mode
 	speed = CombatMeasurementsScript.range_units_to_pixels(
 		encounter_definition.movement_speed_range_units_per_second
 	)
@@ -129,6 +139,8 @@ func apply_selected_boss_profile() -> void:
 	basic_attack_display_name = encounter_definition.basic_attack_display_name
 	basic_attack_status_effect = encounter_definition.basic_attack_status_effect
 	basic_attack_damage_type = encounter_definition.basic_attack_damage_type
+	basic_attack_targeting_mode = encounter_definition.basic_attack_targeting_mode
+	basic_attack_secondary_damage = encounter_definition.basic_attack_secondary_damage
 	basic_attack_secondary_target_count = encounter_definition.basic_attack_secondary_target_count
 	basic_attack_secondary_damage_multiplier = encounter_definition.basic_attack_secondary_damage_multiplier
 	basic_attack_secondary_closest_to_primary = encounter_definition.basic_attack_secondary_closest_to_primary
@@ -138,6 +150,12 @@ func apply_selected_boss_profile() -> void:
 	basic_attack_raidwide_display_name = encounter_definition.basic_attack_raidwide_display_name
 	basic_attack_raidwide_damage_type = encounter_definition.basic_attack_raidwide_damage_type
 	basic_attack_raidwide_delay = encounter_definition.basic_attack_raidwide_delay
+	basic_attack_triggered_ability_definition = encounter_definition.basic_attack_triggered_ability
+	basic_attack_trigger_threshold = encounter_definition.basic_attack_trigger_threshold
+	basic_attack_trigger_when_target_outside_required_range = (
+		encounter_definition.basic_attack_trigger_when_target_outside_required_range
+	)
+	basic_attack_required_range = encounter_definition.basic_attack_required_range
 	initial_ability_delay = encounter_definition.initial_ability_delay
 	debug_logging_enabled = encounter_definition.debug_logging_enabled
 
@@ -155,6 +173,8 @@ func _physics_process(delta):
 	if is_dead:
 		return
 
+	enforce_movement_mode()
+
 	if not encounter_active:
 		velocity = Vector2.ZERO
 		return
@@ -165,11 +185,13 @@ func _physics_process(delta):
 		if current_ability != null and current_ability.requires_active_target and not has_valid_target():
 			cancel_current_cast_due_to_missing_target()
 			move_and_slide()
+			enforce_movement_mode()
 			return
 
 		velocity = Vector2.ZERO
 		update_special_cast(delta)
 		move_and_slide()
+		enforce_movement_mode()
 		return
 
 	attack_timer = max(attack_timer - delta, 0.0)
@@ -181,6 +203,7 @@ func _physics_process(delta):
 		if is_casting:
 			velocity = Vector2.ZERO
 			move_and_slide()
+			enforce_movement_mode()
 			return
 
 	var target := get_current_target()
@@ -192,15 +215,18 @@ func _physics_process(delta):
 
 	var distance_units: float = get_range_units_to_target(target)
 
-	if distance_units > get_movement_stop_range_units():
+	if movement_mode == "anchored":
+		velocity = Vector2.ZERO
+	elif distance_units > get_movement_stop_range_units():
 		chase_target()
 	else:
 		velocity = Vector2.ZERO
 
-	if distance_units <= attack_range_units:
+	if movement_mode == "anchored" or distance_units <= attack_range_units:
 		auto_attack()
 
 	move_and_slide()
+	enforce_movement_mode()
 
 func create_next_ability() -> BossAbility:
 	if ability_definitions.is_empty():
@@ -229,7 +255,9 @@ func get_distance_pixels_to_target_edge(target_node: Node2D) -> float:
 	if target_node == null or not is_instance_valid(target_node):
 		return 999999.0
 
-	var center_distance: float = global_position.distance_to(target_node.global_position)
+	var center_distance: float = get_combat_origin_position().distance_to(
+		target_node.global_position
+	)
 	return maxf(center_distance - combat_radius, 0.0)
 
 
@@ -305,7 +333,9 @@ func set_encounter_active(active: bool) -> void:
 		pending_phase_transition_definition = null
 		phase_transition_pending = false
 		current_ability_is_phase_transition = false
+		current_ability_is_basic_attack_trigger = false
 		reset_basic_attack_sequence(false)
+		reset_basic_attack_trigger_sequence(false)
 		update_cast_bar()
 		clear_encounter_objects()
 func chase_target():
@@ -327,15 +357,37 @@ func auto_attack():
 		return
 
 	attack_timer = get_effective_attack_cooldown()
+
+	var trigger_reason := get_basic_attack_trigger_reason(target)
+
+	if trigger_reason != "":
+		if start_basic_attack_triggered_cast(trigger_reason):
+			return
+
 	var secondary_targets := get_basic_attack_secondary_targets(target)
 	var resolved_damage := maxi(
 		int(round(float(attack_damage) * get_attack_damage_multiplier())),
 		0
 	)
-	var existing_stacks := 0
+	var target_mini_region := get_mini_region_for_position(target.global_position)
+	var target_mini_region_key := String(target_mini_region.get("key", ""))
+	var hit_targets: Array = [target]
+	hit_targets.append_array(secondary_targets)
+	var status_targets: Array = (
+		hit_targets
+		if basic_attack_targeting_mode == "exact_mini_region"
+		else [target]
+	)
+	var existing_stacks_by_target: Dictionary = {}
 
-	if basic_attack_status_effect != null and target.has_method("get_status_effect_stacks"):
-		existing_stacks = int(target.get_status_effect_stacks(basic_attack_status_effect.effect_id))
+	for hit_target in status_targets:
+		if (
+			basic_attack_status_effect != null
+			and hit_target.has_method("get_status_effect_stacks")
+		):
+			existing_stacks_by_target[hit_target] = int(
+				hit_target.get_status_effect_stacks(basic_attack_status_effect.effect_id)
+			)
 
 	if target.has_method("take_damage"):
 		target.take_damage(
@@ -343,16 +395,14 @@ func auto_attack():
 			self,
 			basic_attack_id,
 			{
-				"repeated_target_stacks": existing_stacks,
+				"repeated_target_stacks": int(existing_stacks_by_target.get(target, 0)),
 				"damage_type": basic_attack_damage_type,
-				"chain_index": 0
+				"chain_index": 0,
+				"mini_region": target_mini_region_key
 			}
 		)
 
-	var secondary_damage := maxi(
-		int(round(float(resolved_damage) * basic_attack_secondary_damage_multiplier)),
-		0
-	)
+	var secondary_damage := get_resolved_basic_attack_secondary_damage(resolved_damage)
 	var secondary_labels: Array[String] = []
 
 	for secondary_index in range(secondary_targets.size()):
@@ -369,42 +419,58 @@ func auto_attack():
 				{
 					"damage_type": basic_attack_damage_type,
 					"chain_index": secondary_index + 1,
-					"primary_target": target
+					"primary_target": target,
+					"mini_region": target_mini_region_key
 				}
 			)
 			secondary_labels.append(get_unit_debug_name(secondary_target))
 
-	if basic_attack_status_effect != null and target.has_method("apply_status_effect"):
-		target.apply_status_effect(basic_attack_status_effect, self)
+	var stack_change_labels: Array[String] = []
 
-	var updated_stacks := existing_stacks
+	if basic_attack_status_effect != null:
+		for hit_target in status_targets:
+			if hit_target.has_method("apply_status_effect"):
+				hit_target.apply_status_effect(basic_attack_status_effect, self)
 
-	if basic_attack_status_effect != null and target.has_method("get_status_effect_stacks"):
-		updated_stacks = int(target.get_status_effect_stacks(basic_attack_status_effect.effect_id))
+			if hit_target.has_method("get_status_effect_stacks"):
+				var previous_stacks := int(existing_stacks_by_target.get(hit_target, 0))
+				var updated_stacks := int(
+					hit_target.get_status_effect_stacks(basic_attack_status_effect.effect_id)
+				)
+				stack_change_labels.append(
+					get_unit_debug_name(hit_target) + " "
+					+ str(previous_stacks) + " -> " + str(updated_stacks)
+				)
 
 	var attack_message := (
-		basic_attack_display_name + " hit " + get_unit_debug_name(target)
-		+ " for " + str(resolved_damage)
+		basic_attack_display_name + " primary " + get_unit_debug_name(target)
+		+ " in " + target_mini_region_key + " for " + str(resolved_damage)
 	)
 
-	if not secondary_labels.is_empty():
+	if basic_attack_targeting_mode == "exact_mini_region":
+		attack_message += (
+			"; cleaved [" + ", ".join(secondary_labels)
+			+ "] for " + str(secondary_damage)
+		)
+	elif not secondary_labels.is_empty():
 		attack_message += (
 			"; chained for " + str(secondary_damage) + " to "
 			+ ", ".join(secondary_labels)
 		)
 
-	if basic_attack_status_effect != null:
-		attack_message += (
-			"; repeated-target stacks " + str(existing_stacks)
-			+ " -> " + str(updated_stacks)
-		)
+	if not stack_change_labels.is_empty():
+		attack_message += "; vulnerability stacks [" + ", ".join(stack_change_labels) + "]"
 
 	debug_log(attack_message + ".")
 
 	advance_basic_attack_sequence()
+	advance_basic_attack_trigger_sequence()
 
 
 func get_basic_attack_secondary_targets(primary_target: Node2D) -> Array:
+	if basic_attack_targeting_mode == "exact_mini_region":
+		return get_exact_mini_region_cleave_targets(primary_target)
+
 	if basic_attack_secondary_target_count <= 0 or primary_target == null:
 		return []
 
@@ -427,6 +493,161 @@ func get_basic_attack_secondary_targets(primary_target: Node2D) -> Array:
 	)
 
 	return candidates.slice(0, mini(basic_attack_secondary_target_count, candidates.size()))
+
+
+func get_exact_mini_region_cleave_targets(primary_target: Node2D) -> Array:
+	if primary_target == null:
+		return []
+
+	var primary_mini_region := get_mini_region_for_position(primary_target.global_position)
+	var primary_key := String(primary_mini_region.get("key", ""))
+	var targets: Array = []
+
+	for party_member in party_members:
+		if party_member == primary_target or not is_valid_living_party_member(party_member):
+			continue
+
+		if not party_member is Node2D:
+			continue
+
+		var candidate_mini_region := get_mini_region_for_position(
+			(party_member as Node2D).global_position
+		)
+
+		if String(candidate_mini_region.get("key", "")) == primary_key:
+			targets.append(party_member)
+
+	return targets
+
+
+func get_resolved_basic_attack_secondary_damage(resolved_primary_damage: int) -> int:
+	if (
+		basic_attack_targeting_mode == "exact_mini_region"
+		and basic_attack_secondary_damage > 0
+	):
+		return maxi(
+			int(round(
+				float(basic_attack_secondary_damage) * get_attack_damage_multiplier()
+			)),
+			0
+		)
+
+	return maxi(
+		int(round(float(resolved_primary_damage) * basic_attack_secondary_damage_multiplier)),
+		0
+	)
+
+
+func get_basic_attack_trigger_reason(target: Node2D) -> String:
+	if basic_attack_triggered_ability_definition == null:
+		return ""
+
+	if (
+		basic_attack_trigger_when_target_outside_required_range
+		and not is_target_in_required_basic_attack_range(target)
+	):
+		return "target_outside_required_range"
+
+	var threshold := get_current_basic_attack_trigger_threshold()
+
+	if threshold > 0 and basic_attack_trigger_count >= threshold:
+		return "charge_threshold"
+
+	return ""
+
+
+func is_target_in_required_basic_attack_range(target: Node2D) -> bool:
+	if target == null:
+		return false
+
+	var target_range := MovementSlotResolverScript.get_nearest_range_from_origin(
+		self,
+		get_combat_origin_position(),
+		target.global_position
+	)
+	return target_range == basic_attack_required_range
+
+
+func start_basic_attack_triggered_cast(trigger_reason: String) -> bool:
+	if is_casting or basic_attack_triggered_ability_definition == null:
+		return false
+
+	var ability_to_cast := BossAbilityFactoryScript.create_ability_from_definition(
+		basic_attack_triggered_ability_definition
+	)
+
+	if ability_to_cast == null or not ability_to_cast.can_cast(self, party_members):
+		return false
+
+	var charges_consumed := basic_attack_trigger_count
+	var threshold := get_current_basic_attack_trigger_threshold()
+	var target := get_current_target()
+	var locked_region := ""
+
+	if target != null:
+		locked_region = MovementSlotResolverScript.get_nearest_region_from_position(
+			get_combat_origin_position(),
+			target.global_position
+		)
+
+	basic_attack_trigger_count = 0
+	current_ability = ability_to_cast
+	current_ability_is_phase_transition = false
+	current_ability_is_basic_attack_trigger = true
+	is_casting = true
+	current_cast_speed_multiplier = get_ability_speed_multiplier()
+	cast_timer = current_ability.cast_time / current_cast_speed_multiplier
+	current_cast_elapsed = 0.0
+
+	current_ability.on_cast_start(self, party_members)
+	emit_combat_event("cast_started", self, current_ability.ability_id, 0, {
+		"cast_name": current_ability.get_cast_name(),
+		"cast_time": cast_timer,
+		"interruptible": current_ability.interruptible,
+		"trigger_source": trigger_reason,
+		"charges_consumed": charges_consumed,
+		"phase_threshold": threshold,
+		"locked_region": locked_region
+	})
+
+	debug_log(
+		current_ability.get_cast_name() + " triggered by "
+		+ (
+			"current target outside " + basic_attack_required_range + " range"
+			if trigger_reason == "target_outside_required_range"
+			else "charge threshold"
+		)
+		+ "; consumed " + str(charges_consumed) + " charge(s); locked "
+		+ locked_region + "; phase threshold " + str(threshold) + "."
+	)
+
+	update_cast_bar()
+
+	if current_ability.interruptible:
+		print("Boss begins casting", current_ability.get_cast_name(), "Interrupt now!")
+	else:
+		print("Boss begins casting", current_ability.get_cast_name(), "This cast cannot be interrupted.")
+
+	return true
+
+
+func advance_basic_attack_trigger_sequence() -> void:
+	if basic_attack_triggered_ability_definition == null:
+		return
+
+	basic_attack_trigger_count += 1
+	var threshold := get_current_basic_attack_trigger_threshold()
+	debug_log(
+		basic_attack_display_name + " charge count is now "
+		+ str(basic_attack_trigger_count) + "/" + str(threshold) + "."
+	)
+
+
+func reset_basic_attack_trigger_sequence(should_log: bool = true) -> void:
+	basic_attack_trigger_count = 0
+
+	if should_log and basic_attack_triggered_ability_definition != null:
+		debug_log("Reset the basic-attack triggered-ability counter.")
 
 
 func advance_basic_attack_sequence() -> void:
@@ -526,6 +747,7 @@ func start_special_cast():
 
 	current_ability = ability_to_cast
 	current_ability_is_phase_transition = starts_phase_transition
+	current_ability_is_basic_attack_trigger = false
 
 	if starts_phase_transition:
 		pending_phase_transition_definition = null
@@ -573,13 +795,14 @@ func update_special_cast(delta):
 func finish_special_cast():
 	is_casting = false
 	var finished_phase_transition := current_ability_is_phase_transition
+	var finished_basic_attack_trigger := current_ability_is_basic_attack_trigger
 
 	if current_ability != null:
-		special_timer = (
-			maxf(current_ability.cooldown, 0.0)
-			if finished_phase_transition
-			else get_ability_recovery_time(current_ability)
-		)
+		if finished_phase_transition:
+			special_timer = maxf(current_ability.cooldown, 0.0)
+		elif not finished_basic_attack_trigger:
+			special_timer = get_ability_recovery_time(current_ability)
+
 		print("Boss finishes", current_ability.get_cast_name())
 		current_ability.resolve(self, party_members)
 		emit_combat_event("cast_resolved", self, current_ability.ability_id, 0)
@@ -588,6 +811,7 @@ func finish_special_cast():
 
 	current_ability = null
 	current_ability_is_phase_transition = false
+	current_ability_is_basic_attack_trigger = false
 
 	if finished_phase_transition:
 		attack_timer = get_effective_attack_cooldown()
@@ -604,9 +828,14 @@ func cancel_current_cast_due_to_missing_target() -> void:
 	cast_timer = 0.0
 	current_cast_elapsed = 0.0
 
+	var cancelled_basic_attack_trigger := current_ability_is_basic_attack_trigger
+
 	if current_ability != null:
 		current_ability.on_interrupted(self, party_members)
-		special_timer = get_ability_recovery_time(current_ability)
+
+		if not cancelled_basic_attack_trigger:
+			special_timer = get_ability_recovery_time(current_ability)
+
 		emit_combat_event("cast_cancelled", self, current_ability.ability_id, 0, {
 			"reason": "missing_target"
 		})
@@ -614,6 +843,8 @@ func cancel_current_cast_due_to_missing_target() -> void:
 		special_timer = get_next_ability_cooldown()
 
 	current_ability = null
+	current_ability_is_phase_transition = false
+	current_ability_is_basic_attack_trigger = false
 	current_cast_speed_multiplier = 1.0
 	update_cast_bar()
 
@@ -632,8 +863,12 @@ func interrupt_cast(source: Node = null, interrupt_ability_id: String = "interru
 		current_cast_elapsed = 0.0
 
 		if current_ability != null:
+			var interrupted_basic_attack_trigger := current_ability_is_basic_attack_trigger
 			current_ability.on_interrupted(self, party_members)
-			special_timer = get_ability_recovery_time(current_ability)
+
+			if not interrupted_basic_attack_trigger:
+				special_timer = get_ability_recovery_time(current_ability)
+
 			emit_combat_event("cast_interrupted", source, current_ability.ability_id, 0, {
 				"interrupt_ability_id": interrupt_ability_id
 			})
@@ -641,6 +876,8 @@ func interrupt_cast(source: Node = null, interrupt_ability_id: String = "interru
 			special_timer = get_next_ability_cooldown()
 
 		current_ability = null
+		current_ability_is_phase_transition = false
+		current_ability_is_basic_attack_trigger = false
 		current_cast_speed_multiplier = 1.0
 		update_cast_bar()
 		print("Boss cast interrupted!")
@@ -692,9 +929,11 @@ func die():
 	current_cast_speed_multiplier = 1.0
 	current_ability = null
 	current_ability_is_phase_transition = false
+	current_ability_is_basic_attack_trigger = false
 	phase_transition_pending = false
 	pending_phase_transition_definition = null
 	reset_basic_attack_sequence(false)
+	reset_basic_attack_trigger_sequence(false)
 	update_cast_bar()
 	clear_encounter_objects()
 	clear_target()
@@ -747,9 +986,11 @@ func reset_boss(new_position: Vector2):
 	is_casting = false
 	current_ability = null
 	current_ability_is_phase_transition = false
+	current_ability_is_basic_attack_trigger = false
 	phase_transition_pending = false
 	pending_phase_transition_definition = null
 	reset_basic_attack_sequence(false)
+	reset_basic_attack_trigger_sequence(false)
 
 	if next_ability == null:
 		next_ability = create_next_ability()
@@ -785,6 +1026,11 @@ func get_status_text() -> String:
 			attack_status += " | " + basic_attack_raidwide_display_name + " "
 			attack_status += str(basic_attack_sequence_count) + "/"
 			attack_status += str(basic_attack_raidwide_every_n_attacks)
+
+		if basic_attack_triggered_ability_definition != null:
+			attack_status += " | " + basic_attack_triggered_ability_definition.display_name + " "
+			attack_status += str(basic_attack_trigger_count) + "/"
+			attack_status += str(get_current_basic_attack_trigger_threshold())
 
 		return attack_status
 
@@ -890,6 +1136,16 @@ func get_movement_stop_range_units() -> float:
 	return minf(movement_stop_range_units, attack_range_units)
 
 
+func get_current_basic_attack_trigger_threshold() -> int:
+	if (
+		current_phase != null
+		and current_phase.basic_attack_trigger_threshold_override >= 0
+	):
+		return current_phase.basic_attack_trigger_threshold_override
+
+	return maxi(basic_attack_trigger_threshold, 0)
+
+
 func get_ability_speed_multiplier() -> float:
 	if current_phase == null:
 		return 1.0
@@ -957,7 +1213,9 @@ func update_current_phase(emit_change_event: bool = true) -> void:
 	if next_phase == null or next_phase == current_phase:
 		return
 
+	var previous_trigger_threshold := get_current_basic_attack_trigger_threshold()
 	current_phase = next_phase
+	var updated_trigger_threshold := get_current_basic_attack_trigger_threshold()
 	next_ability_index = 0
 	next_ability = create_next_ability()
 
@@ -968,6 +1226,24 @@ func update_current_phase(emit_change_event: bool = true) -> void:
 		"Phase changed to " + current_phase.display_name
 		+ " at " + str(snappedf(health_percent, 0.1)) + "% health."
 	)
+
+	if previous_trigger_threshold != updated_trigger_threshold:
+		debug_log(
+			"Basic-attack trigger threshold changed "
+			+ str(previous_trigger_threshold) + " -> " + str(updated_trigger_threshold)
+			+ "; preserved " + str(basic_attack_trigger_count) + " charge(s); next "
+			+ basic_attack_display_name + " opportunity "
+			+ (
+				"will trigger " + basic_attack_triggered_ability_definition.display_name
+				if (
+					basic_attack_triggered_ability_definition != null
+					and updated_trigger_threshold > 0
+					and basic_attack_trigger_count >= updated_trigger_threshold
+				)
+				else "is not yet at the trigger threshold"
+			)
+			+ "."
+		)
 
 	phase_changed.emit(current_phase.phase_id, current_phase.display_name)
 	emit_combat_event(
@@ -995,6 +1271,7 @@ func queue_phase_transition(transition_definition: BossAbilityDefinition) -> voi
 	is_casting = false
 	current_ability = null
 	current_ability_is_phase_transition = false
+	current_ability_is_basic_attack_trigger = false
 	cast_timer = 0.0
 	current_cast_elapsed = 0.0
 	current_cast_speed_multiplier = 1.0
@@ -1017,6 +1294,29 @@ func get_current_phase_name() -> String:
 
 func get_encounter_origin_position() -> Vector2:
 	return encounter_origin_position
+
+
+func get_combat_origin_position() -> Vector2:
+	if movement_mode == "anchored":
+		return encounter_origin_position
+
+	return global_position
+
+
+func get_mini_region_for_position(unit_position: Vector2) -> Dictionary:
+	return MovementSlotResolverScript.get_mini_region_from_origin(
+		self,
+		get_combat_origin_position(),
+		unit_position
+	)
+
+
+func enforce_movement_mode() -> void:
+	if movement_mode != "anchored":
+		return
+
+	global_position = encounter_origin_position
+	velocity = Vector2.ZERO
 
 
 func move_to_encounter_origin() -> void:

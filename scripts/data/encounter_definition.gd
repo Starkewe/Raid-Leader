@@ -9,6 +9,7 @@ class_name EncounterDefinition
 @export_group("Boss")
 @export var boss_display_name: String = "Boss"
 @export var max_health: int = 3000
+@export_enum("mobile", "anchored") var movement_mode: String = "mobile"
 @export var movement_speed_range_units_per_second: float = 7.0
 @export var attack_range_units: float = 5.0
 ## Negative values stop movement at attack range. Smaller values let a boss
@@ -23,6 +24,9 @@ class_name EncounterDefinition
 @export var basic_attack_display_name: String = "Attack"
 @export var basic_attack_status_effect: StatusEffectDefinition = null
 @export_enum("physical", "magic", "environmental") var basic_attack_damage_type: String = "physical"
+@export_enum("single_target", "exact_mini_region") var basic_attack_targeting_mode: String = "single_target"
+## Used by exact-mini-region attacks. Zero falls back to the chain multiplier.
+@export var basic_attack_secondary_damage: int = 0
 
 @export_group("Basic Attack Chain")
 @export var basic_attack_secondary_target_count: int = 0
@@ -38,6 +42,13 @@ class_name EncounterDefinition
 @export var basic_attack_raidwide_display_name: String = ""
 @export_enum("physical", "magic", "environmental") var basic_attack_raidwide_damage_type: String = "physical"
 @export var basic_attack_raidwide_delay: float = 0.0
+
+@export_group("Basic Attack Triggered Ability")
+@export var basic_attack_triggered_ability: BossAbilityDefinition = null
+## Number of completed normal attacks before the next attack opportunity triggers the ability.
+@export var basic_attack_trigger_threshold: int = 0
+@export var basic_attack_trigger_when_target_outside_required_range: bool = false
+@export_enum("close", "mid", "far") var basic_attack_required_range: String = "close"
 
 @export_group("Loadout")
 @export var abilities: Array[BossAbilityDefinition] = []
@@ -58,5 +69,12 @@ func get_ability_ids() -> Array[String]:
 	for ability in abilities:
 		if ability != null and not ability.ability_id.is_empty():
 			ids.append(ability.ability_id)
+
+	if (
+		basic_attack_triggered_ability != null
+		and not basic_attack_triggered_ability.ability_id.is_empty()
+		and not ids.has(basic_attack_triggered_ability.ability_id)
+	):
+		ids.append(basic_attack_triggered_ability.ability_id)
 
 	return ids
