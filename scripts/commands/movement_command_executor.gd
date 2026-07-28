@@ -2,6 +2,8 @@ extends RefCounted
 class_name MovementCommandExecutor
 
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
+const LOCAL_DESTINATION_SPACING: float = 28.0
+const LOCAL_SEPARATION_ITERATIONS: int = 8
 
 signal refresh_requested
 signal temporary_status_requested(unit: Node, text: String, duration: float)
@@ -99,12 +101,18 @@ func execute_move_to_slot(selected_units: Array, region: String, range_name: Str
 		return false
 
 	var living_units := get_living_movable_units(selected_units)
-	var destinations := MovementSlotResolverScript.get_slot_formation_positions(
-		boss,
-		region,
-		range_name,
-		living_units.size()
-	)
+	var destinations: Array[Vector2] = []
+	var occupied_destinations: Dictionary = {}
+
+	for unit in living_units:
+		destinations.append(
+			get_nearest_available_mini_region_destination(
+				(unit as Node2D).global_position,
+				region,
+				range_name,
+				occupied_destinations
+			)
+		)
 
 	return command_units_to_positions(
 		living_units,
@@ -121,9 +129,9 @@ func execute_move_to_region(selected_units: Array, region: String) -> bool:
 
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
+	var occupied_destinations: Dictionary = {}
 
-	for unit_index in range(living_units.size()):
-		var unit = living_units[unit_index]
+	for unit in living_units:
 		var unit_2d := unit as Node2D
 
 		var current_range: String = MovementSlotResolverScript.get_nearest_range_from_position(
@@ -131,16 +139,11 @@ func execute_move_to_region(selected_units: Array, region: String) -> bool:
 			unit_2d.global_position
 		)
 
-		var slot_center: Vector2 = MovementSlotResolverScript.get_slot_position(
-			boss,
+		var destination := get_nearest_available_mini_region_destination(
+			unit_2d.global_position,
 			region,
-			current_range
-		)
-		var destination := get_formation_destination(
-			slot_center,
-			unit_index,
-			living_units.size(),
-			region
+			current_range,
+			occupied_destinations
 		)
 
 		issue_position_command(
@@ -173,9 +176,9 @@ func execute_rotate_step(selected_units: Array, rotation_direction: String) -> b
 	var boss_2d := boss as Node2D
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
+	var occupied_destinations: Dictionary = {}
 
-	for unit_index in range(living_units.size()):
-		var unit = living_units[unit_index]
+	for unit in living_units:
 		var unit_2d := unit as Node2D
 
 		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
@@ -193,16 +196,11 @@ func execute_rotate_step(selected_units: Array, rotation_direction: String) -> b
 			rotation_direction
 		)
 
-		var slot_center: Vector2 = MovementSlotResolverScript.get_slot_position(
-			boss,
+		var destination := get_nearest_available_mini_region_destination(
+			unit_2d.global_position,
 			next_region,
-			current_range
-		)
-		var destination := get_formation_destination(
-			slot_center,
-			unit_index,
-			living_units.size(),
-			next_region
+			current_range,
+			occupied_destinations
 		)
 
 		issue_position_command(
@@ -235,9 +233,9 @@ func execute_rotate_to_region(selected_units: Array, region: String) -> bool:
 	var boss_2d := boss as Node2D
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
+	var occupied_destinations: Dictionary = {}
 
-	for unit_index in range(living_units.size()):
-		var unit = living_units[unit_index]
+	for unit in living_units:
 		var unit_2d := unit as Node2D
 
 		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
@@ -256,21 +254,18 @@ func execute_rotate_to_region(selected_units: Array, region: String) -> bool:
 		)
 
 		var destinations: Array[Vector2] = []
+		var waypoint_origin := unit_2d.global_position
 
 		for path_region in region_path:
-			var slot_center: Vector2 = MovementSlotResolverScript.get_slot_position(
-				boss,
+			var destination := get_nearest_available_mini_region_destination(
+				waypoint_origin,
 				path_region,
-				current_range
-			)
-			var destination := get_formation_destination(
-				slot_center,
-				unit_index,
-				living_units.size(),
-				path_region
+				current_range,
+				occupied_destinations
 			)
 
 			destinations.append(destination)
+			waypoint_origin = destination
 
 		if destinations.is_empty():
 			continue
@@ -312,9 +307,9 @@ func execute_move_to_range(selected_units: Array, range_name: String) -> bool:
 	var boss_2d := boss as Node2D
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
+	var occupied_destinations: Dictionary = {}
 
-	for unit_index in range(living_units.size()):
-		var unit = living_units[unit_index]
+	for unit in living_units:
 		var unit_2d := unit as Node2D
 
 		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
@@ -322,16 +317,11 @@ func execute_move_to_range(selected_units: Array, range_name: String) -> bool:
 			unit_2d.global_position
 		)
 
-		var slot_center: Vector2 = MovementSlotResolverScript.get_slot_position(
-			boss,
+		var destination := get_nearest_available_mini_region_destination(
+			unit_2d.global_position,
 			current_region,
-			range_name
-		)
-		var destination := get_formation_destination(
-			slot_center,
-			unit_index,
-			living_units.size(),
-			current_region
+			range_name,
+			occupied_destinations
 		)
 
 		issue_position_command(
@@ -364,9 +354,9 @@ func execute_range_step(selected_units: Array, range_direction: String) -> bool:
 	var boss_2d := boss as Node2D
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
+	var occupied_destinations: Dictionary = {}
 
-	for unit_index in range(living_units.size()):
-		var unit = living_units[unit_index]
+	for unit in living_units:
 		var unit_2d := unit as Node2D
 
 		var current_region: String = MovementSlotResolverScript.get_nearest_region_from_position(
@@ -395,16 +385,11 @@ func execute_range_step(selected_units: Array, range_direction: String) -> bool:
 			temporary_status_requested.emit(unit, boundary_text, 0.75)
 			continue
 
-		var slot_center: Vector2 = MovementSlotResolverScript.get_slot_position(
-			boss,
+		var destination := get_nearest_available_mini_region_destination(
+			unit_2d.global_position,
 			current_region,
-			next_range
-		)
-		var destination := get_formation_destination(
-			slot_center,
-			unit_index,
-			living_units.size(),
-			current_region
+			next_range,
+			occupied_destinations
 		)
 
 		issue_position_command(
@@ -519,7 +504,8 @@ func build_destination_context(region: String, range_name: String) -> Dictionary
 			region,
 			range_name
 		),
-		"flag_position": flag_position
+		"flag_position": flag_position,
+		"complete_on_mini_region_entry": true
 	}
 
 
@@ -541,22 +527,66 @@ func build_destination_context_from_position(destination: Vector2) -> Dictionary
 	}
 
 
-func get_formation_destination(
-	center: Vector2,
-	unit_index: int,
-	unit_count: int,
-	region: String
+func get_nearest_available_mini_region_destination(
+	source_position: Vector2,
+	region: String,
+	range_name: String,
+	occupied_destinations: Dictionary
 ) -> Vector2:
-	var positions := MovementSlotResolverScript.get_formation_positions(
-		center,
-		unit_count,
-		MovementSlotResolverScript.get_region_direction(region)
+	var destination := MovementSlotResolverScript.get_closest_point_in_mini_region(
+		boss,
+		source_position,
+		region,
+		range_name
+	)
+	var destination_key := MovementSlotResolverScript.get_mini_region_key(
+		region,
+		range_name
+	)
+	var occupied: Array = occupied_destinations.get(destination_key, [])
+	var interior_anchor := MovementSlotResolverScript.get_slot_position(
+		boss,
+		region,
+		range_name
 	)
 
-	if unit_index < 0 or unit_index >= positions.size():
-		return center
+	for _iteration in range(LOCAL_SEPARATION_ITERATIONS):
+		var separation_motion := Vector2.ZERO
 
-	return positions[unit_index]
+		for occupied_value in occupied:
+			var occupied_position := occupied_value as Vector2
+			var offset := destination - occupied_position
+			var distance := offset.length()
+
+			if distance >= LOCAL_DESTINATION_SPACING:
+				continue
+
+			if offset.is_zero_approx():
+				offset = interior_anchor - destination
+
+			if offset.is_zero_approx():
+				var outward := MovementSlotResolverScript.get_region_direction(region)
+				offset = Vector2(-outward.y, outward.x)
+
+			separation_motion += (
+				offset.normalized()
+				* (LOCAL_DESTINATION_SPACING - distance)
+			)
+
+		if separation_motion.is_zero_approx():
+			break
+
+		destination += separation_motion
+		destination = MovementSlotResolverScript.get_closest_point_in_mini_region(
+			boss,
+			destination,
+			region,
+			range_name
+		)
+
+	occupied.append(destination)
+	occupied_destinations[destination_key] = occupied
+	return destination
 
 
 func get_living_movable_units(source_units: Array) -> Array:
