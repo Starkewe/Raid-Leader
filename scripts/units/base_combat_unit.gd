@@ -18,6 +18,7 @@ var max_health: int = 100
 var speed: float = 140.0
 @export var show_world_health_bar: bool = false
 @export var manual_move_stop_distance: float = 12.0
+@export var mini_region_footprint_radius: float = 12.0
 
 @onready var health_bar = get_node_or_null("HealthBar")
 
@@ -351,8 +352,12 @@ func update_manual_move_order(delta: float) -> bool:
 	manual_move_destination = current_destination
 
 	var distance: float = global_position.distance_to(current_destination)
+	var can_finish_waypoint := distance <= manual_move_stop_distance
 
-	if distance <= manual_move_stop_distance:
+	if can_finish_waypoint and manual_move_waypoints.size() == 1:
+		can_finish_waypoint = is_safely_inside_command_destination()
+
+	if can_finish_waypoint:
 		manual_move_waypoints.remove_at(0)
 
 		if manual_move_waypoints.is_empty():
@@ -807,13 +812,24 @@ func update_command_destination_arrival() -> void:
 		clear_command_path_visual()
 		return
 
-	var current_mini_region := MovementSlotResolverScript.get_mini_region_from_position(
-		command_destination_boss,
-		global_position
-	)
-
-	if String(current_mini_region.get("key", "")) == command_destination_key:
+	if is_safely_inside_command_destination():
 		clear_command_path_visual()
+
+
+func is_safely_inside_command_destination() -> bool:
+	if command_destination_boss == null or command_destination_key.is_empty():
+		return true
+
+	if not is_instance_valid(command_destination_boss):
+		return false
+
+	return MovementSlotResolverScript.is_position_safely_inside_mini_region(
+		command_destination_boss,
+		global_position,
+		command_destination_region,
+		command_destination_range,
+		mini_region_footprint_radius
+	)
 
 
 func clear_command_path_visual() -> void:

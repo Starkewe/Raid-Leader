@@ -18,8 +18,8 @@ const ACTION_ALIASES := {
 	CommandSchemaScript.ACTION_ATTACK: ["attack", "damage", "burn", "focus", "engage"],
 	CommandSchemaScript.ACTION_HEAL: ["heal", "healing"],
 	CommandSchemaScript.ACTION_CURE: ["cure", "dispel", "cleanse"],
-	CommandSchemaScript.ACTION_DODGE: ["dodge", "dash", "blink"],
-	CommandSchemaScript.ACTION_MOVE: ["move", "moves", "moving", "go", "come", "rotate", "turn", "spread", "stack"]
+	CommandSchemaScript.ACTION_DODGE: ["dodge", "dodged", "dash", "blink"],
+	CommandSchemaScript.ACTION_MOVE: ["move", "moved", "moves", "moving", "go", "come", "rotate", "turn", "spread", "stack"]
 }
 
 const EXCEPTION_MARKERS: Array[String] = [

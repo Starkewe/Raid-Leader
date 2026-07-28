@@ -73,6 +73,8 @@ const DEFAULT_BOSS_COMBAT_RADIUS: float = 90.0
 const CLOSE_SLOT_RANGE_UNITS: float = 5.0
 const MID_SLOT_RANGE_UNITS: float = 20.0
 const FAR_SLOT_RANGE_UNITS: float = 40.0
+const MINI_REGION_HALF_ANGLE: float = PI / 8.0
+const MINI_REGION_ENTRY_MARGIN_PIXELS: float = 1.0
 
 
 static func get_mini_region_spacing_pixels() -> float:
@@ -224,6 +226,171 @@ static func get_slot_position(boss_node: Node, region: String, range_name: Strin
 
 	return boss_2d.global_position + direction * total_distance
 
+
+static func get_closest_point_in_mini_region(
+	boss_node: Node,
+	source_position: Vector2,
+	region: String,
+	range_name: String,
+	safety_inset_pixels: float = MINI_REGION_ENTRY_MARGIN_PIXELS
+) -> Vector2:
+	if boss_node == null or not is_instance_valid(boss_node) or not boss_node is Node2D:
+		return source_position
+
+	var boss_2d := boss_node as Node2D
+	var source_offset := source_position - boss_2d.global_position
+	var region_direction := get_region_direction(region)
+	var relative_angle := 0.0
+	var safe_inset := maxf(safety_inset_pixels, MINI_REGION_ENTRY_MARGIN_PIXELS)
+
+	if is_position_safely_inside_mini_region(
+		boss_node,
+		source_position,
+		region,
+		range_name,
+		safe_inset
+	):
+		return source_position
+
+	var radial_bounds := get_mini_region_radial_bounds(
+		boss_node,
+		range_name,
+		safe_inset
+	)
+	var minimum_apothem := float(radial_bounds.get("minimum", 0.0))
+	var maximum_apothem := float(radial_bounds.get("maximum", -1.0))
+	var reference_radius := maxf(source_offset.length(), minimum_apothem)
+
+	if not source_offset.is_zero_approx():
+		relative_angle = wrapf(
+			source_offset.angle() - region_direction.angle(),
+			-PI,
+			PI
+		)
+
+	var angle_inset := asin(clampf(
+		safe_inset / maxf(reference_radius, safe_inset),
+		0.0,
+		1.0
+	))
+	var maximum_entry_angle := maxf(MINI_REGION_HALF_ANGLE - angle_inset, 0.0)
+	var entry_direction := region_direction.rotated(
+		clampf(relative_angle, -maximum_entry_angle, maximum_entry_angle)
+	)
+	var apothem_scale := maxf(entry_direction.dot(region_direction), 0.001)
+	var minimum_radius := minimum_apothem / apothem_scale
+	var maximum_radius := (
+		maximum_apothem / apothem_scale
+		if maximum_apothem >= 0.0
+		else -1.0
+	)
+	var entry_radius := maxf(source_offset.dot(entry_direction), minimum_radius)
+
+	if maximum_radius >= 0.0:
+		entry_radius = minf(entry_radius, maximum_radius)
+
+	angle_inset = asin(clampf(
+		safe_inset / maxf(entry_radius, safe_inset),
+		0.0,
+		1.0
+	))
+	maximum_entry_angle = maxf(MINI_REGION_HALF_ANGLE - angle_inset, 0.0)
+	entry_direction = region_direction.rotated(
+		clampf(relative_angle, -maximum_entry_angle, maximum_entry_angle)
+	)
+	apothem_scale = maxf(entry_direction.dot(region_direction), 0.001)
+	minimum_radius = minimum_apothem / apothem_scale
+	maximum_radius = (
+		maximum_apothem / apothem_scale
+		if maximum_apothem >= 0.0
+		else -1.0
+	)
+	entry_radius = maxf(source_offset.dot(entry_direction), minimum_radius)
+
+	if maximum_radius >= 0.0:
+		entry_radius = minf(entry_radius, maximum_radius)
+
+	return boss_2d.global_position + entry_direction * entry_radius
+
+
+static func get_mini_region_radial_bounds(
+	boss_node: Node,
+	range_name: String,
+	safety_inset_pixels: float = MINI_REGION_ENTRY_MARGIN_PIXELS
+) -> Dictionary:
+	var boss_radius := get_boss_combat_radius(boss_node)
+	var safe_inset := maxf(safety_inset_pixels, MINI_REGION_ENTRY_MARGIN_PIXELS)
+	var close_mid_boundary := boss_radius + CombatMeasurementsScript.range_units_to_pixels(
+		(CLOSE_SLOT_RANGE_UNITS + MID_SLOT_RANGE_UNITS) * 0.5
+	)
+	var mid_far_boundary := boss_radius + CombatMeasurementsScript.range_units_to_pixels(
+		(MID_SLOT_RANGE_UNITS + FAR_SLOT_RANGE_UNITS) * 0.5
+	)
+
+	match range_name:
+		RANGE_CLOSE:
+			return {
+				"minimum": boss_radius + safe_inset,
+				"maximum": close_mid_boundary - safe_inset
+			}
+		RANGE_FAR:
+			return {
+				"minimum": mid_far_boundary + safe_inset,
+				"maximum": -1.0
+			}
+		_:
+			return {
+				"minimum": close_mid_boundary + safe_inset,
+				"maximum": mid_far_boundary - safe_inset
+			}
+
+
+static func is_position_safely_inside_mini_region(
+	boss_node: Node,
+	unit_position: Vector2,
+	region: String,
+	range_name: String,
+	safety_inset_pixels: float = 0.0
+) -> bool:
+	if boss_node == null or not is_instance_valid(boss_node) or not boss_node is Node2D:
+		return false
+
+	var boss_2d := boss_node as Node2D
+	var offset := unit_position - boss_2d.global_position
+	var radius := offset.length()
+	var safe_inset := maxf(safety_inset_pixels, 0.0)
+	var region_direction := get_region_direction(region)
+	var apothem := offset.dot(region_direction)
+	var radial_bounds := get_mini_region_radial_bounds(
+		boss_node,
+		range_name,
+		safe_inset
+	)
+	var minimum_radius := float(radial_bounds.get("minimum", 0.0))
+	var maximum_radius := float(radial_bounds.get("maximum", -1.0))
+
+	if apothem < minimum_radius:
+		return false
+
+	if maximum_radius >= 0.0 and apothem > maximum_radius:
+		return false
+
+	var relative_angle := wrapf(
+		offset.angle() - region_direction.angle(),
+		-PI,
+		PI
+	)
+	var angle_inset := 0.0
+
+	if safe_inset > 0.0:
+		angle_inset = asin(clampf(
+			safe_inset / maxf(radius, safe_inset),
+			0.0,
+			1.0
+		))
+
+	return absf(relative_angle) <= maxf(MINI_REGION_HALF_ANGLE - angle_inset, 0.0)
+
 static func get_boss_combat_radius(boss_node: Node) -> float:
 	if boss_node == null or not is_instance_valid(boss_node):
 		return CombatMeasurementsScript.DEFAULT_BOSS_COMBAT_RADIUS_PIXELS
@@ -283,8 +450,11 @@ static func get_nearest_range_from_origin(
 		return RANGE_MID
 
 	var boss_radius: float = get_boss_combat_radius(boss_node)
-	var center_distance: float = boss_position.distance_to(unit_position)
-	var edge_distance_pixels: float = maxf(center_distance - boss_radius, 0.0)
+	var offset := unit_position - boss_position
+	var region := get_nearest_region_from_position(boss_position, unit_position)
+	var region_direction := get_region_direction(region)
+	var center_apothem: float = maxf(offset.dot(region_direction), 0.0)
+	var edge_distance_pixels: float = maxf(center_apothem - boss_radius, 0.0)
 	var edge_distance_units: float = CombatMeasurementsScript.pixels_to_range_units(edge_distance_pixels)
 
 	var best_range: String = RANGE_MID
