@@ -166,6 +166,9 @@ func initialize_combat():
 	store_spawn_positions()
 	setup_attempt_recorder()
 
+	if voice_coordinator != null:
+		voice_coordinator.setup_parser_context(party_members)
+
 	if boss != null and is_instance_valid(boss):
 		if boss.has_method("set_party_members"):
 			boss.set_party_members(party_members)

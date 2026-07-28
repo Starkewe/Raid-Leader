@@ -3,6 +3,7 @@ class_name VoiceCommandParser
 
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
+const WhoTargetResolverScript := preload("res://scripts/voice/who_target_resolver.gd")
 
 const NUMBER_WORDS := {
 	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -26,6 +27,23 @@ const EXCEPTION_MARKERS: Array[String] = [
 	" except ", " excluding ", " without ", " but not "
 ]
 
+@export var debug_who_resolution: bool = false
+
+var who_resolver: WhoTargetResolver = WhoTargetResolverScript.new()
+
+
+func setup_roster_context(party_members: Array) -> void:
+	who_resolver.debug_enabled = debug_who_resolution
+	who_resolver.setup(party_members)
+
+
+func rebuild_who_candidate_cache() -> void:
+	who_resolver.rebuild_candidate_cache()
+
+
+func get_who_resolver() -> WhoTargetResolver:
+	return who_resolver
+
 
 func parse(transcript: String) -> Dictionary:
 	var normalized_text := _normalize_text(transcript)
@@ -41,17 +59,108 @@ func parse(transcript: String) -> Dictionary:
 	var action := String(action_result.get("what", ""))
 	var subject_text := _get_subject_text(normalized_text, String(action_result.get("matched_alias", "")))
 	var split_subject := _split_exception_text(subject_text)
-	var include_selectors := _extract_selectors(String(split_subject.get("include_text", "")), true)
+	var include_text := String(split_subject.get("include_text", ""))
+	var exclude_text := String(split_subject.get("exclude_text", ""))
+	var who_started_usec := Time.get_ticks_usec()
+	var include_selectors := _extract_selectors(include_text, true)
 	var exclude_selectors := _extract_selectors(String(split_subject.get("exclude_text", "")), false)
+	var who_resolution: Dictionary = {}
+
+	if not include_selectors.is_empty():
+		var selector_validation := who_resolver.validate_deterministic_selectors(include_selectors)
+
+		if not bool(selector_validation.get("ok", false)):
+			who_resolution = who_resolver.build_deterministic_result(
+				transcript,
+				normalized_text,
+				include_text,
+				include_selectors,
+				Time.get_ticks_usec() - who_started_usec
+			)
+			who_resolution["ok"] = false
+			who_resolution["reason"] = String(
+				selector_validation.get("reason", "The requested Who target is not available.")
+			)
+			who_resolution["debug_text"] = who_resolver.format_diagnostics(who_resolution)
+			return _fail(
+				String(who_resolution["reason"]),
+				normalized_text,
+				transcript,
+				who_resolution
+			)
+
+		who_resolution = who_resolver.build_deterministic_result(
+			transcript,
+			normalized_text,
+			include_text,
+			include_selectors,
+			Time.get_ticks_usec() - who_started_usec
+		)
+
+	if include_selectors.is_empty() and not include_text.is_empty() and who_resolver.has_roster_context():
+		who_resolution = who_resolver.resolve_who(
+			transcript,
+			normalized_text,
+			include_text,
+			{
+				"what": action,
+				"where": String(action_result.get("where", ""))
+			}
+		)
+
+		if bool(who_resolution.get("ok", false)):
+			include_selectors = [Dictionary(who_resolution.get("selector", {})).duplicate(true)]
+		else:
+			return _fail(
+				String(who_resolution.get("reason", "No valid Who target was recognized.")),
+				normalized_text,
+				transcript,
+				who_resolution
+			)
 
 	if include_selectors.is_empty():
 		include_selectors = _default_selectors_for_action(action)
 
-	if include_selectors.is_empty():
-		include_selectors = _extract_fuzzy_subject_selector(String(split_subject.get("include_text", "")))
+		if not include_selectors.is_empty():
+			who_resolution = who_resolver.build_deterministic_result(
+				transcript,
+				normalized_text,
+				include_text,
+				include_selectors,
+				Time.get_ticks_usec() - who_started_usec,
+				"deterministic_action_default"
+			)
 
 	if include_selectors.is_empty():
-		return _fail("No raid member, class, group, or role was recognized.", normalized_text, transcript)
+		include_selectors = _extract_fuzzy_subject_selector(include_text)
+
+		if not include_selectors.is_empty():
+			who_resolution = who_resolver.build_deterministic_result(
+				transcript,
+				normalized_text,
+				include_text,
+				include_selectors,
+				Time.get_ticks_usec() - who_started_usec,
+				"legacy_fuzzy_no_roster"
+			)
+
+	if include_selectors.is_empty():
+		return _fail(
+			"No raid member, class, group, or role was recognized.",
+			normalized_text,
+			transcript,
+			who_resolution
+		)
+
+	var exclusion_validation := who_resolver.validate_deterministic_selectors(exclude_selectors)
+
+	if not exclude_text.is_empty() and not bool(exclusion_validation.get("ok", false)):
+		return _fail(
+			String(exclusion_validation.get("reason", "An excluded Who target is not available.")),
+			normalized_text,
+			transcript,
+			who_resolution
+		)
 
 	var primary_selector: Dictionary = include_selectors[0]
 	var command_data := {
@@ -80,7 +189,8 @@ func parse(transcript: String) -> Dictionary:
 		"command_data": command_data,
 		"reason": "",
 		"transcript": transcript,
-		"normalized_text": normalized_text
+		"normalized_text": normalized_text,
+		"who_resolution": who_resolution
 	}
 
 
@@ -533,11 +643,17 @@ func _action(
 	}
 
 
-func _fail(reason: String, normalized_text: String, transcript: String) -> Dictionary:
+func _fail(
+	reason: String,
+	normalized_text: String,
+	transcript: String,
+	who_resolution: Dictionary = {}
+) -> Dictionary:
 	return {
 		"ok": false,
 		"command_data": {},
 		"reason": reason,
 		"transcript": transcript,
-		"normalized_text": normalized_text
+		"normalized_text": normalized_text,
+		"who_resolution": who_resolution
 	}
