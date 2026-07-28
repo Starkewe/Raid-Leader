@@ -49,7 +49,9 @@ Rogue two interrupt
 Tank taunt
 ```
 
-The parser rejects transcripts with multiple actions, missing destinations, unknown selectors, or invalid current targets. Exact and normalized Who targets remain deterministic. If those paths fail, an experimental local weighted resolver compares only valid current raid targets using text, phonetic, grammar, number, and conservative-prior evidence, then passes the winning canonical selector into the existing command system. Unit identities support numbers 1 through 20, and class and role vocabulary comes from `GameState` and the unit resources rather than a second hard-coded catalog.
+The parser rejects transcripts with multiple actions, missing destinations, unknown selectors, or invalid current targets. Exact and normalized Who targets remain deterministic. If those paths fail, an experimental local weighted resolver separates target structure, a recognized number, and the remaining identity text before scoring. For a numbered individual, structure and index filter candidates first; identity-only text, unpadded phonetic, exact, and partial evidence then rank the same-index classes. A row with the same number competes only when the identity text has meaningful row-like evidence.
+
+Static category priors are small, and recent use is applied only inside a narrow identity-score tie window. The forced-choice winner margin is diagnostic rather than a rejection threshold. All weights and eligibility thresholds are documented in `scripts/voice/who_resolver_tuning.gd`. The winning candidate still becomes the same canonical selector consumed by the existing command system. Unit identities support numbers 1 through 20, and class and role vocabulary comes from `GameState` and the unit resources rather than a second hard-coded catalog.
 
 The focused Who corpus runs with the project autoloads enabled:
 

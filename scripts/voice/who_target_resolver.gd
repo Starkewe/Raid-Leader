@@ -53,9 +53,12 @@ func resolve_who(
 	command_context: Dictionary = {}
 ) -> Dictionary:
 	var started_usec := Time.get_ticks_usec()
-	var normalized_who := _normalize_text(who_text)
-	var number_result := _extract_requested_number(normalized_who)
-	var inferred_structure := _infer_structure(normalized_who, number_result)
+	var who_analysis := _analyze_who_phrase(who_text)
+	var normalized_who := String(who_analysis.get("who_text", ""))
+	var identity_text := String(who_analysis.get("identity_text", ""))
+	var number_result: Dictionary = who_analysis.get("number_result", {})
+	var inferred_structure := String(who_analysis.get("structure", "unknown"))
+	var requested_number := int(who_analysis.get("recognized_number", 0))
 
 	if bool(number_result.get("ambiguous", false)):
 		return _failure_result(
@@ -64,72 +67,57 @@ func resolve_who(
 			normalized_who,
 			inferred_structure,
 			"Who contains conflicting target numbers.",
-			started_usec
+			started_usec,
+			who_analysis
 		)
 
-	var valid_candidates: Array[Dictionary] = []
+	var commandable_candidates: Array[Dictionary] = []
 
 	for cached_candidate in candidate_cache:
 		var candidate: Dictionary = cached_candidate
 
 		if _candidate_is_commandable(candidate):
-			valid_candidates.append(candidate)
+			commandable_candidates.append(candidate)
 
-	if valid_candidates.is_empty():
+	if commandable_candidates.is_empty():
 		return _failure_result(
 			raw_transcript,
 			normalized_transcript,
 			normalized_who,
 			inferred_structure,
 			"No valid current Who targets are available.",
-			started_usec
+			started_usec,
+			who_analysis
 		)
 
-	var requested_number := int(number_result.get("value", 0))
+	var eligibility := _filter_eligible_candidates(
+		commandable_candidates,
+		inferred_structure,
+		requested_number,
+		identity_text
+	)
+	var eligible_candidates: Array[Dictionary] = eligibility.get("eligible", [])
 
-	if inferred_structure == "row":
-		var row_candidates: Array[Dictionary] = []
-
-		for candidate in valid_candidates:
-			if String(candidate.get("target_type", "")) == "row":
-				row_candidates.append(candidate)
-
-		if requested_number > 0 and not _has_numbered_candidate(row_candidates, requested_number):
-			return _failure_result(
-				raw_transcript,
-				normalized_transcript,
-				normalized_who,
-				inferred_structure,
-				"No current raid-frame row matches %d." % requested_number,
-				started_usec
-			)
-
-		valid_candidates = row_candidates
-
-	if requested_number > 0 and not _has_numbered_candidate(valid_candidates, requested_number):
+	if eligible_candidates.is_empty():
 		return _failure_result(
 			raw_transcript,
 			normalized_transcript,
 			normalized_who,
 			inferred_structure,
-			"No current numbered individual or row matches %d." % requested_number,
-			started_usec
+			_get_no_candidate_reason(inferred_structure, requested_number),
+			started_usec,
+			who_analysis,
+			eligibility
 		)
 
-	var lexical_text := _get_lexical_text(normalized_who, number_result)
-	var plural_evidence := _has_plural_evidence(lexical_text)
+	var plural_evidence := _has_plural_evidence(identity_text)
 	var scored_candidates: Array[Dictionary] = []
 
-	for candidate in valid_candidates:
-		var candidate_number := int(candidate.get("number", 0))
-
-		if requested_number > 0 and candidate_number > 0 and candidate_number != requested_number:
-			continue
-
+	for candidate in eligible_candidates:
 		scored_candidates.append(
 			_score_candidate(
 				candidate,
-				lexical_text,
+				identity_text,
 				inferred_structure,
 				requested_number,
 				plural_evidence,
@@ -144,20 +132,21 @@ func resolve_who(
 			normalized_who,
 			inferred_structure,
 			"No valid Who candidates remained after structural filtering.",
-			started_usec
+			started_usec,
+			who_analysis,
+			eligibility
 		)
 
-	scored_candidates.sort_custom(func(a: Dictionary, b: Dictionary):
-		var a_score := float(a.get("final_score", 0.0))
-		var b_score := float(b.get("final_score", 0.0))
-
-		if is_equal_approx(a_score, b_score):
-			return String(a.get("canonical_id", "")) < String(b.get("canonical_id", ""))
-
-		return a_score > b_score
-	)
+	_apply_recent_use_tiebreaker(scored_candidates)
+	_sort_scored_candidates(scored_candidates)
 
 	var selected: Dictionary = scored_candidates[0]
+	var winner_score := float(selected.get("final_score", 0.0))
+	var runner_up_score := (
+		float(scored_candidates[1].get("final_score", 0.0))
+		if scored_candidates.size() > 1
+		else 0.0
+	)
 	var duration_ms := float(Time.get_ticks_usec() - started_usec) / 1000.0
 	var result := {
 		"ok": true,
@@ -166,12 +155,21 @@ func resolve_who(
 		"normalized_transcript": normalized_transcript,
 		"who_text": normalized_who,
 		"inferred_structure": inferred_structure,
+		"identity_text": identity_text,
+		"identity_phonetic_input": identity_text,
+		"identity_phonetic_code": _phonetic_code(identity_text),
+		"recognized_number": requested_number,
 		"selector": Dictionary(selected.get("selector", {})).duplicate(true),
 		"canonical_id": String(selected.get("canonical_id", "")),
 		"canonical_target_ids": Array(selected.get("canonical_target_ids", [])).duplicate(),
 		"display_label": String(selected.get("display_label", "")),
-		"final_score": float(selected.get("final_score", 0.0)),
+		"final_score": winner_score,
+		"winner_score": winner_score,
+		"runner_up_score": runner_up_score,
+		"winner_margin": winner_score - runner_up_score,
 		"candidate_scores": scored_candidates,
+		"eligible_candidates": eligibility.get("eligible_labels", []),
+		"excluded_candidates": eligibility.get("excluded", []),
 		"duration_ms": duration_ms,
 		"cache_generation": cache_generation,
 		"reason": ""
@@ -194,6 +192,7 @@ func build_deterministic_result(
 	method: String = "deterministic"
 ) -> Dictionary:
 	var selected_candidate: Dictionary = {}
+	var who_analysis := _analyze_who_phrase(who_text)
 
 	if not selectors.is_empty() and selectors[0] is Dictionary:
 		selected_candidate = _find_candidate_for_selector(selectors[0])
@@ -218,17 +217,25 @@ func build_deterministic_result(
 		"method": method,
 		"raw_transcript": raw_transcript,
 		"normalized_transcript": normalized_transcript,
-		"who_text": _normalize_text(who_text),
-		"inferred_structure": _infer_structure(
-			_normalize_text(who_text),
-			_extract_requested_number(_normalize_text(who_text))
+		"who_text": String(who_analysis.get("who_text", "")),
+		"inferred_structure": String(who_analysis.get("structure", "unknown")),
+		"identity_text": String(who_analysis.get("identity_text", "")),
+		"identity_phonetic_input": String(who_analysis.get("identity_text", "")),
+		"identity_phonetic_code": _phonetic_code(
+			String(who_analysis.get("identity_text", ""))
 		),
+		"recognized_number": int(who_analysis.get("recognized_number", 0)),
 		"selector": Dictionary(selectors[0]).duplicate(true) if not selectors.is_empty() else {},
 		"canonical_id": canonical_id,
 		"canonical_target_ids": target_ids,
 		"display_label": display_label,
 		"final_score": 1.0,
+		"winner_score": 1.0,
+		"runner_up_score": 0.0,
+		"winner_margin": 1.0,
 		"candidate_scores": [],
+		"eligible_candidates": [display_label] if not display_label.is_empty() else [],
+		"excluded_candidates": [],
 		"duration_ms": float(duration_usec) / 1000.0,
 		"cache_generation": cache_generation,
 		"reason": ""
@@ -294,7 +301,40 @@ func format_diagnostics(result: Dictionary) -> String:
 	lines.append('  normalized: "%s"' % String(result.get("normalized_transcript", "")))
 	lines.append('  who_text: "%s"' % String(result.get("who_text", "")))
 	lines.append("  structure: " + String(result.get("inferred_structure", "unknown")))
+	lines.append('  identity_text: "%s"' % String(result.get("identity_text", "")))
+	lines.append("  recognized_number: " + str(int(result.get("recognized_number", 0))))
 	lines.append("  method: " + String(result.get("method", "none")))
+
+	var eligible_candidates: Array = result.get("eligible_candidates", [])
+
+	if not eligible_candidates.is_empty():
+		lines.append("  eligible candidates:")
+
+		for candidate_label in eligible_candidates:
+			lines.append("    " + String(candidate_label))
+
+	var excluded_candidates: Array = result.get("excluded_candidates", [])
+
+	if not excluded_candidates.is_empty():
+		var exclusion_counts: Dictionary = {}
+
+		for exclusion_value in excluded_candidates:
+			if not exclusion_value is Dictionary:
+				continue
+
+			var exclusion: Dictionary = exclusion_value
+			var exclusion_reason := String(exclusion.get("reason", "other"))
+			exclusion_counts[exclusion_reason] = int(exclusion_counts.get(exclusion_reason, 0)) + 1
+
+		var exclusion_parts: Array[String] = []
+
+		for exclusion_reason in exclusion_counts.keys():
+			exclusion_parts.append(
+				"%s=%d" % [String(exclusion_reason), int(exclusion_counts[exclusion_reason])]
+			)
+
+		exclusion_parts.sort()
+		lines.append("  excluded: " + ", ".join(exclusion_parts))
 
 	var candidate_scores: Array = result.get("candidate_scores", [])
 	var top_count := mini(TuningScript.DEBUG_TOP_CANDIDATE_COUNT, candidate_scores.size())
@@ -302,21 +342,32 @@ func format_diagnostics(result: Dictionary) -> String:
 	for index in range(top_count):
 		var score: Dictionary = candidate_scores[index]
 		lines.append(
-			"  %d. %s | text %.3f | phonetic %.3f | structure %.3f | number %.3f"
+			"  %d. %s"
 			% [
 				index + 1,
-				String(score.get("canonical_id", "")),
-				float(score.get("text_similarity", 0.0)),
-				float(score.get("phonetic_similarity", 0.0)),
-				float(score.get("structural_fit", 0.0)),
-				float(score.get("number_agreement", 0.0))
+				String(score.get("display_label", score.get("canonical_id", "")))
 			]
 		)
 		lines.append(
-			"     exact %.3f | plural %.3f | prior %.3f | recent %.3f | final %.3f"
+			"     identity_text_similarity: %.3f | identity_phonetic_similarity: %.3f"
 			% [
-				float(score.get("exact_evidence", 0.0)),
-				float(score.get("plural_agreement", 0.0)),
+				float(score.get("identity_text_similarity", 0.0)),
+				float(score.get("identity_phonetic_similarity", 0.0))
+			]
+		)
+		lines.append(
+			"     identity_exact: %.3f | identity_partial: %.3f | identity_score: %.3f"
+			% [
+				float(score.get("identity_exact_evidence", 0.0)),
+				float(score.get("identity_partial_evidence", 0.0)),
+				float(score.get("identity_score", 0.0))
+			]
+		)
+		lines.append(
+			"     structure: %.3f | number: %.3f | prior: %.3f | recent: %.3f | final: %.3f"
+			% [
+				float(score.get("structural_fit", 0.0)),
+				float(score.get("number_agreement", 0.0)),
 				float(score.get("static_prior", 0.0)),
 				float(score.get("recent_use_prior", 0.0)),
 				float(score.get("final_score", 0.0))
@@ -325,9 +376,13 @@ func format_diagnostics(result: Dictionary) -> String:
 
 	if bool(result.get("ok", false)):
 		lines.append("  selected: " + String(result.get("canonical_id", "")))
+		lines.append("  winner_score: %.3f" % float(result.get("winner_score", 0.0)))
+		lines.append("  runner_up_score: %.3f" % float(result.get("runner_up_score", 0.0)))
+		lines.append("  winner_margin: %.3f" % float(result.get("winner_margin", 0.0)))
 	else:
 		lines.append("  unresolved: " + String(result.get("reason", "Unknown reason.")))
 
+	lines.append("  cache_generation: " + str(int(result.get("cache_generation", 0))))
 	lines.append("  duration_ms: %.3f" % float(result.get("duration_ms", 0.0)))
 	return "\n".join(lines)
 
@@ -464,11 +519,11 @@ func _add_candidate(
 			if not normalized_alias.is_empty() and not aliases.has(normalized_alias):
 				aliases.append(normalized_alias)
 
-	var alias_representations: Array[Dictionary] = []
+	var identity_representations: Array[Dictionary] = []
 
 	for alias in aliases:
 		var compact := _letters_only(alias)
-		alias_representations.append({
+		identity_representations.append({
 			"text": alias,
 			"compact": compact,
 			"tokens": alias.split(" ", false),
@@ -488,8 +543,8 @@ func _add_candidate(
 		"key": canonical_id,
 		"target_type": target_type,
 		"display_label": display_label,
-		"aliases": aliases,
-		"alias_representations": alias_representations,
+		"identity_aliases": aliases,
+		"identity_representations": identity_representations,
 		"selector": selector.duplicate(true),
 		"number": number,
 		"canonical_id": canonical_id,
@@ -500,30 +555,27 @@ func _add_candidate(
 
 func _score_candidate(
 	candidate: Dictionary,
-	lexical_text: String,
+	identity_text: String,
 	inferred_structure: String,
 	requested_number: int,
 	plural_evidence: bool,
 	command_context: Dictionary
 ) -> Dictionary:
-	var alias_match := _best_alias_match(lexical_text, candidate)
+	var identity_match := _best_identity_match(identity_text, candidate)
+	var identity_score := _get_identity_score(identity_match)
 	var target_type := String(candidate.get("target_type", ""))
 	var structural_fit := _get_structural_fit(target_type, inferred_structure, requested_number)
 	var number_agreement := _get_number_agreement(candidate, requested_number)
 	var plural_agreement := _get_plural_agreement(target_type, plural_evidence)
 	var static_prior := TuningScript.get_category_prior(target_type)
-	var recent_prior := _get_recent_use_prior(String(candidate.get("key", "")))
 	var command_compatibility := _get_command_compatibility(candidate, command_context)
-	var final_score := (
-		float(alias_match.get("text_similarity", 0.0)) * TuningScript.WEIGHT_TEXT_SIMILARITY
-		+ float(alias_match.get("phonetic_similarity", 0.0)) * TuningScript.WEIGHT_PHONETIC_SIMILARITY
+	var base_score := (
+		identity_score
 		+ structural_fit * TuningScript.WEIGHT_STRUCTURAL_FIT
-		+ float(alias_match.get("exact_evidence", 0.0)) * TuningScript.WEIGHT_EXACT_EVIDENCE
 		+ number_agreement * TuningScript.WEIGHT_NUMBER_AGREEMENT
 		+ plural_agreement * TuningScript.WEIGHT_PLURAL_AGREEMENT
 		+ command_compatibility * TuningScript.WEIGHT_COMMAND_COMPATIBILITY
 		+ static_prior
-		+ recent_prior
 	)
 
 	return {
@@ -533,69 +585,241 @@ func _score_candidate(
 		"selector": Dictionary(candidate.get("selector", {})).duplicate(true),
 		"canonical_id": String(candidate.get("canonical_id", "")),
 		"canonical_target_ids": Array(candidate.get("canonical_target_ids", [])).duplicate(),
-		"matched_alias": String(alias_match.get("matched_alias", "")),
-		"text_similarity": float(alias_match.get("text_similarity", 0.0)),
-		"phonetic_similarity": float(alias_match.get("phonetic_similarity", 0.0)),
+		"number": int(candidate.get("number", 0)),
+		"identity_text": identity_text,
+		"identity_phonetic_input": identity_text,
+		"identity_phonetic_code": _phonetic_code(identity_text),
+		"matched_identity_alias": String(identity_match.get("matched_identity_alias", "")),
+		"matched_identity_phonetic_code": String(
+			identity_match.get("matched_identity_phonetic_code", "")
+		),
+		"identity_text_similarity": float(identity_match.get("identity_text_similarity", 0.0)),
+		"identity_phonetic_similarity": float(
+			identity_match.get("identity_phonetic_similarity", 0.0)
+		),
+		"identity_exact_evidence": float(identity_match.get("identity_exact_evidence", 0.0)),
+		"identity_partial_evidence": float(identity_match.get("identity_partial_evidence", 0.0)),
+		"identity_score": identity_score,
 		"structural_fit": structural_fit,
-		"exact_evidence": float(alias_match.get("exact_evidence", 0.0)),
 		"number_agreement": number_agreement,
 		"plural_agreement": plural_agreement,
 		"command_compatibility": command_compatibility,
 		"static_prior": static_prior,
-		"recent_use_prior": recent_prior,
-		"final_score": final_score
+		"recent_use_prior": 0.0,
+		"recent_tie_eligible": false,
+		"base_score": base_score,
+		"final_score": base_score
 	}
 
 
-func _best_alias_match(lexical_text: String, candidate: Dictionary) -> Dictionary:
-	var lexical_compact := _letters_only(lexical_text)
-	var lexical_tokens := lexical_text.split(" ", false)
-	var lexical_phonetic := _phonetic_code(lexical_compact)
+func _best_identity_match(identity_text: String, candidate: Dictionary) -> Dictionary:
+	var identity_compact := _letters_only(identity_text)
+	var identity_tokens := identity_text.split(" ", false)
+	var identity_phonetic := _phonetic_code(identity_compact)
 	var best := {
-		"matched_alias": "",
-		"text_similarity": 0.0,
-		"phonetic_similarity": 0.0,
-		"exact_evidence": 0.0,
+		"matched_identity_alias": "",
+		"matched_identity_phonetic_code": "",
+		"identity_text_similarity": 0.0,
+		"identity_phonetic_similarity": 0.0,
+		"identity_exact_evidence": 0.0,
+		"identity_partial_evidence": 0.0,
 		"combined": -1.0
 	}
 
-	for representation_value in candidate.get("alias_representations", []):
+	for representation_value in candidate.get("identity_representations", []):
 		var representation: Dictionary = representation_value
 		var alias_text := String(representation.get("text", ""))
 		var alias_compact := String(representation.get("compact", ""))
-		var character_similarity := _normalized_similarity(lexical_compact, alias_compact)
+		var alias_phonetic := String(representation.get("phonetic", ""))
+		var character_similarity := _normalized_similarity(identity_compact, alias_compact)
 		var token_similarity := _token_similarity(
-			lexical_tokens,
+			identity_tokens,
 			Array(representation.get("tokens", []))
 		)
 		var text_similarity := maxf(character_similarity, token_similarity)
-		var phonetic_similarity := _normalized_similarity(
-			lexical_phonetic,
-			String(representation.get("phonetic", ""))
+		var phonetic_similarity := _phonetic_similarity(
+			identity_phonetic,
+			alias_phonetic
 		)
 		var exact_evidence := 0.0
 
-		if lexical_text == alias_text or lexical_compact == alias_compact:
+		if identity_text == alias_text or identity_compact == alias_compact:
 			exact_evidence = 1.0
-		elif lexical_tokens.has(alias_text):
-			exact_evidence = 0.75
 
-		var combined := (
-			text_similarity * TuningScript.WEIGHT_TEXT_SIMILARITY
-			+ phonetic_similarity * TuningScript.WEIGHT_PHONETIC_SIMILARITY
-			+ exact_evidence * TuningScript.WEIGHT_EXACT_EVIDENCE
+		var partial_evidence := _get_identity_partial_evidence(
+			identity_compact,
+			identity_tokens,
+			alias_compact,
+			Array(representation.get("tokens", [])),
+			exact_evidence > 0.0
 		)
+		var match := {
+			"matched_identity_alias": alias_text,
+			"matched_identity_phonetic_code": alias_phonetic,
+			"identity_text_similarity": text_similarity,
+			"identity_phonetic_similarity": phonetic_similarity,
+			"identity_exact_evidence": exact_evidence,
+			"identity_partial_evidence": partial_evidence
+		}
+		var combined := _get_identity_score(match)
 
 		if combined > float(best.get("combined", -1.0)):
-			best = {
-				"matched_alias": alias_text,
-				"text_similarity": text_similarity,
-				"phonetic_similarity": phonetic_similarity,
-				"exact_evidence": exact_evidence,
-				"combined": combined
-			}
+			best = match
+			best["combined"] = combined
 
 	return best
+
+
+func _get_identity_score(identity_match: Dictionary) -> float:
+	return (
+		float(identity_match.get("identity_text_similarity", 0.0))
+		* TuningScript.WEIGHT_IDENTITY_TEXT_SIMILARITY
+		+ float(identity_match.get("identity_phonetic_similarity", 0.0))
+		* TuningScript.WEIGHT_IDENTITY_PHONETIC_SIMILARITY
+		+ float(identity_match.get("identity_exact_evidence", 0.0))
+		* TuningScript.WEIGHT_IDENTITY_EXACT_EVIDENCE
+		+ float(identity_match.get("identity_partial_evidence", 0.0))
+		* TuningScript.WEIGHT_IDENTITY_PARTIAL_EVIDENCE
+	)
+
+
+func _get_identity_partial_evidence(
+	identity_compact: String,
+	identity_tokens: Array,
+	alias_compact: String,
+	alias_tokens: Array,
+	is_exact: bool
+) -> float:
+	if is_exact or identity_compact.is_empty() or alias_compact.is_empty():
+		return 0.0
+
+	if (
+		mini(identity_compact.length(), alias_compact.length()) >= 3
+		and (
+			identity_compact.contains(alias_compact)
+			or alias_compact.contains(identity_compact)
+		)
+	):
+		return 1.0
+
+	for token_value in identity_tokens:
+		var token := String(token_value)
+
+		if token.length() >= 3 and alias_tokens.has(token):
+			return 0.75
+
+	return 0.0
+
+
+func _filter_eligible_candidates(
+	candidates: Array[Dictionary],
+	inferred_structure: String,
+	requested_number: int,
+	identity_text: String
+) -> Dictionary:
+	var eligible: Array[Dictionary] = []
+	var eligible_labels: Array[String] = []
+	var excluded: Array[Dictionary] = []
+	var row_identity_score := 0.0
+
+	if requested_number > 0 and inferred_structure != "row":
+		for candidate in candidates:
+			if (
+				String(candidate.get("target_type", "")) == "row"
+				and int(candidate.get("number", 0)) == requested_number
+			):
+				row_identity_score = maxf(
+					row_identity_score,
+					_get_identity_score(_best_identity_match(identity_text, candidate))
+				)
+
+	var row_has_identity_evidence := (
+		row_identity_score >= TuningScript.ROW_COMPETITION_MIN_IDENTITY_SCORE
+	)
+
+	for candidate in candidates:
+		var target_type := String(candidate.get("target_type", ""))
+		var candidate_number := int(candidate.get("number", 0))
+		var exclusion_reason := ""
+
+		if requested_number > 0:
+			if candidate_number != requested_number:
+				exclusion_reason = (
+					"different_index"
+					if candidate_number > 0
+					else "unnumbered_target_family"
+				)
+			elif inferred_structure == "row":
+				if target_type != "row":
+					exclusion_reason = "row_structure_requires_row_target"
+			elif target_type == "row":
+				if not row_has_identity_evidence:
+					exclusion_reason = "insufficient_row_identity_evidence"
+			elif target_type != "numbered_individual":
+				exclusion_reason = "numbered_structure_requires_individual_target"
+
+		if exclusion_reason.is_empty():
+			eligible.append(candidate)
+			eligible_labels.append(String(candidate.get("display_label", "")))
+		else:
+			excluded.append({
+				"canonical_id": String(candidate.get("canonical_id", "")),
+				"reason": exclusion_reason
+			})
+
+	return {
+		"eligible": eligible,
+		"eligible_labels": eligible_labels,
+		"excluded": excluded,
+		"row_identity_score": row_identity_score,
+		"row_identity_eligible": row_has_identity_evidence
+	}
+
+
+func _apply_recent_use_tiebreaker(scored_candidates: Array[Dictionary]) -> void:
+	var best_identity_score := 0.0
+
+	for score in scored_candidates:
+		best_identity_score = maxf(
+			best_identity_score,
+			float(score.get("identity_score", 0.0))
+		)
+
+	for score in scored_candidates:
+		var identity_gap := (
+			best_identity_score - float(score.get("identity_score", 0.0))
+		)
+		var recent_tie_eligible := identity_gap <= TuningScript.RECENT_IDENTITY_TIE_WINDOW
+		var recent_prior := (
+			_get_recent_use_prior(String(score.get("key", "")))
+			if recent_tie_eligible
+			else 0.0
+		)
+		score["recent_tie_eligible"] = recent_tie_eligible
+		score["recent_use_prior"] = recent_prior
+		score["final_score"] = float(score.get("base_score", 0.0)) + recent_prior
+
+
+func _sort_scored_candidates(scored_candidates: Array[Dictionary]) -> void:
+	scored_candidates.sort_custom(func(a: Dictionary, b: Dictionary):
+		var a_score := float(a.get("final_score", 0.0))
+		var b_score := float(b.get("final_score", 0.0))
+
+		if is_equal_approx(a_score, b_score):
+			return String(a.get("canonical_id", "")) < String(b.get("canonical_id", ""))
+
+		return a_score > b_score
+	)
+
+
+func _get_no_candidate_reason(inferred_structure: String, requested_number: int) -> String:
+	if requested_number <= 0:
+		return "No valid Who candidates remained after structural filtering."
+
+	if inferred_structure == "row":
+		return "No current raid-frame row matches %d." % requested_number
+
+	return "No current numbered individual matches %d." % requested_number
 
 
 func _get_structural_fit(
@@ -605,11 +829,11 @@ func _get_structural_fit(
 ) -> float:
 	match target_type:
 		"numbered_individual":
-			return 1.0 if requested_number > 0 else 0.15
+			return 1.0 if inferred_structure == "numbered_individual" else 0.15
 		"row":
 			if inferred_structure == "row":
 				return 1.0
-			return 0.10 if requested_number > 0 else -0.45
+			return 0.25 if requested_number > 0 else -0.45
 		"class_group":
 			if requested_number > 0:
 				return -0.80
@@ -699,17 +923,6 @@ func _unit_is_commandable(unit: Node) -> bool:
 	return true
 
 
-func _has_numbered_candidate(candidates: Array[Dictionary], requested_number: int) -> bool:
-	for candidate in candidates:
-		if (
-			String(candidate.get("target_type", "")) in ["numbered_individual", "row"]
-			and int(candidate.get("number", 0)) == requested_number
-		):
-			return true
-
-	return false
-
-
 func _find_candidate_for_selector(selector: Dictionary) -> Dictionary:
 	var canonical_id := _canonical_id_for_selector(selector)
 
@@ -749,6 +962,20 @@ func _canonical_id_for_selector(selector: Dictionary) -> String:
 			return selector_type + ":" + str(selector.get("value", ""))
 
 
+func _analyze_who_phrase(who_text: String) -> Dictionary:
+	var normalized_who := _normalize_text(who_text)
+	var number_result := _extract_requested_number(normalized_who)
+	var identity_text := _get_identity_text(normalized_who, number_result)
+
+	return {
+		"who_text": normalized_who,
+		"structure": _infer_structure(normalized_who, number_result),
+		"recognized_number": int(number_result.get("value", 0)),
+		"identity_text": identity_text,
+		"number_result": number_result
+	}
+
+
 func _extract_requested_number(text: String) -> Dictionary:
 	var found_values: Array[int] = []
 
@@ -771,7 +998,7 @@ func _extract_requested_number(text: String) -> Dictionary:
 	}
 
 
-func _get_lexical_text(text: String, number_result: Dictionary) -> String:
+func _get_identity_text(text: String, number_result: Dictionary) -> String:
 	var output_tokens: Array[String] = []
 	var requested_number := int(number_result.get("value", 0))
 
@@ -960,10 +1187,31 @@ func _phonetic_code(text: String) -> String:
 		if output.length() >= 6:
 			break
 
-	while output.length() < 6:
-		output += "0"
-
 	return output
+
+
+func _phonetic_similarity(left_code: String, right_code: String) -> float:
+	if left_code.is_empty() or right_code.is_empty():
+		return 0.0
+
+	if left_code == right_code:
+		return 1.0
+
+	var initial_similarity := (
+		1.0
+		if left_code.substr(0, 1) == right_code.substr(0, 1)
+		else 0.0
+	)
+	var left_digits := left_code.substr(1)
+	var right_digits := right_code.substr(1)
+	var digit_similarity := 0.0
+
+	if left_digits.is_empty() and right_digits.is_empty():
+		digit_similarity = 1.0
+	elif not left_digits.is_empty() and not right_digits.is_empty():
+		digit_similarity = _normalized_similarity(left_digits, right_digits)
+
+	return initial_similarity * 0.35 + digit_similarity * 0.65
 
 
 func _phonetic_digit(character: String) -> String:
@@ -1057,8 +1305,11 @@ func _failure_result(
 	who_text: String,
 	inferred_structure: String,
 	reason: String,
-	started_usec: int
+	started_usec: int,
+	who_analysis: Dictionary = {},
+	eligibility: Dictionary = {}
 ) -> Dictionary:
+	var identity_text := String(who_analysis.get("identity_text", ""))
 	var result := {
 		"ok": false,
 		"method": "weighted_phonetic",
@@ -1066,12 +1317,21 @@ func _failure_result(
 		"normalized_transcript": normalized_transcript,
 		"who_text": who_text,
 		"inferred_structure": inferred_structure,
+		"identity_text": identity_text,
+		"identity_phonetic_input": identity_text,
+		"identity_phonetic_code": _phonetic_code(identity_text),
+		"recognized_number": int(who_analysis.get("recognized_number", 0)),
 		"selector": {},
 		"canonical_id": "",
 		"canonical_target_ids": [],
 		"display_label": "",
 		"final_score": 0.0,
+		"winner_score": 0.0,
+		"runner_up_score": 0.0,
+		"winner_margin": 0.0,
 		"candidate_scores": [],
+		"eligible_candidates": eligibility.get("eligible_labels", []),
+		"excluded_candidates": eligibility.get("excluded", []),
 		"duration_ms": float(Time.get_ticks_usec() - started_usec) / 1000.0,
 		"cache_generation": cache_generation,
 		"reason": reason

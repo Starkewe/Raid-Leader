@@ -65,6 +65,9 @@ func _run() -> void:
 	var duration_total := 0.0
 	var duration_count := 0
 	var maximum_duration := 0.0
+	var weighted_duration_total := 0.0
+	var weighted_duration_count := 0
+	var weighted_maximum_duration := 0.0
 	var category_stats: Dictionary = {}
 	var target_type_stats: Dictionary = {}
 	var confusion: Dictionary = {}
@@ -116,12 +119,16 @@ func _run() -> void:
 		duration_total += duration_ms
 		duration_count += 1
 		maximum_duration = maxf(maximum_duration, duration_ms)
+		var actual_method := String(who_resolution.get("method", ""))
+
+		if actual_method == "weighted_phonetic":
+			weighted_duration_total += duration_ms
+			weighted_duration_count += 1
+			weighted_maximum_duration = maxf(weighted_maximum_duration, duration_ms)
 
 		var expected_method := String(case.get("expected_method", ""))
 
 		if not expected_method.is_empty() and parse_ok:
-			var actual_method := String(who_resolution.get("method", ""))
-
 			if actual_method != expected_method:
 				failures.append(
 					'Case %d method mismatch: "%s" expected %s, got %s'
@@ -131,6 +138,7 @@ func _run() -> void:
 		if parse_ok:
 			_validate_expected_command(case_index, transcript, case, parse_result)
 
+	var focused_metrics := _validate_scoring_refinement(roster)
 	_validate_cache_rebuild(parser, roster)
 	_validate_execution_mapping(parser, roster)
 
@@ -144,12 +152,19 @@ func _run() -> void:
 		"accuracy_by_category": _format_stats(category_stats),
 		"accuracy_by_target_type": _format_stats(target_type_stats),
 		"confusion_summary": confusion,
+		"lawyer_one_diagnostic": focused_metrics,
 		"average_resolver_duration_ms": (
 			duration_total / float(duration_count)
 			if duration_count > 0
 			else 0.0
 		),
-		"maximum_resolver_duration_ms": maximum_duration
+		"maximum_resolver_duration_ms": maximum_duration,
+		"average_weighted_resolver_duration_ms": (
+			weighted_duration_total / float(weighted_duration_count)
+			if weighted_duration_count > 0
+			else 0.0
+		),
+		"maximum_weighted_resolver_duration_ms": weighted_maximum_duration
 	}
 	print("Who resolution corpus summary: ", JSON.stringify(summary))
 
@@ -261,7 +276,320 @@ func _validate_expected_command(
 			failures.append(
 				'Case %d command regression: "%s" expected %s=%s, got %s'
 				% [case_index, transcript, key, str(expected[key]), str(command_data.get(key))]
+				)
+
+
+func _validate_scoring_refinement(roster: Array) -> Dictionary:
+	var parser := _new_parser(roster)
+	var resolver = parser.get_who_resolver()
+	_seed_recent_targets(resolver, "unit_identity:Mage:1")
+	var lawyer_result := resolver.resolve_who(
+		"Lawyer 1, move east.",
+		"lawyer 1 move east",
+		"lawyer 1",
+		{"what": "move", "where": "movement_region"}
+	)
+	var warrior_score := _find_candidate_score(
+		lawyer_result,
+		"unit_identity:Warrior:1"
+	)
+	var mage_score := _find_candidate_score(
+		lawyer_result,
+		"unit_identity:Mage:1"
+	)
+
+	_expect(
+		String(lawyer_result.get("canonical_id", "")) == "unit_identity:Warrior:1",
+		"Lawyer 1 did not resolve to Warrior 1 with recent usage biased toward Mage 1."
+	)
+	_expect(
+		String(lawyer_result.get("identity_text", "")) == "lawyer",
+		"Lawyer 1 identity extraction did not isolate \"lawyer\"."
+	)
+	_expect(
+		int(lawyer_result.get("recognized_number", 0)) == 1,
+		"Lawyer 1 number extraction did not isolate index 1."
+	)
+	_expect(
+		String(lawyer_result.get("inferred_structure", "")) == "numbered_individual",
+		"Lawyer 1 did not infer numbered-individual structure."
+	)
+	_expect(
+		float(warrior_score.get("identity_score", 0.0))
+		> float(mage_score.get("identity_score", 0.0)),
+		"Warrior 1 did not have stronger identity evidence than Mage 1 for Lawyer 1."
+	)
+	_expect(
+		is_zero_approx(float(mage_score.get("recent_use_prior", 0.0))),
+		"Mage 1 recent use was applied outside the identity tie window."
+	)
+	var lawyer_identity_only_result := resolver.resolve_who(
+		"Lawyer one, move.",
+		"lawyer one move",
+		"lawyer one",
+		{"what": "move"}
+	)
+	_expect(
+		String(lawyer_identity_only_result.get("identity_text", "")) == "lawyer"
+		and int(lawyer_identity_only_result.get("recognized_number", 0)) == 1
+		and String(lawyer_identity_only_result.get("canonical_id", ""))
+		== "unit_identity:Warrior:1",
+		"Lawyer one did not preserve separated identity, index, and selection."
+	)
+	var lawyer_debug_text := String(lawyer_result.get("debug_text", ""))
+	print("Lawyer 1 diagnostic:\n", lawyer_debug_text)
+
+	for required_debug_label in [
+		'identity_text: "lawyer"',
+		"recognized_number: 1",
+		"eligible candidates:",
+		"identity_text_similarity:",
+		"identity_phonetic_similarity:",
+		"identity_score:",
+		"winner_score:",
+		"runner_up_score:",
+		"winner_margin:"
+	]:
+		_expect(
+			lawyer_debug_text.contains(required_debug_label),
+			"Lawyer 1 diagnostics are missing " + required_debug_label
+		)
+
+	var eligible_candidates: Array = lawyer_result.get("eligible_candidates", [])
+	_expect(
+		eligible_candidates.size() == 4,
+		"Lawyer 1 should admit only the four same-index class individuals."
+	)
+	_expect(
+		_has_exclusion(
+			lawyer_result,
+			"group:1",
+			"insufficient_row_identity_evidence"
+		),
+		"Lawyer 1 diagnostics did not explain why Row 1 was ineligible."
+	)
+
+	for score_value in lawyer_result.get("candidate_scores", []):
+		if not score_value is Dictionary:
+			continue
+
+		var score: Dictionary = score_value
+		_expect(
+			String(score.get("target_type", "")) == "numbered_individual",
+			"Lawyer 1 retained a non-individual candidate without row-like evidence."
+		)
+		_expect(
+			int(score.get("number", 0)) == 1,
+			"Lawyer 1 retained a candidate with a conflicting index."
+		)
+		_expect(
+			String(score.get("identity_text", "")) == "lawyer",
+			"A Lawyer 1 candidate received the full numbered phrase as identity text."
+		)
+		_expect(
+			String(score.get("identity_phonetic_input", "")) == "lawyer",
+			"A Lawyer 1 candidate included the number in its phonetic input."
+		)
+
+	var phonetic_scores: Array[float] = []
+
+	for class_id in [
+		"unit_identity:Warrior:1",
+		"unit_identity:Priest:1",
+		"unit_identity:Rogue:1",
+		"unit_identity:Mage:1"
+	]:
+		var score := _find_candidate_score(lawyer_result, class_id)
+		phonetic_scores.append(float(score.get("identity_phonetic_similarity", 0.0)))
+
+	var all_phonetic_scores_equal := true
+
+	for index in range(1, phonetic_scores.size()):
+		if not is_equal_approx(phonetic_scores[0], phonetic_scores[index]):
+			all_phonetic_scores_equal = false
+			break
+
+	_expect(
+		not all_phonetic_scores_equal,
+		"Lawyer still gives Warrior, Priest, Rogue, and Mage identical phonetic scores."
+	)
+
+	for candidate in resolver.get_candidate_cache_snapshot():
+		for alias_value in candidate.get("identity_aliases", []):
+			_expect(
+				String(alias_value) != "lawyer",
+				"Lawyer was added as a hard-coded identity alias."
 			)
+
+	var exact_identity_result := resolver.resolve_who(
+		"Warrior one, move.",
+		"warrior one move",
+		"warrior one",
+		{"what": "move"}
+	)
+	_expect(
+		String(exact_identity_result.get("identity_text", "")) == "warrior"
+		and int(exact_identity_result.get("recognized_number", 0)) == 1
+		and String(exact_identity_result.get("canonical_id", ""))
+		== "unit_identity:Warrior:1",
+		"Warrior one did not preserve separated identity, index, and selection."
+	)
+
+	var lawyer_command := parser.parse("lawyer 1 move east")
+	var lawyer_command_data: Dictionary = lawyer_command.get("command_data", {})
+	_expect(
+		bool(lawyer_command.get("ok", false))
+		and _canonical_target(lawyer_command) == "unit_identity:Warrior:1"
+		and String(lawyer_command_data.get("what", "")) == "move"
+		and String(lawyer_command_data.get("where", "")) == "movement_region"
+		and String(lawyer_command_data.get("movement_region", "")) == "east",
+		"Lawyer 1 did not preserve Move and East parsing."
+	)
+
+	var lawyer_slot_command := parser.parse("lawyer 1 move north close")
+	var lawyer_slot_data: Dictionary = lawyer_slot_command.get("command_data", {})
+	_expect(
+		bool(lawyer_slot_command.get("ok", false))
+		and _canonical_target(lawyer_slot_command) == "unit_identity:Warrior:1"
+		and String(lawyer_slot_data.get("where", "")) == "movement_slot"
+		and String(lawyer_slot_data.get("movement_region", "")) == "north"
+		and String(lawyer_slot_data.get("movement_range", "")) == "close",
+		"Lawyer 1 did not preserve the North Close movement slot."
+	)
+
+	var rogue_result := resolver.resolve_who(
+		"Rogue three, move.",
+		"rogue three move",
+		"rogue three",
+		{"what": "move"}
+	)
+	_expect(
+		String(rogue_result.get("canonical_id", "")) == "unit_identity:Rogue:3",
+		"Rogue 3 did not beat Row 3 when class identity favored Rogue."
+	)
+
+	var row_parser := _new_parser(roster)
+	var row_resolver = row_parser.get_who_resolver()
+	_seed_recent_targets(row_resolver, "unit_identity:Warrior:1")
+	var row_result := row_resolver.resolve_who(
+		"Row one, move.",
+		"row one move",
+		"row one",
+		{"what": "move"}
+	)
+	_expect(
+		String(row_result.get("canonical_id", "")) == "group:1",
+		"Clear Row 1 evidence did not beat the Warrior 1 recent-use prior."
+	)
+
+	var distorted_row_result := row_resolver.resolve_who(
+		"Roe one, move.",
+		"roe one move",
+		"roe one",
+		{"what": "move"}
+	)
+	_expect(
+		String(distorted_row_result.get("canonical_id", "")) == "group:1",
+		"Meaningful distorted row evidence did not admit and select Row 1."
+	)
+
+	var mage_parser := _new_parser(roster)
+	var mage_resolver = mage_parser.get_who_resolver()
+	_seed_recent_targets(mage_resolver, "unit_identity:Warrior:1")
+	var mage_result := mage_resolver.resolve_who(
+		"Mage one, move.",
+		"mage one move",
+		"mage one",
+		{"what": "move"}
+	)
+	_expect(
+		String(mage_result.get("canonical_id", "")) == "unit_identity:Mage:1",
+		"A clear Mage 1 identity was overridden by Warrior 1 recent use."
+	)
+	_expect(
+		String(mage_parser.parse("mage one move east").get("who_resolution", {}).get(
+			"method",
+			""
+		)) == "deterministic",
+		"Exact Mage 1 unexpectedly entered weighted fallback."
+	)
+
+	var tie_parser := _new_parser(roster)
+	var tie_resolver = tie_parser.get_who_resolver()
+	_seed_recent_targets(tie_resolver, "unit_identity:Rogue:1")
+	var tied_result := tie_resolver.resolve_who(
+		"One, move.",
+		"one move",
+		"one",
+		{"what": "move"}
+	)
+	_expect(
+		String(tied_result.get("canonical_id", "")) == "unit_identity:Rogue:1",
+		"Recent use did not break a genuinely tied numbered-individual identity."
+	)
+
+	for score_value in tied_result.get("candidate_scores", []):
+		if score_value is Dictionary:
+			_expect(
+				is_zero_approx(float(score_value.get("identity_score", 0.0))),
+				"A shared number alone produced non-zero class identity evidence."
+			)
+
+	return {
+		"selected": String(lawyer_result.get("canonical_id", "")),
+		"winner_score": float(lawyer_result.get("winner_score", 0.0)),
+		"runner_up_score": float(lawyer_result.get("runner_up_score", 0.0)),
+		"winner_margin": float(lawyer_result.get("winner_margin", 0.0)),
+		"warrior_identity_score": float(warrior_score.get("identity_score", 0.0)),
+		"mage_identity_score": float(mage_score.get("identity_score", 0.0)),
+		"duration_ms": float(lawyer_result.get("duration_ms", 0.0))
+	}
+
+
+func _new_parser(roster: Array) -> VoiceCommandParser:
+	var parser := VoiceCommandParserScript.new()
+	get_tree().root.add_child(parser)
+	parser.setup_roster_context(roster)
+	return parser
+
+
+func _seed_recent_targets(resolver: WhoTargetResolver, canonical_id: String) -> void:
+	resolver.recent_target_keys.clear()
+
+	for index in range(12):
+		resolver.recent_target_keys.append(canonical_id)
+
+
+func _find_candidate_score(resolution: Dictionary, canonical_id: String) -> Dictionary:
+	for score_value in resolution.get("candidate_scores", []):
+		if (
+			score_value is Dictionary
+			and String(score_value.get("canonical_id", "")) == canonical_id
+		):
+			return score_value
+
+	return {}
+
+
+func _has_exclusion(
+	resolution: Dictionary,
+	canonical_id: String,
+	reason: String
+) -> bool:
+	for exclusion_value in resolution.get("excluded_candidates", []):
+		if (
+			exclusion_value is Dictionary
+			and String(exclusion_value.get("canonical_id", "")) == canonical_id
+			and String(exclusion_value.get("reason", "")) == reason
+		):
+			return true
+
+	return false
+
+
+func _expect(condition: bool, message: String) -> void:
+	if not condition:
+		failures.append(message)
 
 
 func _validate_cache_rebuild(parser: VoiceCommandParser, full_roster: Array) -> void:
