@@ -121,6 +121,24 @@ func has_dispellable(dispel_category: String = "") -> bool:
 	return false
 
 
+func get_raid_frame_overlay_kind() -> String:
+	var has_non_dispellable_harmful_effect := false
+
+	for state_value in active_effects.values():
+		var state: Dictionary = state_value
+		var definition := state.get("definition") as StatusEffectDefinition
+
+		if definition == null or not definition.is_harmful:
+			continue
+
+		if definition.dispellable:
+			return "curable"
+
+		has_non_dispellable_harmful_effect = true
+
+	return "harmful" if has_non_dispellable_harmful_effect else ""
+
+
 func get_stacks(effect_id: String) -> int:
 	var total_stacks := 0
 

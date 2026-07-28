@@ -159,6 +159,9 @@ func refresh_raid_frames(status_overrides: Dictionary = {}):
 		if use_status_override and frame.has_method("set_status_text"):
 			frame.set_status_text(status_overrides[unit])
 
+		if frame.has_method("set_boss_target"):
+			frame.set_boss_target(unit == get_boss_target())
+
 func set_unit_status(unit: Node, text: String):
 	if unit == null:
 		return
@@ -173,7 +176,26 @@ func set_unit_status(unit: Node, text: String):
 
 func setup_boss_frame(new_boss: Node):
 	boss = new_boss
+	set_boss_target(get_boss_target())
 	refresh_boss_frame()
+
+
+func set_boss_target(target: Node) -> void:
+	for unit in frame_by_unit.keys():
+		if unit == null or not is_instance_valid(unit):
+			continue
+
+		var frame = frame_by_unit[unit]
+
+		if frame != null and is_instance_valid(frame) and frame.has_method("set_boss_target"):
+			frame.set_boss_target(unit == target)
+
+
+func get_boss_target() -> Node:
+	if boss != null and is_instance_valid(boss) and boss.has_method("get_current_target"):
+		return boss.get_current_target()
+
+	return null
 
 func refresh_boss_frame(update_status: bool = true):
 	if boss == null or not is_instance_valid(boss):

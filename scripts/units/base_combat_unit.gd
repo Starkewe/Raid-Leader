@@ -24,6 +24,8 @@ var speed: float = 140.0
 
 var health: int = 0
 var is_dead: bool = false
+var damage_absorb: int = 0
+var pending_heals: Dictionary = {}
 var unit_definition: UnitDefinition = null
 var unit_roles: Array[String] = []
 
@@ -126,8 +128,16 @@ func take_damage(
 		event_metadata["base_amount"] = maxi(amount, 0)
 		event_metadata["incoming_damage_multiplier"] = incoming_multiplier
 
+	var absorbed_amount := mini(damage_absorb, adjusted_amount)
+
+	if absorbed_amount > 0:
+		damage_absorb -= absorbed_amount
+		event_metadata["absorbed_amount"] = absorbed_amount
+		emit_combat_event("absorb_consumed", source, ability_id, absorbed_amount)
+
+	var health_damage := adjusted_amount - absorbed_amount
 	var previous_health := health
-	health -= adjusted_amount
+	health -= health_damage
 	health = max(health, 0)
 	var actual_amount := previous_health - health
 
@@ -180,6 +190,8 @@ func die():
 
 	is_dead = true
 	health = 0
+	damage_absorb = 0
+	clear_pending_heals()
 
 	update_health_bar()
 	cancel_forced_movement()
@@ -197,6 +209,8 @@ func die():
 func reset_unit(new_position: Vector2):
 	is_dead = false
 	health = max_health
+	damage_absorb = 0
+	clear_pending_heals()
 	velocity = Vector2.ZERO
 	global_position = new_position
 	visible = true
@@ -1008,6 +1022,83 @@ func get_max_health() -> int:
 	return max_health
 
 
+func register_pending_heal(
+	pending_id: String,
+	source: Node,
+	amount: int
+) -> void:
+	if pending_id.is_empty() or amount <= 0 or is_dead:
+		return
+
+	pending_heals[pending_id] = {
+		"source": source,
+		"amount": amount
+	}
+
+
+func remove_pending_heal(pending_id: String) -> void:
+	if pending_id.is_empty():
+		return
+
+	pending_heals.erase(pending_id)
+
+
+func clear_pending_heals() -> void:
+	pending_heals.clear()
+
+
+func get_incoming_healing_total() -> int:
+	var invalid_pending_ids: Array[String] = []
+	var total := 0
+
+	for pending_id_value in pending_heals.keys():
+		var pending_id := String(pending_id_value)
+		var pending_data: Dictionary = pending_heals[pending_id]
+		var source: Node = pending_data.get("source") as Node
+
+		if source == null or not is_instance_valid(source):
+			invalid_pending_ids.append(pending_id)
+			continue
+
+		if source.has_method("is_alive") and not bool(source.is_alive()):
+			invalid_pending_ids.append(pending_id)
+			continue
+
+		total += maxi(int(pending_data.get("amount", 0)), 0)
+
+	for pending_id in invalid_pending_ids:
+		pending_heals.erase(pending_id)
+
+	return mini(total, maxi(max_health - health, 0))
+
+
+func grant_damage_absorb(
+	amount: int,
+	source: Node = null,
+	ability_id: String = "absorb"
+) -> void:
+	if is_dead or amount <= 0:
+		return
+
+	damage_absorb += amount
+	emit_combat_event("absorb_applied", source, ability_id, amount, {
+		"total_absorb": damage_absorb
+	})
+
+
+func clear_damage_absorb() -> void:
+	if damage_absorb <= 0:
+		return
+
+	var cleared_amount := damage_absorb
+	damage_absorb = 0
+	emit_combat_event("absorb_removed", null, "absorb", cleared_amount)
+
+
+func get_damage_absorb() -> int:
+	return damage_absorb
+
+
 # -------------------------------------------------------------------
 # Cast/status hooks
 # -------------------------------------------------------------------
@@ -1166,6 +1257,10 @@ func get_status_effect_stacks(effect_id: String) -> int:
 
 func has_dispellable_status(dispel_category: String = "") -> bool:
 	return status_effect_controller.has_dispellable(dispel_category)
+
+
+func get_raid_frame_overlay_kind() -> String:
+	return status_effect_controller.get_raid_frame_overlay_kind()
 
 
 func clear_dispellable_statuses(
