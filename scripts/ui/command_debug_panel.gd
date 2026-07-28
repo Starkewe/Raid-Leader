@@ -7,6 +7,7 @@ var normalized_value_label: Label = null
 var who_value_label: Label = null
 var what_value_label: Label = null
 var where_value_label: Label = null
+var who_resolution_value_label: Label = null
 var result_value_label: Label = null
 var command_data_value_label: Label = null
 
@@ -47,6 +48,10 @@ func build_panel() -> void:
 
 	add_separator(root)
 
+	who_resolution_value_label = add_debug_row(root, "Who Resolution")
+
+	add_separator(root)
+
 	command_data_value_label = add_debug_row(root, "Command Data")
 
 
@@ -77,6 +82,7 @@ func set_debug_data(data: Dictionary) -> void:
 	set_label_text(what_value_label, String(data.get("what", "-")))
 	set_label_text(where_value_label, String(data.get("where", "-")))
 	set_label_text(result_value_label, String(data.get("result", "-")))
+	set_label_text(who_resolution_value_label, String(data.get("who_resolution", "-")))
 	set_label_text(command_data_value_label, String(data.get("command_data", "-")))
 
 
@@ -89,6 +95,7 @@ func clear_debug_data() -> void:
 		"what": "-",
 		"where": "-",
 		"result": "Waiting for command...",
+		"who_resolution": "-",
 		"command_data": "-"
 	})
 

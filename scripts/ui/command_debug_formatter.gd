@@ -16,7 +16,8 @@ static func build_data(
 		"what": get_what_text(command_data),
 		"where": get_where_text(command_data),
 		"result": result_text,
-		"command_data": get_command_data_text(command_data)
+		"command_data": get_command_data_text(command_data),
+		"who_resolution": get_who_resolution_text(debug_context)
 	}
 
 
@@ -122,6 +123,16 @@ static func get_command_data_text(command_data: Dictionary) -> String:
 		safe_data[key] = _get_node_name(value) if value is Node else value
 
 	return str(safe_data)
+
+
+static func get_who_resolution_text(debug_context: Dictionary) -> String:
+	var resolution_value = debug_context.get("who_resolution", {})
+
+	if resolution_value is Dictionary:
+		return String(resolution_value.get("debug_text", "-"))
+
+	var text := String(resolution_value)
+	return "-" if text.strip_edges().is_empty() else text
 
 
 static func _get_unit_text(unit: Node) -> String:
