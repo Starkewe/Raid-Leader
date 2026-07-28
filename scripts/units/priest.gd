@@ -22,6 +22,9 @@ var cure_cooldown_timer: float = 0.0
 var cast_timer: float = 0.0
 var is_casting: bool = false
 var active_cast_kind: String = ""
+var pending_heal_id: String = ""
+var pending_heal_target: Node = null
+var heal_cast_sequence: int = 0
 var heal_ability_id: String = "heal"
 var heal_display_name: String = "Heal"
 var cure_ability_id: String = "cure"
@@ -209,6 +212,7 @@ func try_start_cast():
 	is_casting = true
 	active_cast_kind = "heal"
 	cast_timer = heal_cast_time
+	register_pending_heal_prediction()
 
 	update_cast_bar()
 
@@ -242,18 +246,20 @@ func finish_cast():
 		finish_cure_cast()
 		return
 
+	var completed_target := heal_target
+	clear_pending_heal_prediction()
 	cooldown_timer = heal_cooldown
 
 	update_cast_bar()
 
 	print(get_display_name(), "finishes ", heal_display_name)
 
-	if not has_valid_heal_target():
+	if not can_heal_target(completed_target):
 		print(get_display_name(), "finished ", heal_display_name, ", but the target is no longer valid.")
 		active_cast_kind = ""
 		return
 
-	heal_target.receive_heal(heal_amount, self, heal_ability_id)
+	completed_target.receive_heal(heal_amount, self, heal_ability_id)
 	active_cast_kind = ""
 
 
@@ -292,10 +298,12 @@ func finish_cure_cast() -> void:
 
 func cancel_current_cast():
 	if not is_casting and cast_timer <= 0.0:
+		clear_pending_heal_prediction()
 		return
 
 	is_casting = false
 	cast_timer = 0.0
+	clear_pending_heal_prediction()
 
 	update_cast_bar()
 
@@ -316,6 +324,7 @@ func stop_action():
 
 
 func on_reset_unit():
+	clear_pending_heal_prediction()
 	heal_target = null
 	cure_target = null
 	cooldown_timer = 0.0
@@ -325,6 +334,42 @@ func on_reset_unit():
 	active_cast_kind = ""
 
 	update_cast_bar()
+
+
+func register_pending_heal_prediction() -> void:
+	clear_pending_heal_prediction()
+
+	if active_cast_kind != "heal" or not can_heal_target(heal_target):
+		return
+
+	heal_cast_sequence += 1
+	pending_heal_id = (
+		"heal:"
+		+ str(get_instance_id())
+		+ ":"
+		+ str(heal_cast_sequence)
+	)
+	pending_heal_target = heal_target
+
+	if pending_heal_target.has_method("register_pending_heal"):
+		pending_heal_target.register_pending_heal(
+			pending_heal_id,
+			self,
+			heal_amount
+		)
+
+
+func clear_pending_heal_prediction() -> void:
+	if (
+		not pending_heal_id.is_empty()
+		and pending_heal_target != null
+		and is_instance_valid(pending_heal_target)
+		and pending_heal_target.has_method("remove_pending_heal")
+	):
+		pending_heal_target.remove_pending_heal(pending_heal_id)
+
+	pending_heal_id = ""
+	pending_heal_target = null
 
 
 func update_cast_bar():

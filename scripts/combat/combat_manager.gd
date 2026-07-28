@@ -6,6 +6,7 @@ const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 const CommandDebugFormatterScript := preload("res://scripts/ui/command_debug_formatter.gd")
 const VoiceCommandCoordinatorScript := preload("res://scripts/voice/voice_command_coordinator.gd")
 const AttemptRecorderScript := preload("res://scripts/combat/attempt_recorder.gd")
+const CombatClarityEffectsScript := preload("res://scripts/effects/combat_clarity_effects.gd")
 
 @onready var raid_spawner: RaidSpawner = get_node_or_null("../RaidSpawner")
 @onready var boss = get_node_or_null("../Boss")
@@ -29,6 +30,7 @@ var party_members: Array = []
 var command_controller: RaidCommandController = null
 var combat_event_queue = null
 var status_presenter = null
+var combat_clarity_effects: Node2D = null
 
 var spawn_positions: Dictionary = {}
 var combat_log: Array[Dictionary] = []
@@ -180,6 +182,7 @@ func initialize_combat():
 	if status_presenter != null:
 		status_presenter.setup(ui, boss, Callable(self, "is_unit_alive"))
 
+	setup_combat_clarity_effects()
 	connect_unit_signals()
 	connect_boss_signals()
 
@@ -307,6 +310,19 @@ func _on_structured_combat_event(event: Dictionary) -> void:
 
 	if max_combat_log_entries > 0 and combat_log.size() > max_combat_log_entries:
 		combat_log.pop_front()
+
+	if combat_clarity_effects != null and combat_clarity_effects.has_method("handle_combat_event"):
+		combat_clarity_effects.handle_combat_event(event)
+
+
+func setup_combat_clarity_effects() -> void:
+	if combat_clarity_effects == null or not is_instance_valid(combat_clarity_effects):
+		combat_clarity_effects = CombatClarityEffectsScript.new()
+		combat_clarity_effects.name = "CombatClarityEffects"
+		combat_clarity_effects.z_index = 5
+		get_parent().add_child(combat_clarity_effects)
+
+	combat_clarity_effects.setup(party_members, boss, ui)
 
 
 func get_combat_log() -> Array[Dictionary]:
@@ -469,6 +485,8 @@ func reset_encounter():
 		command_controller.reset_commands()
 	if combat_event_queue != null:
 		combat_event_queue.clear()
+	if combat_clarity_effects != null and combat_clarity_effects.has_method("clear_active_effects"):
+		combat_clarity_effects.clear_active_effects()
 
 	boss_alive = true
 	fight_active = false

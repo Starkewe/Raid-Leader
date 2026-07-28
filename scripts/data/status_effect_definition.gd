@@ -3,6 +3,7 @@ class_name StatusEffectDefinition
 
 @export var effect_id: String = "status_effect"
 @export var display_name: String = "Status Effect"
+@export var is_harmful: bool = true
 
 @export_group("Duration and Stacking")
 @export var duration: float = 5.0
