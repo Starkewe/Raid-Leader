@@ -49,7 +49,15 @@ Rogue two interrupt
 Tank taunt
 ```
 
-The parser rejects transcripts with multiple actions, missing destinations, unknown selectors, or ambiguous fuzzy matches. Unit identities support numbers 1 through 20, and class and role vocabulary comes from `GameState` and the unit resources rather than a second hard-coded catalog.
+The parser rejects transcripts with multiple actions, missing destinations, unknown selectors, or invalid current targets. Exact and normalized Who targets remain deterministic. If those paths fail, an experimental local weighted resolver compares only valid current raid targets using text, phonetic, grammar, number, and conservative-prior evidence, then passes the winning canonical selector into the existing command system. Unit identities support numbers 1 through 20, and class and role vocabulary comes from `GameState` and the unit resources rather than a second hard-coded catalog.
+
+The focused Who corpus runs with the project autoloads enabled:
+
+```text
+godot --headless --path . tests/voice/who_resolution_corpus_runner.tscn
+```
+
+Corpus entries live in `tests/voice/who_resolution_corpus.json`, so recorded failures can be added without changing resolver code. Synthetic corpus accuracy is a regression signal, not a claim about real recorded-command accuracy.
 
 ## Encounters
 
