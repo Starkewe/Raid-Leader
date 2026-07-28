@@ -27,6 +27,8 @@ const DESTINATION_LINE_OPACITY: float = 0.24
 const DESTINATION_UPDATE_INTERVAL: float = 0.0
 const DESTINATION_FLAG_SIZE: float = 9.0
 const DESTINATION_FLAG_OPACITY: float = 0.48
+const DESTINATION_ENDPOINT_SIZE: float = 3.5
+const DESTINATION_ENDPOINT_OPACITY: float = 0.72
 
 const PROFILES := {
 	"warrior": {

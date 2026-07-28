@@ -38,12 +38,16 @@ func _draw() -> void:
 
 		var path_points: Array = unit.get_command_path_points()
 		var previous_point := to_local((unit as Node2D).global_position)
+		_draw_path_origin(previous_point)
 
 		for point_value in path_points:
 			var world_point: Vector2 = point_value
 			var next_point := to_local(world_point)
 			_draw_dashed_segment(previous_point, next_point)
 			previous_point = next_point
+
+		if not path_points.is_empty():
+			_draw_path_endpoint(previous_point)
 
 		var destination_key := String(unit.get_command_destination_key())
 
@@ -91,6 +95,35 @@ func _draw_dashed_segment(start: Vector2, finish: Vector2) -> void:
 			true
 		)
 		traveled += step_length
+
+
+func _draw_path_origin(position: Vector2) -> void:
+	var color := Color(
+		1.0,
+		0.84,
+		0.26,
+		DodgeTuningScript.DESTINATION_ENDPOINT_OPACITY
+	)
+	draw_circle(position, DodgeTuningScript.DESTINATION_ENDPOINT_SIZE, color)
+
+
+func _draw_path_endpoint(position: Vector2) -> void:
+	var size := DodgeTuningScript.DESTINATION_ENDPOINT_SIZE
+	var color := Color(
+		1.0,
+		0.84,
+		0.26,
+		DodgeTuningScript.DESTINATION_ENDPOINT_OPACITY
+	)
+	var outline := Color(
+		0.12,
+		0.10,
+		0.05,
+		DodgeTuningScript.DESTINATION_ENDPOINT_OPACITY
+	)
+
+	draw_circle(position, size, color)
+	draw_arc(position, size, 0.0, TAU, 16, outline, 1.0, true)
 
 
 func _draw_destination_flag(position: Vector2) -> void:
