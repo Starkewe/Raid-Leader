@@ -805,25 +805,54 @@ func _merged_alignments_for_exact_action(
 	var alignments: Array[Dictionary] = []
 	var start := int(exact_action.get("start", 0))
 	var minimum_end := int(exact_action.get("end", start + 1))
-	var maximum_end := mini(tokens.size(), start + 2)
+	var command_end := (
+		tokens.size() - 1
+		if not tokens.is_empty() and VocabularyScript.WHEN_ALIASES.has(tokens[-1])
+		else tokens.size()
+	)
+	var maximum_end := mini(command_end, start + 2)
 
-	if maximum_end <= minimum_end:
+	if maximum_end < minimum_end:
 		return alignments
 
 	var span_text := _join_tokens(tokens, start, maximum_end)
+	var same_span_as_action := maximum_end == minimum_end
 	var exact_action_name := String(exact_action.get("action", ""))
 	var exact_alias := String(exact_action.get("alias", ""))
 
 	for sequence in merged_sequence_cache:
-		if (
-			String(sequence.get("action", "")) != exact_action_name
-			or String(sequence.get("action_alias", "")) != exact_alias
-		):
+		var sequence_action_alias := String(sequence.get("action_alias", ""))
+
+		if String(sequence.get("action", "")) != exact_action_name:
 			continue
 
-		var similarity := _entry_similarity(span_text, sequence)
+		if not same_span_as_action and sequence_action_alias != exact_alias:
+			continue
 
-		if similarity < TuningScript.MIN_MERGED_SEQUENCE_SIMILARITY:
+		var similarity := 0.0
+
+		if same_span_as_action:
+			## An exact action alias cannot also prove a hidden destination by
+			## comparing against itself. Require a different canonical action
+			## form and recover a plausible internal boundary for both terms.
+			if sequence_action_alias == exact_alias:
+				continue
+
+			similarity = _collapsed_two_term_similarity(
+				span_text,
+				sequence_action_alias,
+				String(sequence.get("destination_alias", ""))
+			)
+		else:
+			similarity = _entry_similarity(span_text, sequence)
+
+		var minimum_similarity := (
+			TuningScript.MIN_EXACT_ACTION_MERGED_SIMILARITY
+			if same_span_as_action
+			else TuningScript.MIN_MERGED_SEQUENCE_SIMILARITY
+		)
+
+		if similarity < minimum_similarity:
 			continue
 
 		alignments.append({
@@ -838,11 +867,50 @@ func _merged_alignments_for_exact_action(
 			"merged": true,
 			"where_data": Dictionary(sequence.get("where_data", {})).duplicate(true),
 			"canonical_terms": Array(sequence.get("canonical_terms", [])).duplicate(),
-			"alignment": "many_to_many"
+			"alignment": "one_to_many" if same_span_as_action else "many_to_many"
 		})
 
 	_prune_candidates(alignments, TuningScript.BEAM_WIDTH, "score")
 	return alignments
+
+
+func _collapsed_two_term_similarity(
+	span_text: String,
+	first_term: String,
+	second_term: String
+) -> float:
+	var span_compact := _compact_text(span_text)
+	var first_compact := _compact_text(first_term)
+	var second_compact := _compact_text(second_term)
+	var best_score := 0.0
+
+	if (
+		span_compact.length() < 2
+		or first_compact.is_empty()
+		or second_compact.is_empty()
+		or span_compact.length() <= first_compact.length()
+	):
+		return 0.0
+
+	for boundary in range(1, span_compact.length()):
+		var first_score := _normalized_similarity(
+			span_compact.substr(0, boundary),
+			first_compact
+		)
+		var second_score := _normalized_similarity(
+			span_compact.substr(boundary),
+			second_compact
+		)
+
+		if (
+			first_score < TuningScript.MIN_COLLAPSED_TERM_SIMILARITY
+			or second_score < TuningScript.MIN_COLLAPSED_TERM_SIMILARITY
+		):
+			continue
+
+		best_score = maxf(best_score, (first_score + second_score) / 2.0)
+
+	return best_score
 
 
 func _generate_movement_where_candidates(
@@ -1371,6 +1439,15 @@ func _get_mergeable_destination_entries(action_alias: String) -> Array[Dictionar
 				}
 			})
 
+		for range_step in ["in", "out"]:
+			entries.append({
+				"alias": range_step,
+				"where_data": {
+					"where": "movement_range_step",
+					"movement_direction": range_step
+				}
+			})
+
 	for direction in ["clockwise", "counterclockwise", "anticlockwise"]:
 		entries.append({
 			"alias": direction,
@@ -1655,11 +1732,7 @@ func _span_contains_number(tokens: Array[String], start: int, end: int) -> bool:
 	for index in range(start, mini(end, tokens.size())):
 		var token := tokens[index]
 
-		if token.is_valid_int() or token in [
-			"one", "two", "three", "four", "five", "six", "seven", "eight",
-			"nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
-			"fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"
-		]:
+		if VocabularyScript.target_number_from_token(token, true) > 0:
 			return true
 
 	return false

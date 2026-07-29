@@ -7,14 +7,6 @@ const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_
 const VocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
 const WhoTargetResolverScript := preload("res://scripts/voice/who_target_resolver.gd")
 
-const NUMBER_WORDS := {
-	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-	"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-	"eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
-	"fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
-	"nineteen": 19, "twenty": 20
-}
-
 const ACTION_ALIASES := VocabularyScript.ACTION_ALIASES
 
 const EXCEPTION_MARKERS: Array[String] = [
@@ -229,7 +221,10 @@ func _parse_deterministic(transcript: String) -> Dictionary:
 
 func _normalize_text(text: String) -> String:
 	var normalized := text.to_lower().strip_edges()
-	var punctuation: Array[String] = [".", ",", "!", "?", ":", ";", "\"", "'", "(", ")", "[", "]"]
+	var punctuation: Array[String] = [
+		".", ",", "!", "?", ":", ";", "\"", "'", "(", ")", "[", "]",
+		"-", "‐", "‑", "‒", "–", "—"
+	]
 
 	for character in punctuation:
 		normalized = normalized.replace(character, " ")
@@ -601,13 +596,7 @@ func _add_unit_identity_selector(selectors: Array, unit_class: String, unit_numb
 
 
 func _number_aliases(value: int) -> Array[String]:
-	var aliases: Array[String] = [str(value)]
-
-	for word_value in NUMBER_WORDS.keys():
-		if int(NUMBER_WORDS[word_value]) == value:
-			aliases.append(String(word_value))
-
-	return aliases
+	return VocabularyScript.get_target_number_aliases(value)
 
 
 func _first_matching_alias(text: String, aliases: Array) -> String:

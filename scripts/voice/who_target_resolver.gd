@@ -3,15 +3,9 @@ class_name WhoTargetResolver
 
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 const TuningScript := preload("res://scripts/voice/who_resolver_tuning.gd")
+const VocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
 
 const GROUP_SIZE: int = 5
-const NUMBER_WORDS := {
-	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-	"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-	"eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
-	"fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
-	"nineteen": 19, "twenty": 20
-}
 const FILLER_WORDS: Array[String] = [
 	"a", "an", "can", "could", "hey", "the", "you"
 ]
@@ -987,15 +981,12 @@ func _analyze_who_phrase(who_text: String) -> Dictionary:
 
 func _extract_requested_number(text: String) -> Dictionary:
 	var found_values: Array[int] = []
+	var tokens := text.split(" ", false)
+	var allow_roman := _has_roman_target_context(tokens)
 
-	for token_value in text.split(" ", false):
+	for token_value in tokens:
 		var token := String(token_value)
-		var number := 0
-
-		if token.is_valid_int():
-			number = int(token)
-		elif NUMBER_WORDS.has(token):
-			number = int(NUMBER_WORDS[token])
+		var number := VocabularyScript.target_number_from_token(token, allow_roman)
 
 		if number > 0 and not found_values.has(number):
 			found_values.append(number)
@@ -1005,6 +996,20 @@ func _extract_requested_number(text: String) -> Dictionary:
 		"ambiguous": found_values.size() > 1,
 		"tokens": found_values
 	}
+
+
+func _has_roman_target_context(tokens: Array) -> bool:
+	for token_value in tokens:
+		var token := String(token_value)
+
+		if (
+			not FILLER_WORDS.has(token)
+			and not VocabularyScript.is_roman_numeral(token)
+			and VocabularyScript.target_number_from_token(token, false) <= 0
+		):
+			return true
+
+	return false
 
 
 func _get_identity_text(text: String, number_result: Dictionary) -> String:
@@ -1021,7 +1026,7 @@ func _get_identity_text(text: String, number_result: Dictionary) -> String:
 			if token.is_valid_int() and int(token) == requested_number:
 				continue
 
-			if NUMBER_WORDS.has(token) and int(NUMBER_WORDS[token]) == requested_number:
+			if VocabularyScript.target_number_from_token(token, true) == requested_number:
 				continue
 
 		output_tokens.append(token)
@@ -1153,7 +1158,10 @@ func _get_unit_target_id(unit: Node) -> String:
 
 func _normalize_text(text: String) -> String:
 	var normalized := text.to_lower().strip_edges()
-	var punctuation: Array[String] = [".", ",", "!", "?", ":", ";", "\"", "'", "(", ")", "[", "]"]
+	var punctuation: Array[String] = [
+		".", ",", "!", "?", ":", ";", "\"", "'", "(", ")", "[", "]",
+		"-", "‐", "‑", "‒", "–", "—"
+	]
 
 	for character in punctuation:
 		normalized = normalized.replace(character, " ")

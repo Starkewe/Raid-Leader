@@ -49,7 +49,7 @@ Rogue two interrupt
 Tank taunt
 ```
 
-The parser rejects transcripts with multiple actions, missing destinations, unknown selectors, invalid current targets, or unsupported slot order. Clear exact and safely normalized commands remain on a deterministic fast path. When that path cannot produce a complete valid command, an experimental constrained joint decoder evaluates a bounded set of ordered Who, What, Where, and current When interpretations. It owns every used transcript span, supports bounded split and merged terms, applies movement-only `left/right/up/down` equivalents, and validates the complete canonical command before returning it.
+The parser rejects transcripts with multiple actions, missing destinations, unknown selectors, invalid current targets, or unsupported slot order. Clear exact and safely normalized commands remain on a deterministic fast path. Target indices accept digits, number words, and Roman numerals from I through XX. Hyphens and common Unicode dash characters are treated as spoken-word boundaries. When the deterministic path cannot produce a complete valid command, an experimental constrained joint decoder evaluates a bounded set of ordered Who, What, Where, and current When interpretations. It owns every used transcript span, supports bounded split and merged terms, applies movement-only `left/right/up/down` equivalents, and validates the complete canonical command before returning it.
 
 The joint decoder reuses the live-roster weighted Who candidates. Target structure and index filter eligibility before identity-only textual and phonetic scoring. Static category and recent-use priors remain small tie-breakers, and the winner margin is diagnostic rather than a rejection threshold. Omitted targets use action-specific deterministic rules only after the decoder establishes genuine omission. `please` remains available to both an explicit Priest interpretation and a filler/default interpretation.
 
@@ -63,7 +63,7 @@ godot --headless --path . tests/voice/who_resolution_corpus_runner.tscn
 
 Corpus entries live in `tests/voice/who_resolution_corpus.json`, so recorded failures can be added without changing resolver code. Synthetic corpus accuracy is a regression signal, not a claim about real recorded-command accuracy.
 
-The complete-command corpus covers deterministic commands, omitted and defaulted targets, semantic destinations, split target identities, merged action/destination terms, filler ambiguity, word order, invalid targets, diagnostics, cache rebuilds, and execution mapping:
+The complete-command corpus covers deterministic commands, omitted and defaulted targets, semantic destinations, split target identities, merged action/destination terms, hyphenated word boundaries, Roman-numeral indices, filler ambiguity, word order, invalid targets, diagnostics, cache rebuilds, and execution mapping:
 
 ```text
 godot --headless --path . tests/voice/command_decoder_corpus_runner.tscn

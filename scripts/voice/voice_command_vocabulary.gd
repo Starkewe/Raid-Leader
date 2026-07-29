@@ -24,6 +24,20 @@ const SAFE_FILLER_WORDS: Array[String] = [
 const AMBIGUOUS_FILLER_WORDS: Array[String] = ["please"]
 const WHEN_ALIASES: Array[String] = ["now"]
 
+const NUMBER_WORDS := {
+	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+	"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+	"eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+	"fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+	"nineteen": 19, "twenty": 20
+}
+const ROMAN_NUMERALS := {
+	"i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5,
+	"vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10,
+	"xi": 11, "xii": 12, "xiii": 13, "xiv": 14, "xv": 15,
+	"xvi": 16, "xvii": 17, "xviii": 18, "xix": 19, "xx": 20
+}
+
 const MOVEMENT_SEMANTIC_REGIONS := {
 	"left": "west",
 	"right": "east",
@@ -119,6 +133,39 @@ static func get_range_entries() -> Array[Dictionary]:
 		{"alias": "midrange", "range": MovementSlotResolverScript.RANGE_MID},
 		{"alias": "far", "range": MovementSlotResolverScript.RANGE_FAR}
 	]
+
+
+static func get_target_number_aliases(value: int) -> Array[String]:
+	var aliases: Array[String] = [str(value)]
+
+	for word_value in NUMBER_WORDS.keys():
+		if int(NUMBER_WORDS[word_value]) == value:
+			aliases.append(String(word_value))
+
+	for roman_value in ROMAN_NUMERALS.keys():
+		if int(ROMAN_NUMERALS[roman_value]) == value:
+			aliases.append(String(roman_value))
+
+	return aliases
+
+
+static func target_number_from_token(token: String, include_roman: bool = true) -> int:
+	var normalized := token.to_lower().strip_edges()
+
+	if normalized.is_valid_int():
+		return int(normalized)
+
+	if NUMBER_WORDS.has(normalized):
+		return int(NUMBER_WORDS[normalized])
+
+	if include_roman and ROMAN_NUMERALS.has(normalized):
+		return int(ROMAN_NUMERALS[normalized])
+
+	return 0
+
+
+static func is_roman_numeral(token: String) -> bool:
+	return ROMAN_NUMERALS.has(token.to_lower().strip_edges())
 
 
 static func is_filler_token(token: String, include_ambiguous: bool = true) -> bool:
