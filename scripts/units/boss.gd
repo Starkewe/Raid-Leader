@@ -113,6 +113,10 @@ func setup_debug_visuals() -> void:
 		show_debug_region_guides,
 		show_debug_range_rings
 	)
+	GameState.register_raid_debug_content(
+		visuals,
+		show_debug_region_guides or show_debug_range_rings
+	)
 
 func apply_selected_boss_profile() -> void:
 	if not Engine.has_singleton("GameState") and not has_node("/root/GameState"):

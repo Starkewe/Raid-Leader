@@ -1047,7 +1047,7 @@ func clear_pending_heals() -> void:
 	pending_heals.clear()
 
 
-func get_incoming_healing_total() -> int:
+func get_incoming_healing_total(excluded_source: Node = null) -> int:
 	var invalid_pending_ids: Array[String] = []
 	var total := 0
 
@@ -1062,6 +1062,9 @@ func get_incoming_healing_total() -> int:
 
 		if source.has_method("is_alive") and not bool(source.is_alive()):
 			invalid_pending_ids.append(pending_id)
+			continue
+
+		if source == excluded_source:
 			continue
 
 		total += maxi(int(pending_data.get("amount", 0)), 0)

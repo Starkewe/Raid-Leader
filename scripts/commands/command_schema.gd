@@ -20,6 +20,7 @@ const SELECTOR_ROLE := "role"
 
 const DESTINATION_BOSS := "boss"
 const DESTINATION_BOSS_TARGET := "boss_target"
+const DESTINATION_HEALING_SCOPE := "healing_scope"
 const DESTINATION_CURABLE_ALLIES := "curable_allies"
 const DESTINATION_PLAYER := "me"
 const DESTINATION_MOVEMENT_SLOT := "movement_slot"
@@ -28,6 +29,16 @@ const DESTINATION_MOVEMENT_ROTATE := "movement_rotate"
 const DESTINATION_MOVEMENT_ROTATE_STEP := "movement_rotate_step"
 const DESTINATION_MOVEMENT_RANGE := "movement_range"
 const DESTINATION_MOVEMENT_RANGE_STEP := "movement_range_step"
+
+const HEAL_SCOPE_ACTIVE_TANK := "active_tank"
+const HEAL_SCOPE_RAID := "raid"
+
+const HEAL_SCOPE_SELECTOR_TYPES: Array[String] = [
+	SELECTOR_CLASS,
+	SELECTOR_GROUP,
+	SELECTOR_UNIT,
+	SELECTOR_UNIT_IDENTITY
+]
 
 const ACTIONS: Array[String] = [
 	ACTION_ATTACK,
@@ -81,8 +92,13 @@ static func validate(command_data: Dictionary) -> Dictionary:
 				return _failure(action.capitalize() + " requires the boss destination.")
 
 		ACTION_HEAL:
-			if destination != DESTINATION_BOSS_TARGET:
-				return _failure("Heal requires the boss-target destination.")
+			if destination != DESTINATION_HEALING_SCOPE:
+				return _failure("Heal requires an explicit healing target.")
+
+			var healing_scope_result := _validate_healing_scope(command_data)
+
+			if not bool(healing_scope_result.get("ok", false)):
+				return healing_scope_result
 
 		ACTION_CURE:
 			if destination != DESTINATION_CURABLE_ALLIES:
@@ -98,6 +114,49 @@ static func validate(command_data: Dictionary) -> Dictionary:
 		return selector_result
 
 	return _validate_movement_details(command_data)
+
+
+static func _validate_healing_scope(command_data: Dictionary) -> Dictionary:
+	var scope_value = command_data.get("healing_scope", null)
+
+	if not scope_value is Dictionary:
+		return _failure("Heal requires an explicit healing target.")
+
+	var scope: Dictionary = scope_value
+	var scope_type := String(scope.get("type", ""))
+
+	if scope_type in [HEAL_SCOPE_ACTIVE_TANK, HEAL_SCOPE_RAID]:
+		return _success()
+
+	if not HEAL_SCOPE_SELECTOR_TYPES.has(scope_type):
+		if scope_type == SELECTOR_EVERYONE:
+			return _failure("Everyone is not a valid healing target.")
+
+		return _failure("Unsupported healing target.")
+
+	match scope_type:
+		SELECTOR_CLASS:
+			if String(scope.get("value", "")).is_empty():
+				return _failure("Healing class target is empty.")
+
+		SELECTOR_GROUP:
+			if int(scope.get("value", 0)) <= 0:
+				return _failure("Healing group target is invalid.")
+
+		SELECTOR_UNIT:
+			var unit_value = scope.get("unit", null)
+
+			if not unit_value is Node or not is_instance_valid(unit_value):
+				return _failure("Healing unit target is invalid.")
+
+		SELECTOR_UNIT_IDENTITY:
+			if (
+				String(scope.get("class", "")).is_empty()
+				or int(scope.get("number", 0)) <= 0
+			):
+				return _failure("Healing unit identity is invalid.")
+
+	return _success()
 
 
 static func _validate_selectors(command_data: Dictionary) -> Dictionary:

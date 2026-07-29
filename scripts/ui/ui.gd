@@ -336,7 +336,10 @@ func setup_command_debug_panel() -> void:
 		command_debug_panel.name = "CommandDebugPanel"
 		add_child(command_debug_panel)
 
-	command_debug_panel.visible = show_command_debug_in_development and OS.is_debug_build()
+	GameState.register_raid_debug_content(
+		command_debug_panel,
+		show_command_debug_in_development and OS.is_debug_build()
+	)
 
 	position_command_debug_panel()
 

@@ -2,6 +2,10 @@ extends BaseCombatUnit
 
 class_name Priest
 
+const HealingTargetSelectorScript := preload(
+	"res://scripts/combat/healing_target_selector.gd"
+)
+
 var cast_range_units: float = 40.0
 
 var heal_amount: int = 15
@@ -16,6 +20,9 @@ var cure_cast_time: float = 1.0
 
 var heal_target: Node2D = null
 var cure_target: Node2D = null
+var healing_scope: Dictionary = {}
+var healing_target_selector = null
+var heal_target_is_fallback: bool = false
 
 var cooldown_timer: float = 0.0
 var cure_cooldown_timer: float = 0.0
@@ -89,8 +96,10 @@ func _physics_process(delta):
 		move_and_slide()
 		return
 
+	refresh_heal_target_for_assignment()
+
 	if not has_valid_heal_target():
-		stop_action()
+		stop_movement()
 		move_and_slide()
 		return
 
@@ -99,21 +108,50 @@ func _physics_process(delta):
 	move_and_slide()
 
 
-func command_heal(new_target: Node2D):
+func command_heal(new_target: Node2D) -> bool:
 	if is_dead:
-		return
+		return false
 
 	if not can_heal_target(new_target):
 		stop_action()
 		print(get_display_name(), "received invalid heal target.")
-		return
+		return false
 
-	if heal_target != new_target and active_cast_kind != "cure":
+	var direct_selector = HealingTargetSelectorScript.new()
+	direct_selector.setup([new_target], [])
+	return command_heal_scope(
+		{
+			"type": "unit",
+			"value": get_node_display_name(new_target),
+			"unit": new_target
+		},
+		direct_selector
+	)
+
+
+func command_heal_scope(new_scope: Dictionary, new_target_selector) -> bool:
+	if is_dead or new_scope.is_empty() or new_target_selector == null:
+		return false
+
+	if not new_target_selector.is_valid_scope(new_scope):
+		return false
+
+	if active_cast_kind != "cure":
 		cancel_current_cast()
 
-	heal_target = new_target
+	super.stop_action()
+	healing_scope = new_scope.duplicate(true)
+	healing_target_selector = new_target_selector
+	heal_target = null
+	heal_target_is_fallback = false
+	refresh_heal_target_for_assignment(true)
 
-	print(get_display_name(), "ordered to cast heals on:", get_node_display_name(heal_target))
+	print(
+		get_display_name(),
+		"assigned to heal ",
+		healing_target_selector.get_scope_label(healing_scope)
+	)
+	return true
 
 
 func command_cure(new_target: Node2D) -> bool:
@@ -139,6 +177,40 @@ func update_cooldown(delta: float):
 
 func has_valid_heal_target() -> bool:
 	return can_heal_target(heal_target)
+
+
+func has_healing_assignment() -> bool:
+	return not healing_scope.is_empty() and healing_target_selector != null
+
+
+func refresh_heal_target_for_assignment(force_reselect: bool = false) -> void:
+	if not has_healing_assignment():
+		heal_target = null
+		heal_target_is_fallback = false
+		return
+
+	if (
+		not force_reselect
+		and has_valid_heal_target()
+		and healing_target_selector.is_target_eligible(
+			healing_scope,
+			heal_target,
+			self,
+			heal_target_is_fallback,
+			cast_range_units
+		)
+	):
+		return
+
+	var selection: Dictionary = healing_target_selector.select_target(
+		healing_scope,
+		self,
+		true,
+		cast_range_units
+	)
+	var selected_target = selection.get("target", null)
+	heal_target = selected_target as Node2D if selected_target is Node2D else null
+	heal_target_is_fallback = bool(selection.get("is_fallback", false))
 
 
 func has_valid_cure_target() -> bool:
@@ -203,10 +275,24 @@ func try_start_cast():
 	if cooldown_timer > 0.0:
 		return
 
+	var previous_target := heal_target
+	refresh_heal_target_for_assignment(true)
+
+	if heal_target != previous_target:
+		return
+
 	if not has_valid_heal_target():
 		return
 
-	if heal_target.has_method("is_full_health") and heal_target.is_full_health():
+	if not healing_target_selector.is_target_eligible(
+		healing_scope,
+		heal_target,
+		self,
+		heal_target_is_fallback,
+		cast_range_units
+	):
+		heal_target = null
+		heal_target_is_fallback = false
 		return
 
 	is_casting = true
@@ -260,6 +346,8 @@ func finish_cast():
 		return
 
 	completed_target.receive_heal(heal_amount, self, heal_ability_id)
+	heal_target = null
+	heal_target_is_fallback = false
 	active_cast_kind = ""
 
 
@@ -317,6 +405,9 @@ func on_manual_move_started():
 
 
 func stop_action():
+	healing_scope.clear()
+	healing_target_selector = null
+	heal_target_is_fallback = false
 	heal_target = null
 	cure_target = null
 	cancel_current_cast()
@@ -325,6 +416,9 @@ func stop_action():
 
 func on_reset_unit():
 	clear_pending_heal_prediction()
+	healing_scope.clear()
+	healing_target_selector = null
+	heal_target_is_fallback = false
 	heal_target = null
 	cure_target = null
 	cooldown_timer = 0.0
@@ -443,5 +537,11 @@ func get_status_text() -> String:
 			return "Recovering"
 
 		return "Healing " + get_node_display_name(heal_target)
+
+	if has_healing_assignment():
+		return (
+			"Watching "
+			+ healing_target_selector.get_scope_label(healing_scope)
+		)
 
 	return "Idle"

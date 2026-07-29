@@ -1,7 +1,11 @@
 extends Node
 
+signal raid_debug_visibility_changed(is_visible: bool)
+
 const MAX_RAID_SIZE: int = 20
 const SETTINGS_PATH := "user://raid_leader_settings.cfg"
+const RAID_DEBUG_CONTENT_GROUP: StringName = &"raid_debug_content"
+const RAID_DEBUG_AVAILABLE_META: StringName = &"raid_debug_available"
 
 const TUTORIAL_BOSS_CLEAVE_CLOSE_REGION := "cleave_close_region"
 const TUTORIAL_BOSS_LONG_REGION_CONE := "long_region_cone"
@@ -31,6 +35,7 @@ const ENCOUNTER_CHAINMASTER_DEFINITION: EncounterDefinition = preload("res://dat
 
 var selected_tutorial_boss_id: String = DEFAULT_ENCOUNTER_ID
 var selected_normal_encounter_id: String = DEFAULT_ENCOUNTER_ID
+var raid_debug_visible: bool = false
 
 var normal_encounter_order: Array[String] = [
 	ENCOUNTER_OGRE,
@@ -159,6 +164,44 @@ var voice_settings: Dictionary = {
 
 func _ready() -> void:
 	load_persistent_settings()
+
+
+func register_raid_debug_content(content: CanvasItem, is_available: bool = true) -> void:
+	if content == null:
+		return
+
+	content.set_meta(RAID_DEBUG_AVAILABLE_META, is_available)
+
+	if not content.is_in_group(RAID_DEBUG_CONTENT_GROUP):
+		content.add_to_group(RAID_DEBUG_CONTENT_GROUP)
+
+	_apply_raid_debug_visibility_to(content)
+
+
+func toggle_raid_debug_visibility() -> bool:
+	set_raid_debug_visibility(not raid_debug_visible)
+	return raid_debug_visible
+
+
+func set_raid_debug_visibility(is_visible: bool) -> void:
+	if raid_debug_visible == is_visible:
+		_apply_raid_debug_visibility()
+		return
+
+	raid_debug_visible = is_visible
+	_apply_raid_debug_visibility()
+	raid_debug_visibility_changed.emit(raid_debug_visible)
+
+
+func _apply_raid_debug_visibility() -> void:
+	for content in get_tree().get_nodes_in_group(RAID_DEBUG_CONTENT_GROUP):
+		if content is CanvasItem:
+			_apply_raid_debug_visibility_to(content)
+
+
+func _apply_raid_debug_visibility_to(content: CanvasItem) -> void:
+	var is_available := bool(content.get_meta(RAID_DEBUG_AVAILABLE_META, true))
+	content.visible = raid_debug_visible and is_available
 
 
 func get_available_classes() -> Array[String]:

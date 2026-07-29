@@ -96,7 +96,7 @@ static func get_action_destination(action: String) -> Dictionary:
 		CommandSchemaScript.ACTION_ATTACK, CommandSchemaScript.ACTION_INTERRUPT, CommandSchemaScript.ACTION_TAUNT:
 			return {"where": CommandSchemaScript.DESTINATION_BOSS}
 		CommandSchemaScript.ACTION_HEAL:
-			return {"where": CommandSchemaScript.DESTINATION_BOSS_TARGET}
+			return {"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE}
 		CommandSchemaScript.ACTION_CURE:
 			return {"where": CommandSchemaScript.DESTINATION_CURABLE_ALLIES}
 		_:

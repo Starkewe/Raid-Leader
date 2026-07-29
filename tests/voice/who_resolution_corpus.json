@@ -94,7 +94,7 @@
 		"source": "regression"
 	},
 	{
-		"transcript": "pre east one heal",
+		"transcript": "pre east one heal rogue three",
 		"expected_target": "unit_identity:Priest:1",
 		"expected_target_type": "numbered_individual",
 		"expected_method": "weighted_phonetic",
@@ -178,7 +178,7 @@
 		"source": "regression"
 	},
 	{
-		"transcript": "priests heal",
+		"transcript": "priests heal group two",
 		"expected_target": "class:Priest",
 		"expected_target_type": "class_group",
 		"expected_method": "deterministic",
@@ -227,7 +227,7 @@
 		"source": "regression"
 	},
 	{
-		"transcript": "healers heal",
+		"transcript": "healers heal the raid",
 		"expected_target": "role:healer",
 		"expected_target_type": "role_group",
 		"expected_method": "deterministic",

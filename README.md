@@ -117,7 +117,7 @@ This prototype currently uses manual encounter testing rather than an automated 
 1. Build a 20-member roster and confirm frames, formations, roles, and identities remain distinct.
 2. Exercise every panel action and representative voice commands, including rejected ambiguous input.
 3. Kill the current boss target during both a target-locked cleave and Twin Sweeping Pull.
-4. Taunt between two Warriors and confirm boss-target healing follows the new target.
+4. Taunt between two Warriors and confirm active-tank and raid healing scopes update immediately.
 5. Reset after a wipe and victory and confirm health, casts, movement, statuses, targets, and the combat log are cleared.
 6. Run each tutorial at multiple window sizes and confirm the raid frames, boss frame, and command panel remain usable.
 

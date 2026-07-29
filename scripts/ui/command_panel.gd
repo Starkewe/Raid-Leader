@@ -240,9 +240,7 @@ func populate_where_options_for_current_action() -> void:
 			})
 
 		"heal":
-			add_option(where_dropdown, "Boss Target", {
-				"where": "boss_target"
-			})
+			add_healing_target_options()
 
 		"cure":
 			add_option(where_dropdown, "Curable Allies", {
@@ -268,6 +266,57 @@ func populate_when_options() -> void:
 	})
 
 	when_dropdown.select(0)
+
+
+func add_healing_target_options() -> void:
+	add_option(where_dropdown, "Select Heal Target", {
+		"where": "none"
+	})
+	add_option(where_dropdown, "The Active Tank", {
+		"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
+		"healing_scope": {
+			"type": CommandSchemaScript.HEAL_SCOPE_ACTIVE_TANK
+		}
+	})
+	add_option(where_dropdown, "The Raid", {
+		"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
+		"healing_scope": {
+			"type": CommandSchemaScript.HEAL_SCOPE_RAID
+		}
+	})
+
+	for unit_class in GameState.get_available_classes():
+		add_option(where_dropdown, "Class: " + unit_class, {
+			"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
+			"healing_scope": {
+				"type": CommandSchemaScript.SELECTOR_CLASS,
+				"value": unit_class
+			}
+		})
+
+	var group_count := ceili(float(GameState.MAX_RAID_SIZE) / 5.0)
+
+	for group_number in range(1, group_count + 1):
+		add_option(where_dropdown, "Group " + str(group_number), {
+			"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
+			"healing_scope": {
+				"type": CommandSchemaScript.SELECTOR_GROUP,
+				"value": group_number
+			}
+		})
+
+	for unit in party_members:
+		if unit == null or not is_instance_valid(unit):
+			continue
+
+		add_option(where_dropdown, "Unit: " + get_unit_display_name(unit), {
+			"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
+			"healing_scope": {
+				"type": CommandSchemaScript.SELECTOR_UNIT,
+				"value": get_unit_display_name(unit),
+				"unit": unit
+			}
+		})
 
 
 func add_option(dropdown: OptionButton, label_text: String, metadata: Dictionary) -> void:

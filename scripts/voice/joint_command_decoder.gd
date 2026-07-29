@@ -100,7 +100,8 @@ func decode(
 			normalized_transcript,
 			tokens,
 			action_alignment,
-			exclusion_reasons
+			exclusion_reasons,
+			deterministic_failure
 		)
 
 		for candidate in action_candidates:
@@ -220,7 +221,11 @@ func build_deterministic_resolution(
 	var action := String(command_data.get("what", ""))
 	var where_state := (
 		SLOT_EXPLICIT
-		if action in [CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE]
+		if action in [
+			CommandSchemaScript.ACTION_MOVE,
+			CommandSchemaScript.ACTION_DODGE,
+			CommandSchemaScript.ACTION_HEAL
+		]
 		else SLOT_DEFAULTED
 	)
 	var slot_states := {
@@ -551,7 +556,8 @@ func _complete_action_alignment(
 	normalized_transcript: String,
 	tokens: Array[String],
 	action_alignment: Dictionary,
-	exclusion_reasons: Dictionary
+	exclusion_reasons: Dictionary,
+	command_context: Dictionary = {}
 ) -> Array[Dictionary]:
 	var candidates: Array[Dictionary] = []
 	var action := String(action_alignment.get("action", ""))
@@ -590,6 +596,18 @@ func _complete_action_alignment(
 	else:
 		var fixed_destination := VocabularyScript.get_action_destination(action)
 
+		if action == CommandSchemaScript.ACTION_HEAL:
+			var healing_scope: Dictionary = command_context.get("healing_scope", {})
+
+			if healing_scope.is_empty():
+				_increment_reason(exclusion_reasons, "missing_healing_target")
+				return candidates
+
+			fixed_destination = {
+				"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
+				"healing_scope": healing_scope.duplicate(true)
+			}
+
 		if fixed_destination.is_empty():
 			_increment_reason(exclusion_reasons, "action_has_no_destination_rule")
 			return candidates
@@ -601,7 +619,11 @@ func _complete_action_alignment(
 		where_candidates.append({
 			"where_data": fixed_destination,
 			"score": 0.0,
-			"state": SLOT_DEFAULTED,
+			"state": (
+				SLOT_EXPLICIT
+				if action == CommandSchemaScript.ACTION_HEAL
+				else SLOT_DEFAULTED
+			),
 			"span_start": -1,
 			"span_end": -1,
 			"span_text": "",
@@ -1799,6 +1821,10 @@ func _where_label(where_data: Dictionary) -> String:
 			return "Boss"
 		"boss_target":
 			return "Boss Target"
+		"healing_scope":
+			return _healing_scope_label(
+				Dictionary(where_data.get("healing_scope", {}))
+			)
 		"curable_allies":
 			return "Curable Allies"
 		"me":
@@ -1817,6 +1843,26 @@ func _where_label(where_data: Dictionary) -> String:
 			return String(where_data.get("movement_direction", "")).capitalize()
 		_:
 			return String(where_data.get("where", "Unknown")).capitalize()
+
+
+func _healing_scope_label(scope: Dictionary) -> String:
+	match String(scope.get("type", "")):
+		CommandSchemaScript.HEAL_SCOPE_ACTIVE_TANK:
+			return "The Active Tank"
+		CommandSchemaScript.HEAL_SCOPE_RAID:
+			return "The Raid"
+		CommandSchemaScript.SELECTOR_CLASS:
+			return String(scope.get("value", "")).capitalize() + " Class"
+		CommandSchemaScript.SELECTOR_GROUP:
+			return "Group " + str(int(scope.get("value", 0)))
+		CommandSchemaScript.SELECTOR_UNIT_IDENTITY:
+			return (
+				String(scope.get("class", ""))
+				+ " "
+				+ str(int(scope.get("number", 0)))
+			)
+
+	return String(scope.get("value", "Healing Target"))
 
 
 func _canonical_id_for_selector(selector: Dictionary) -> String:

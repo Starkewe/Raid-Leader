@@ -37,8 +37,76 @@ func get_who_resolver() -> WhoTargetResolver:
 
 
 func parse(transcript: String) -> Dictionary:
+	var normalized_text := _normalize_text(transcript)
+	var healing_input := _extract_healing_scope_suffix(normalized_text)
+	var scope_found := bool(healing_input.get("found", false))
+	var healing_scope: Dictionary = healing_input.get("scope", {})
+	var command_text := (
+		String(healing_input.get("command_text", normalized_text))
+		if scope_found
+		else normalized_text
+	)
+	var result := _parse_command_text(command_text, healing_scope)
+
+	if (
+		scope_found
+		and bool(result.get("ok", false))
+		and String(Dictionary(result.get("command_data", {})).get("what", ""))
+			!= CommandSchemaScript.ACTION_HEAL
+	):
+		result = _parse_command_text(normalized_text, {})
+
+	if not bool(result.get("ok", false)):
+		if _contains_explicit_heal_action(command_text):
+			var failure_reason := (
+				"Everyone is not a valid healing target."
+				if String(healing_scope.get("type", ""))
+					== CommandSchemaScript.SELECTOR_EVERYONE
+				else "Heal requires an explicit target."
+			)
+			return _fail(
+				failure_reason,
+				normalized_text,
+				transcript,
+				Dictionary(result.get("who_resolution", {}))
+			)
+
+		result["transcript"] = transcript
+		result["normalized_text"] = normalized_text
+		return result
+
+	var command_data: Dictionary = result.get("command_data", {})
+
+	if String(command_data.get("what", "")) == CommandSchemaScript.ACTION_HEAL:
+		if not scope_found or healing_scope.is_empty():
+			return _fail(
+				"Heal requires an explicit target.",
+				normalized_text,
+				transcript,
+				Dictionary(result.get("who_resolution", {}))
+			)
+
+		var target_validation := _validate_healing_scope_target(healing_scope)
+
+		if not bool(target_validation.get("ok", false)):
+			return _fail(
+				String(target_validation.get("reason", "Invalid healing target.")),
+				normalized_text,
+				transcript,
+				Dictionary(result.get("who_resolution", {}))
+			)
+
+	result["transcript"] = transcript
+	result["normalized_text"] = normalized_text
+	return result
+
+
+func _parse_command_text(
+	transcript: String,
+	healing_scope: Dictionary = {}
+) -> Dictionary:
 	var deterministic_started := Time.get_ticks_usec()
-	var deterministic_result := _parse_deterministic(transcript)
+	var deterministic_result := _parse_deterministic(transcript, healing_scope)
 	var deterministic_duration := Time.get_ticks_usec() - deterministic_started
 	var normalized_text := String(deterministic_result.get(
 		"normalized_text",
@@ -76,6 +144,7 @@ func parse(transcript: String) -> Dictionary:
 		{
 			"reason": String(deterministic_result.get("reason", "")),
 			"duration_usec": deterministic_duration,
+			"healing_scope": healing_scope.duplicate(true),
 			"who_resolution": Dictionary(
 				deterministic_result.get("who_resolution", {})
 			).duplicate(true)
@@ -83,7 +152,10 @@ func parse(transcript: String) -> Dictionary:
 	)
 
 
-func _parse_deterministic(transcript: String) -> Dictionary:
+func _parse_deterministic(
+	transcript: String,
+	healing_scope: Dictionary = {}
+) -> Dictionary:
 	var normalized_text := _normalize_text(transcript)
 
 	if normalized_text.is_empty():
@@ -204,6 +276,9 @@ func _parse_deterministic(transcript: String) -> Dictionary:
 	for key in extra.keys():
 		command_data[key] = extra[key]
 
+	if action == CommandSchemaScript.ACTION_HEAL and not healing_scope.is_empty():
+		command_data["healing_scope"] = healing_scope.duplicate(true)
+
 	var validation_result := CommandSchemaScript.validate(command_data)
 
 	if not bool(validation_result.get("ok", false)):
@@ -230,6 +305,156 @@ func _normalize_text(text: String) -> String:
 		normalized = normalized.replace(character, " ")
 
 	return _collapse_spaces(normalized)
+
+
+func _extract_healing_scope_suffix(text: String) -> Dictionary:
+	var working := text.strip_edges()
+	var has_explicit_now := working.ends_with(" now")
+
+	if has_explicit_now:
+		working = working.trim_suffix(" now").strip_edges()
+
+	for special in [
+		{
+			"phrases": ["the active tanks", "the active tank", "active tanks", "active tank"],
+			"type": CommandSchemaScript.HEAL_SCOPE_ACTIVE_TANK
+		},
+		{
+			"phrases": ["the raid", "raid"],
+			"type": CommandSchemaScript.HEAL_SCOPE_RAID
+		}
+	]:
+		for phrase_value in special.get("phrases", []):
+			var special_result := _healing_scope_suffix_result(
+				working,
+				String(phrase_value),
+				{"type": String(special.get("type", ""))},
+				has_explicit_now
+			)
+
+			if bool(special_result.get("found", false)):
+				return special_result
+
+	for group_number in range(1, ceili(float(GameState.MAX_RAID_SIZE) / 5.0) + 1):
+		for number_alias in _number_aliases(group_number):
+			for group_word in ["group", "row"]:
+				var group_result := _healing_scope_suffix_result(
+					working,
+					group_word + " " + number_alias,
+					{
+						"type": CommandSchemaScript.SELECTOR_GROUP,
+						"value": group_number
+					},
+					has_explicit_now
+				)
+
+				if bool(group_result.get("found", false)):
+					return group_result
+
+	for class_entry in GameState.get_voice_class_entries():
+		var unit_class := String(class_entry.get("unit_class", ""))
+
+		for alias_value in class_entry.get("aliases", []):
+			var alias := String(alias_value)
+
+			for unit_number in range(1, GameState.MAX_RAID_SIZE + 1):
+				for number_alias in _number_aliases(unit_number):
+					var unit_result := _healing_scope_suffix_result(
+						working,
+						alias + " " + number_alias,
+						{
+							"type": CommandSchemaScript.SELECTOR_UNIT_IDENTITY,
+							"value": unit_class + "_" + str(unit_number),
+							"class": unit_class,
+							"number": unit_number
+						},
+						has_explicit_now
+					)
+
+					if bool(unit_result.get("found", false)):
+						return unit_result
+
+	for class_entry in GameState.get_voice_class_entries():
+		var unit_class := String(class_entry.get("unit_class", ""))
+
+		for alias_value in class_entry.get("aliases", []):
+			var class_result := _healing_scope_suffix_result(
+				working,
+				String(alias_value),
+				{
+					"type": CommandSchemaScript.SELECTOR_CLASS,
+					"value": unit_class
+				},
+				has_explicit_now
+			)
+
+			if bool(class_result.get("found", false)):
+				return class_result
+
+	for invalid_everyone in ["everyone", "everybody", "all"]:
+		var invalid_result := _healing_scope_suffix_result(
+			working,
+			invalid_everyone,
+			{
+				"type": CommandSchemaScript.SELECTOR_EVERYONE,
+				"value": ""
+			},
+			has_explicit_now
+		)
+
+		if bool(invalid_result.get("found", false)):
+			return invalid_result
+
+	return {"found": false, "command_text": text, "scope": {}}
+
+
+func _healing_scope_suffix_result(
+	text: String,
+	suffix: String,
+	scope: Dictionary,
+	has_explicit_now: bool
+) -> Dictionary:
+	if text != suffix and not text.ends_with(" " + suffix):
+		return {"found": false}
+
+	var command_text := text.trim_suffix(suffix).strip_edges()
+
+	if has_explicit_now:
+		command_text += " now"
+
+	return {
+		"found": true,
+		"command_text": command_text.strip_edges(),
+		"scope": scope.duplicate(true)
+	}
+
+
+func _validate_healing_scope_target(scope: Dictionary) -> Dictionary:
+	var scope_type := String(scope.get("type", ""))
+
+	if scope_type == CommandSchemaScript.SELECTOR_EVERYONE:
+		return {
+			"ok": false,
+			"reason": "Everyone is not a valid healing target."
+		}
+
+	if scope_type in [
+		CommandSchemaScript.HEAL_SCOPE_ACTIVE_TANK,
+		CommandSchemaScript.HEAL_SCOPE_RAID
+	]:
+		return {"ok": true, "reason": ""}
+
+	if not CommandSchemaScript.HEAL_SCOPE_SELECTOR_TYPES.has(scope_type):
+		return {"ok": false, "reason": "Unsupported healing target."}
+
+	return who_resolver.validate_deterministic_selectors([scope])
+
+
+func _contains_explicit_heal_action(text: String) -> bool:
+	return not _first_matching_alias(
+		text,
+		ACTION_ALIASES[CommandSchemaScript.ACTION_HEAL]
+	).is_empty()
 
 
 func _parse_action(text: String) -> Dictionary:
@@ -267,7 +492,12 @@ func _parse_action(text: String) -> Dictionary:
 					"ok": false,
 					"reason": "The action contains an unsupported destination or trailing phrase."
 				}
-			return _action(action, CommandSchemaScript.DESTINATION_BOSS_TARGET, {}, matched_alias)
+			return _action(
+				action,
+				CommandSchemaScript.DESTINATION_HEALING_SCOPE,
+				{},
+				matched_alias
+			)
 
 		CommandSchemaScript.ACTION_CURE:
 			if not _has_only_supported_when_after_action(text, matched_alias):

@@ -174,7 +174,12 @@ func initialize_combat():
 			boss.set_party_members(party_members)
 
 	if command_controller != null:
-		command_controller.setup(party_members, boss, player)
+		command_controller.setup(
+			party_members,
+			boss,
+			player,
+			get_enemy_threat_sources()
+		)
 
 	if (
 		movement_destination_visualizer != null
@@ -204,7 +209,19 @@ func initialize_combat():
 	initialize_ui()
 	refresh_all_statuses()
 
+
+func get_enemy_threat_sources() -> Array:
+	var enemies: Array = get_tree().get_nodes_in_group("enemy_threat_source")
+
+	if boss != null and is_instance_valid(boss) and not enemies.has(boss):
+		enemies.append(boss)
+
+	return enemies
+
 func _process(delta):
+	if Input.is_action_just_pressed("toggle_raid_debug"):
+		GameState.toggle_raid_debug_visibility()
+
 	if Input.is_action_just_pressed("reset_encounter"):
 		_on_retry_requested()
 		return
@@ -441,9 +458,6 @@ func handle_unit_defeated(unit: Node) -> void:
 	if current_boss_target == null or not command_controller.is_unit_alive(current_boss_target):
 		var new_target := command_controller.get_first_living_party_member()
 		command_controller.assign_boss_target(new_target)
-	else:
-		if command_controller.is_following_boss_target():
-			command_controller.assign_healers_to_target(current_boss_target)
 
 	refresh_all_statuses()
 func handle_boss_defeated():

@@ -77,6 +77,10 @@ static func get_selector_text(selector: Dictionary) -> String:
 			return "Unit: " + String(selector.get("class", "")) + " " + str(selector.get("number", ""))
 		"unit":
 			return _get_unit_text(selector.get("unit", null))
+		"active_tank":
+			return "The Active Tank"
+		"raid":
+			return "The Raid"
 		_:
 			return "Unknown"
 
@@ -94,6 +98,10 @@ static func get_where_text(command_data: Dictionary) -> String:
 			return "Boss"
 		"boss_target":
 			return "Boss Target"
+		"healing_scope":
+			return get_selector_text(
+				Dictionary(command_data.get("healing_scope", {}))
+			)
 		"me":
 			return "Me"
 		"movement_range_step":

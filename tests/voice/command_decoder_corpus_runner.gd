@@ -2,6 +2,7 @@ extends Node
 
 const VoiceCommandParserScript := preload("res://scripts/voice/voice_command_parser.gd")
 const VocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
+const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 const CommandTargetResolverScript := preload("res://scripts/commands/command_target_resolver.gd")
 const CORPUS_PATH := "res://tests/voice/command_decoder_corpus.json"
 
@@ -308,6 +309,31 @@ func _validate_direct_regressions(parser: VoiceCommandParser, roster: Array) -> 
 		"Clear exact commands entered joint candidate scoring."
 	)
 
+	var healing_cases := {
+		"priests heal rogues": "class:Rogue",
+		"priest one heal rogue three": "unit_identity:Rogue:3",
+		"healers heal group two": "group:2",
+		"priests heal the active tank": "active_tank",
+		"healers heal the raid": "raid"
+	}
+
+	for transcript_value in healing_cases.keys():
+		var healing_result := parser.parse(String(transcript_value))
+		var healing_command: Dictionary = healing_result.get("command_data", {})
+		_expect(
+			bool(healing_result.get("ok", false))
+			and _canonical_healing_scope(
+				Dictionary(healing_command.get("healing_scope", {}))
+			) == String(healing_cases[transcript_value]),
+			"%s did not preserve its explicit healing scope." % transcript_value
+		)
+
+	for invalid_heal in ["priests heal", "priests heal everyone"]:
+		_expect(
+			not bool(parser.parse(invalid_heal).get("ok", false)),
+			"%s issued a heal without a valid explicit target." % invalid_heal
+		)
+
 	for transcript in ["move south", "move west", "rotate clockwise"]:
 		var omitted := parser.parse(transcript)
 		var omitted_resolution: Dictionary = omitted.get("command_resolution", {})
@@ -489,6 +515,11 @@ func _canonical_target(parse_result: Dictionary) -> String:
 func _canonical_where(command_data: Dictionary) -> String:
 	var output := String(command_data.get("where", ""))
 
+	if output == CommandSchemaScript.DESTINATION_HEALING_SCOPE:
+		return output + ":" + _canonical_healing_scope(
+			Dictionary(command_data.get("healing_scope", {}))
+		)
+
 	for key in ["movement_region", "movement_range", "movement_direction"]:
 		var value := String(command_data.get(key, ""))
 
@@ -496,6 +527,27 @@ func _canonical_where(command_data: Dictionary) -> String:
 			output += ":" + value
 
 	return output
+
+
+func _canonical_healing_scope(scope: Dictionary) -> String:
+	match String(scope.get("type", "")):
+		CommandSchemaScript.HEAL_SCOPE_ACTIVE_TANK:
+			return CommandSchemaScript.HEAL_SCOPE_ACTIVE_TANK
+		CommandSchemaScript.HEAL_SCOPE_RAID:
+			return CommandSchemaScript.HEAL_SCOPE_RAID
+		CommandSchemaScript.SELECTOR_CLASS:
+			return "class:" + String(scope.get("value", ""))
+		CommandSchemaScript.SELECTOR_GROUP:
+			return "group:" + str(int(scope.get("value", 0)))
+		CommandSchemaScript.SELECTOR_UNIT_IDENTITY:
+			return (
+				"unit_identity:"
+				+ String(scope.get("class", ""))
+				+ ":"
+				+ str(int(scope.get("number", 0)))
+			)
+
+	return String(scope.get("type", "invalid"))
 
 
 func _expected_where(case: Dictionary) -> String:

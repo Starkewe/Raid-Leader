@@ -2,6 +2,9 @@ extends RefCounted
 class_name RaidCommandController
 
 const CommandTargetResolverScript := preload("res://scripts/commands/command_target_resolver.gd")
+const HealingTargetSelectorScript := preload(
+	"res://scripts/combat/healing_target_selector.gd"
+)
 const MovementCommandExecutorScript := preload("res://scripts/commands/movement_command_executor.gd")
 
 signal refresh_requested
@@ -11,21 +14,33 @@ var party_members: Array = []
 var boss: Node = null
 var player: Node = null
 
-var healers_follow_boss_target: bool = false
-var boss_target_healers: Array = []
 var hovered_unit: Node = null
 
 var target_resolver = null
+var healing_target_selector = null
 var movement_executor = null
 
 
-func setup(new_party_members: Array, new_boss: Node, new_player: Node) -> void:
+func setup(
+	new_party_members: Array,
+	new_boss: Node,
+	new_player: Node,
+	enemy_threat_sources: Array = []
+) -> void:
 	party_members = new_party_members
 	boss = new_boss
 	player = new_player
 
 	target_resolver = CommandTargetResolverScript.new()
 	target_resolver.setup(party_members)
+
+	var healing_enemies := enemy_threat_sources.duplicate()
+
+	if is_valid_node(boss) and not healing_enemies.has(boss):
+		healing_enemies.append(boss)
+
+	healing_target_selector = HealingTargetSelectorScript.new()
+	healing_target_selector.setup(party_members, healing_enemies)
 
 	movement_executor = MovementCommandExecutorScript.new()
 	movement_executor.setup(
@@ -61,13 +76,7 @@ func _on_movement_temporary_status_requested(unit: Node, text: String, duration:
 
 
 func reset_commands() -> void:
-	healers_follow_boss_target = false
-	boss_target_healers.clear()
 	hovered_unit = null
-
-
-func is_following_boss_target() -> bool:
-	return healers_follow_boss_target
 
 
 func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
@@ -91,7 +100,7 @@ func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
 			return execute_panel_interrupt(selected_units, where, boss_alive)
 
 		"heal":
-			return execute_panel_heal(selected_units, where)
+			return execute_panel_heal(selected_units, command_data)
 
 		"taunt":
 			return execute_panel_taunt(selected_units, where, boss_alive)
@@ -188,15 +197,22 @@ func execute_panel_interrupt(selected_units: Array, where: String, boss_alive: b
 	return true
 
 
-func execute_panel_heal(selected_units: Array, where: String) -> bool:
-	if where != "boss_target":
-		print("Heal command only supports Where = Boss Target right now.")
+func execute_panel_heal(selected_units: Array, command_data: Dictionary) -> bool:
+	if String(command_data.get("where", "")) != "healing_scope":
+		print("Heal command requires an explicit healing target.")
 		return false
 
-	var heal_target := get_boss_target()
+	var scope_value = command_data.get("healing_scope", null)
 
-	if heal_target == null or not is_unit_alive(heal_target):
-		heal_target = get_first_living_party_member()
+	if not scope_value is Dictionary or healing_target_selector == null:
+		print("Heal command is missing its healing scope.")
+		return false
+
+	var healing_scope: Dictionary = scope_value
+
+	if not healing_target_selector.is_valid_scope(healing_scope):
+		print("Heal command has an invalid or unavailable healing target.")
+		return false
 
 	var selected_healers: Array = get_living_healer_units_from_units(selected_units)
 
@@ -204,10 +220,14 @@ func execute_panel_heal(selected_units: Array, where: String) -> bool:
 		print("No selected living healers available.")
 		return false
 
-	healers_follow_boss_target = true
-	boss_target_healers = selected_healers
+	for healer in selected_healers:
+		if not healer.has_method("command_heal_scope"):
+			print("Selected healer cannot accept a persistent healing assignment.")
+			return false
 
-	assign_healers_to_target(heal_target, boss_target_healers)
+	for healer in selected_healers:
+		healer.command_heal_scope(healing_scope, healing_target_selector)
+
 	refresh_requested.emit()
 
 	return true
@@ -223,9 +243,6 @@ func execute_panel_taunt(selected_units: Array, where: String, boss_alive: bool)
 			continue
 
 		if bool(unit.command_taunt(boss)):
-			if healers_follow_boss_target:
-				assign_healers_to_target(unit, boss_target_healers)
-
 			temporary_status_requested.emit(unit, "Taunted Boss", 0.75)
 			refresh_requested.emit()
 			return true
@@ -310,17 +327,7 @@ func command_party_attack(boss_alive: bool) -> bool:
 
 
 func command_healers_to_heal_boss_target() -> void:
-	print("Command: Healers heal boss target")
-
-	var heal_target := get_boss_target()
-
-	if heal_target == null or not is_unit_alive(heal_target):
-		heal_target = get_first_living_party_member()
-
-	boss_target_healers = get_living_healer_units_from_units(party_members)
-	healers_follow_boss_target = boss_target_healers.size() > 0
-
-	assign_healers_to_target(heal_target, boss_target_healers)
+	print("Heal command rejected: select an explicit healing target.")
 	refresh_requested.emit()
 
 
@@ -398,17 +405,11 @@ func assign_boss_target(new_target: Node) -> void:
 	if new_target == null or not is_unit_alive(new_target):
 		clear_boss_target()
 
-		if healers_follow_boss_target:
-			assign_healers_to_target(null, boss_target_healers)
-
 		refresh_requested.emit()
 		return
 
 	if boss.has_method("set_target"):
 		boss.set_target(new_target)
-
-	if healers_follow_boss_target:
-		assign_healers_to_target(new_target, boss_target_healers)
 
 	refresh_requested.emit()
 
@@ -419,26 +420,6 @@ func clear_boss_target() -> void:
 
 	if boss.has_method("clear_target"):
 		boss.clear_target()
-
-
-func assign_healers_to_target(new_target: Node, healer_units: Array = []) -> void:
-	var units_to_check: Array = healer_units
-
-	if units_to_check.size() == 0:
-		units_to_check = party_members
-
-	for unit in units_to_check:
-		if not is_unit_alive(unit):
-			continue
-
-		if not unit.has_method("command_heal"):
-			continue
-
-		if new_target == null or not is_unit_alive(new_target):
-			if unit.has_method("stop_action"):
-				unit.stop_action()
-		else:
-			unit.command_heal(new_target)
 
 
 func stop_all_party_actions() -> void:
