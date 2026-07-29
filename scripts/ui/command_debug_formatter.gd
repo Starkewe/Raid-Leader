@@ -17,7 +17,7 @@ static func build_data(
 		"where": get_where_text(command_data),
 		"result": result_text,
 		"command_data": get_command_data_text(command_data),
-		"who_resolution": get_who_resolution_text(debug_context)
+		"command_resolution": get_command_resolution_text(debug_context)
 	}
 
 
@@ -125,8 +125,13 @@ static func get_command_data_text(command_data: Dictionary) -> String:
 	return str(safe_data)
 
 
-static func get_who_resolution_text(debug_context: Dictionary) -> String:
-	var resolution_value = debug_context.get("who_resolution", {})
+static func get_command_resolution_text(debug_context: Dictionary) -> String:
+	var resolution_value = debug_context.get("command_resolution", {})
+
+	if resolution_value is Dictionary and not resolution_value.is_empty():
+		return String(resolution_value.get("debug_text", "-"))
+
+	resolution_value = debug_context.get("who_resolution", {})
 
 	if resolution_value is Dictionary:
 		return String(resolution_value.get("debug_text", "-"))

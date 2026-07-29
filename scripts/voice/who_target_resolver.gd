@@ -13,7 +13,7 @@ const NUMBER_WORDS := {
 	"nineteen": 19, "twenty": 20
 }
 const FILLER_WORDS: Array[String] = [
-	"a", "an", "can", "could", "hey", "please", "the", "you"
+	"a", "an", "can", "could", "hey", "the", "you"
 ]
 
 var debug_enabled: bool = false
@@ -50,7 +50,8 @@ func resolve_who(
 	raw_transcript: String,
 	normalized_transcript: String,
 	who_text: String,
-	command_context: Dictionary = {}
+	command_context: Dictionary = {},
+	record_selection: bool = true
 ) -> Dictionary:
 	var started_usec := Time.get_ticks_usec()
 	var who_analysis := _analyze_who_phrase(who_text)
@@ -175,12 +176,20 @@ func resolve_who(
 		"reason": ""
 	}
 	result["debug_text"] = format_diagnostics(result)
-	_record_target_key(String(selected.get("key", "")))
+	if record_selection:
+		_record_target_key(String(selected.get("key", "")))
 
 	if debug_enabled:
 		print(String(result["debug_text"]))
 
 	return result
+
+
+func record_selector(selector: Dictionary) -> void:
+	var candidate := _find_candidate_for_selector(selector)
+
+	if not candidate.is_empty():
+		_record_target_key(String(candidate.get("key", "")))
 
 
 func build_deterministic_result(

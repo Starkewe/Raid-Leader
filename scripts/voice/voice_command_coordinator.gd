@@ -115,7 +115,8 @@ func _on_transcript_received(transcript: String) -> void:
 	var parse_result := voice_command_parser.parse(transcript)
 	var normalized_text := String(parse_result.get("normalized_text", ""))
 	var who_resolution: Dictionary = parse_result.get("who_resolution", {})
-	var who_resolution_text := String(who_resolution.get("debug_text", "-"))
+	var command_resolution: Dictionary = parse_result.get("command_resolution", {})
+	var command_resolution_text := String(command_resolution.get("debug_text", "-"))
 
 	if not bool(parse_result.get("ok", false)):
 		var reason := String(parse_result.get("reason", "Could not parse voice command."))
@@ -129,7 +130,7 @@ func _on_transcript_received(transcript: String) -> void:
 			"where": "-",
 			"result": "Rejected - " + reason,
 			"command_data": "-",
-			"who_resolution": who_resolution_text
+			"command_resolution": command_resolution_text
 		})
 		return
 
@@ -140,7 +141,8 @@ func _on_transcript_received(transcript: String) -> void:
 		{
 			"transcript": transcript,
 			"normalized_text": normalized_text,
-			"who_resolution": who_resolution
+			"who_resolution": who_resolution,
+			"command_resolution": command_resolution
 		}
 	))
 	_set_status("Command executed" if command_executed else "Command rejected", not command_executed)
@@ -157,7 +159,7 @@ func _on_transcription_failed(reason: String) -> void:
 		"where": "-",
 		"result": "Transcription failed - " + reason,
 		"command_data": "-",
-		"who_resolution": "-"
+		"command_resolution": "-"
 	})
 
 
@@ -185,7 +187,7 @@ func _voice_state_debug(transcript: String, result: String) -> Dictionary:
 		"where": "-",
 		"result": result,
 		"command_data": "-",
-		"who_resolution": "-"
+		"command_resolution": "-"
 	}
 
 

@@ -49,9 +49,11 @@ Rogue two interrupt
 Tank taunt
 ```
 
-The parser rejects transcripts with multiple actions, missing destinations, unknown selectors, or invalid current targets. Exact and normalized Who targets remain deterministic. If those paths fail, an experimental local weighted resolver separates target structure, a recognized number, and the remaining identity text before scoring. For a numbered individual, structure and index filter candidates first; identity-only text, unpadded phonetic, exact, and partial evidence then rank the same-index classes. A row with the same number competes only when the identity text has meaningful row-like evidence.
+The parser rejects transcripts with multiple actions, missing destinations, unknown selectors, invalid current targets, or unsupported slot order. Clear exact and safely normalized commands remain on a deterministic fast path. When that path cannot produce a complete valid command, an experimental constrained joint decoder evaluates a bounded set of ordered Who, What, Where, and current When interpretations. It owns every used transcript span, supports bounded split and merged terms, applies movement-only `left/right/up/down` equivalents, and validates the complete canonical command before returning it.
 
-Static category priors are small, and recent use is applied only inside a narrow identity-score tie window. The forced-choice winner margin is diagnostic rather than a rejection threshold. All weights and eligibility thresholds are documented in `scripts/voice/who_resolver_tuning.gd`. The winning candidate still becomes the same canonical selector consumed by the existing command system. Unit identities support numbers 1 through 20, and class and role vocabulary comes from `GameState` and the unit resources rather than a second hard-coded catalog.
+The joint decoder reuses the live-roster weighted Who candidates. Target structure and index filter eligibility before identity-only textual and phonetic scoring. Static category and recent-use priors remain small tie-breakers, and the winner margin is diagnostic rather than a rejection threshold. Omitted targets use action-specific deterministic rules only after the decoder establishes genuine omission. `please` remains available to both an explicit Priest interpretation and a filler/default interpretation.
+
+Decoder search bounds and complete-command weights are documented in `scripts/voice/command_decoder_tuning.gd`; Who-only weights remain in `scripts/voice/who_resolver_tuning.gd`. The winning interpretation produces the same canonical selector and command dictionary consumed by the existing command validator and combat execution systems.
 
 The focused Who corpus runs with the project autoloads enabled:
 
@@ -60,6 +62,14 @@ godot --headless --path . tests/voice/who_resolution_corpus_runner.tscn
 ```
 
 Corpus entries live in `tests/voice/who_resolution_corpus.json`, so recorded failures can be added without changing resolver code. Synthetic corpus accuracy is a regression signal, not a claim about real recorded-command accuracy.
+
+The complete-command corpus covers deterministic commands, omitted and defaulted targets, semantic destinations, split target identities, merged action/destination terms, filler ambiguity, word order, invalid targets, diagnostics, cache rebuilds, and execution mapping:
+
+```text
+godot --headless --path . tests/voice/command_decoder_corpus_runner.tscn
+```
+
+Its cases live in `tests/voice/command_decoder_corpus.json`. Both corpora are synthetic regression suites and do not establish real recorded-voice accuracy.
 
 ## Encounters
 
