@@ -2,32 +2,88 @@ extends Node
 class_name VoiceCommandParser
 
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
+const JointCommandDecoderScript := preload("res://scripts/voice/joint_command_decoder.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
+const VocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
+const WhoTargetResolverScript := preload("res://scripts/voice/who_target_resolver.gd")
 
-const NUMBER_WORDS := {
-	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-	"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-	"eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
-	"fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
-	"nineteen": 19, "twenty": 20
-}
-
-const ACTION_ALIASES := {
-	CommandSchemaScript.ACTION_INTERRUPT: ["interrupt", "kick"],
-	CommandSchemaScript.ACTION_TAUNT: ["taunt", "provoke"],
-	CommandSchemaScript.ACTION_ATTACK: ["attack", "damage", "burn", "focus", "engage"],
-	CommandSchemaScript.ACTION_HEAL: ["heal", "healing"],
-	CommandSchemaScript.ACTION_CURE: ["cure", "dispel", "cleanse"],
-	CommandSchemaScript.ACTION_DODGE: ["dodge", "dodged", "dash", "blink"],
-	CommandSchemaScript.ACTION_MOVE: ["move", "moved", "moves", "moving", "go", "come", "rotate", "turn", "spread", "stack"]
-}
+const ACTION_ALIASES := VocabularyScript.ACTION_ALIASES
 
 const EXCEPTION_MARKERS: Array[String] = [
 	" except ", " excluding ", " without ", " but not "
 ]
 
+@export var debug_who_resolution: bool = false
+@export var debug_command_decoding: bool = false
+
+var who_resolver: WhoTargetResolver = WhoTargetResolverScript.new()
+var joint_decoder: JointCommandDecoder = JointCommandDecoderScript.new()
+
+
+func setup_roster_context(party_members: Array) -> void:
+	who_resolver.debug_enabled = debug_who_resolution
+	who_resolver.setup(party_members)
+	joint_decoder.debug_enabled = debug_command_decoding
+	joint_decoder.setup(who_resolver)
+
+
+func rebuild_who_candidate_cache() -> void:
+	who_resolver.rebuild_candidate_cache()
+	joint_decoder.rebuild_vocabulary_cache()
+
+
+func get_who_resolver() -> WhoTargetResolver:
+	return who_resolver
+
 
 func parse(transcript: String) -> Dictionary:
+	var deterministic_started := Time.get_ticks_usec()
+	var deterministic_result := _parse_deterministic(transcript)
+	var deterministic_duration := Time.get_ticks_usec() - deterministic_started
+	var normalized_text := String(deterministic_result.get(
+		"normalized_text",
+		_normalize_text(transcript)
+	))
+
+	if bool(deterministic_result.get("ok", false)):
+		var who_resolution: Dictionary = deterministic_result.get("who_resolution", {})
+		var default_reason := ""
+
+		if String(who_resolution.get("method", "")) == "deterministic_action_default":
+			var action := String(
+				Dictionary(deterministic_result.get("command_data", {})).get("what", "")
+			)
+			default_reason = String(
+				VocabularyScript.get_default_selector_for_action(action).get("reason", "")
+			)
+
+		var command_resolution := joint_decoder.build_deterministic_resolution(
+			transcript,
+			normalized_text,
+			Dictionary(deterministic_result.get("command_data", {})),
+			who_resolution,
+			deterministic_duration,
+			default_reason
+		)
+		deterministic_result["command_resolution"] = command_resolution
+		who_resolution["command_method"] = "deterministic"
+		deterministic_result["who_resolution"] = who_resolution
+		return deterministic_result
+
+	return joint_decoder.decode(
+		transcript,
+		normalized_text,
+		{
+			"reason": String(deterministic_result.get("reason", "")),
+			"duration_usec": deterministic_duration,
+			"who_resolution": Dictionary(
+				deterministic_result.get("who_resolution", {})
+			).duplicate(true)
+		}
+	)
+
+
+func _parse_deterministic(transcript: String) -> Dictionary:
 	var normalized_text := _normalize_text(transcript)
 
 	if normalized_text.is_empty():
@@ -41,17 +97,95 @@ func parse(transcript: String) -> Dictionary:
 	var action := String(action_result.get("what", ""))
 	var subject_text := _get_subject_text(normalized_text, String(action_result.get("matched_alias", "")))
 	var split_subject := _split_exception_text(subject_text)
-	var include_selectors := _extract_selectors(String(split_subject.get("include_text", "")), true)
+	var include_text := String(split_subject.get("include_text", ""))
+	var exclude_text := String(split_subject.get("exclude_text", ""))
+	var who_started_usec := Time.get_ticks_usec()
+	var include_selectors := _extract_selectors(include_text, true)
 	var exclude_selectors := _extract_selectors(String(split_subject.get("exclude_text", "")), false)
+	var who_resolution: Dictionary = {}
+
+	if not include_selectors.is_empty():
+		var selector_validation := who_resolver.validate_deterministic_selectors(include_selectors)
+
+		if not bool(selector_validation.get("ok", false)):
+			who_resolution = who_resolver.build_deterministic_result(
+				transcript,
+				normalized_text,
+				include_text,
+				include_selectors,
+				Time.get_ticks_usec() - who_started_usec
+			)
+			who_resolution["ok"] = false
+			who_resolution["reason"] = String(
+				selector_validation.get("reason", "The requested Who target is not available.")
+			)
+			who_resolution["debug_text"] = who_resolver.format_diagnostics(who_resolution)
+			return _fail(
+				String(who_resolution["reason"]),
+				normalized_text,
+				transcript,
+				who_resolution
+			)
+
+		who_resolution = who_resolver.build_deterministic_result(
+			transcript,
+			normalized_text,
+			include_text,
+			include_selectors,
+			Time.get_ticks_usec() - who_started_usec
+		)
+
+	if include_selectors.is_empty() and not include_text.is_empty():
+		return _fail(
+			"The explicit Who span was not recognized deterministically.",
+			normalized_text,
+			transcript,
+			who_resolution
+		)
 
 	if include_selectors.is_empty():
 		include_selectors = _default_selectors_for_action(action)
 
-	if include_selectors.is_empty():
-		include_selectors = _extract_fuzzy_subject_selector(String(split_subject.get("include_text", "")))
+		if not include_selectors.is_empty():
+			who_resolution = who_resolver.build_deterministic_result(
+				transcript,
+				normalized_text,
+				include_text,
+				include_selectors,
+				Time.get_ticks_usec() - who_started_usec,
+				"deterministic_action_default"
+			)
 
 	if include_selectors.is_empty():
-		return _fail("No raid member, class, group, or role was recognized.", normalized_text, transcript)
+		include_selectors = _extract_fuzzy_subject_selector(include_text)
+
+		if not include_selectors.is_empty():
+			who_resolution = who_resolver.build_deterministic_result(
+				transcript,
+				normalized_text,
+				include_text,
+				include_selectors,
+				Time.get_ticks_usec() - who_started_usec,
+				"legacy_fuzzy_no_roster"
+			)
+
+	if include_selectors.is_empty():
+		return _fail(
+			"No raid member, class, group, or role was recognized.",
+			normalized_text,
+			transcript,
+			who_resolution
+		)
+
+	var exclusion_validation := who_resolver.validate_deterministic_selectors(exclude_selectors)
+
+	if not exclude_text.is_empty() and not bool(exclusion_validation.get("ok", false)):
+		return _fail(
+			String(exclusion_validation.get("reason", "An excluded Who target is not available.")),
+			normalized_text,
+			transcript,
+			who_resolution
+		)
 
 	var primary_selector: Dictionary = include_selectors[0]
 	var command_data := {
@@ -80,13 +214,17 @@ func parse(transcript: String) -> Dictionary:
 		"command_data": command_data,
 		"reason": "",
 		"transcript": transcript,
-		"normalized_text": normalized_text
+		"normalized_text": normalized_text,
+		"who_resolution": who_resolution
 	}
 
 
 func _normalize_text(text: String) -> String:
 	var normalized := text.to_lower().strip_edges()
-	var punctuation: Array[String] = [".", ",", "!", "?", ":", ";", "\"", "'", "(", ")", "[", "]"]
+	var punctuation: Array[String] = [
+		".", ",", "!", "?", ":", ";", "\"", "'", "(", ")", "[", "]",
+		"-", "‐", "‑", "‒", "–", "—"
+	]
 
 	for character in punctuation:
 		normalized = normalized.replace(character, " ")
@@ -116,12 +254,27 @@ func _parse_action(text: String) -> Dictionary:
 
 	match action:
 		CommandSchemaScript.ACTION_ATTACK, CommandSchemaScript.ACTION_INTERRUPT, CommandSchemaScript.ACTION_TAUNT:
+			if not _has_only_supported_when_after_action(text, matched_alias):
+				return {
+					"ok": false,
+					"reason": "The action contains an unsupported destination or trailing phrase."
+				}
 			return _action(action, CommandSchemaScript.DESTINATION_BOSS, {}, matched_alias)
 
 		CommandSchemaScript.ACTION_HEAL:
+			if not _has_only_supported_when_after_action(text, matched_alias):
+				return {
+					"ok": false,
+					"reason": "The action contains an unsupported destination or trailing phrase."
+				}
 			return _action(action, CommandSchemaScript.DESTINATION_BOSS_TARGET, {}, matched_alias)
 
 		CommandSchemaScript.ACTION_CURE:
+			if not _has_only_supported_when_after_action(text, matched_alias):
+				return {
+					"ok": false,
+					"reason": "The action contains an unsupported destination or trailing phrase."
+				}
 			return _action(action, CommandSchemaScript.DESTINATION_CURABLE_ALLIES, {}, matched_alias)
 
 		CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE:
@@ -130,46 +283,74 @@ func _parse_action(text: String) -> Dictionary:
 	return {"ok": false, "reason": "Unsupported action: " + action}
 
 
+func _has_only_supported_when_after_action(text: String, matched_alias: String) -> bool:
+	var trailing := _text_after_alias(text, matched_alias)
+	return trailing.is_empty() or trailing == "now"
+
+
 func _parse_movement_action(
 	text: String,
 	matched_alias: String,
 	movement_action: String = CommandSchemaScript.ACTION_MOVE
 ) -> Dictionary:
+	var destination_text := _text_after_alias(text, matched_alias)
+
+	if destination_text.ends_with(" now"):
+		destination_text = destination_text.trim_suffix(" now").strip_edges()
+
 	if _has_any_phrase(
-		text,
-		["come to me", "to me", "on me", "stack on me", "to player", "to the player"]
+		destination_text,
+		["to me", "on me", "to player", "to the player"]
 	):
 		return _action(movement_action, "me", {}, matched_alias)
 
-	if _has_any_phrase(text, ["move out", "go out", "spread out"]) or _has_word(text, "away"):
+	if destination_text in ["out", "away"]:
 		return _action(movement_action, "movement_range_step", {"movement_direction": "out"}, matched_alias)
 
-	if _has_any_phrase(text, ["move in", "go in", "come in"]) or _has_word(text, "closer"):
+	if destination_text in ["in", "closer"]:
 		return _action(movement_action, "movement_range_step", {"movement_direction": "in"}, matched_alias)
 
-	if _has_word(text, "counterclockwise") or _has_word(text, "anticlockwise"):
+	if destination_text in [
+		"counterclockwise",
+		"anticlockwise",
+		"one step counterclockwise",
+		"one step anticlockwise",
+		"step counterclockwise",
+		"step anticlockwise"
+	]:
 		return _action(movement_action, "movement_rotate_step", {"movement_direction": "counterclockwise"}, matched_alias)
 
-	if _has_word(text, "clockwise"):
+	if destination_text in ["clockwise", "one step clockwise", "step clockwise"]:
 		return _action(movement_action, "movement_rotate_step", {"movement_direction": "clockwise"}, matched_alias)
 
-	var destination_text := _text_after_alias(text, matched_alias)
 	var region := _parse_region(destination_text)
 	var range_name := _parse_range(destination_text)
 
 	if not region.is_empty() and not range_name.is_empty():
+		if destination_text.split(" ", false).size() != 2:
+			return {"ok": false, "reason": "Movement destination contains an unresolved span."}
+
 		return _action(movement_action, "movement_slot", {
 			"movement_region": region,
 			"movement_range": range_name
 		}, matched_alias)
 
 	if not region.is_empty() and matched_alias in ["rotate", "turn"]:
+		if destination_text.split(" ", false).size() != 1:
+			return {"ok": false, "reason": "Rotation destination contains an unresolved span."}
+
 		return _action(movement_action, "movement_rotate", {"movement_region": region}, matched_alias)
 
 	if not region.is_empty():
+		if destination_text.split(" ", false).size() != 1:
+			return {"ok": false, "reason": "Movement destination contains an unresolved span."}
+
 		return _action(movement_action, "movement_region", {"movement_region": region}, matched_alias)
 
 	if not range_name.is_empty():
+		if destination_text.split(" ", false).size() != 1:
+			return {"ok": false, "reason": "Movement destination contains an unresolved span."}
+
 		return _action(movement_action, "movement_range", {"movement_range": range_name}, matched_alias)
 
 	return {"ok": false, "reason": "Movement command is missing a destination."}
@@ -183,13 +364,7 @@ func _get_subject_text(text: String, matched_alias: String) -> String:
 	if action_index == -1:
 		return text
 
-	var before_action := padded.substr(0, action_index).strip_edges()
-
-	if not before_action.is_empty():
-		return before_action
-
-	var after_start := action_index + marker.length()
-	return padded.substr(after_start).strip_edges()
+	return padded.substr(0, action_index).strip_edges()
 
 
 func _split_exception_text(text: String) -> Dictionary:
@@ -292,16 +467,12 @@ func _extract_classes(working: String, selectors: Array) -> void:
 
 
 func _default_selectors_for_action(action: String) -> Array:
-	if action == CommandSchemaScript.ACTION_INTERRUPT:
-		return [{"type": CommandSchemaScript.SELECTOR_EVERYONE, "value": ""}]
+	var default_data := VocabularyScript.get_default_selector_for_action(action)
 
-	if action == CommandSchemaScript.ACTION_TAUNT:
-		return [{"type": CommandSchemaScript.SELECTOR_ROLE, "value": "tank"}]
+	if default_data.is_empty():
+		return []
 
-	if action == CommandSchemaScript.ACTION_CURE:
-		return [{"type": CommandSchemaScript.SELECTOR_ROLE, "value": "healer"}]
-
-	return []
+	return [Dictionary(default_data.get("selector", {})).duplicate(true)]
 
 
 func _extract_fuzzy_subject_selector(text: String) -> Array:
@@ -425,13 +596,7 @@ func _add_unit_identity_selector(selectors: Array, unit_class: String, unit_numb
 
 
 func _number_aliases(value: int) -> Array[String]:
-	var aliases: Array[String] = [str(value)]
-
-	for word_value in NUMBER_WORDS.keys():
-		if int(NUMBER_WORDS[word_value]) == value:
-			aliases.append(String(word_value))
-
-	return aliases
+	return VocabularyScript.get_target_number_aliases(value)
 
 
 func _first_matching_alias(text: String, aliases: Array) -> String:
@@ -533,11 +698,17 @@ func _action(
 	}
 
 
-func _fail(reason: String, normalized_text: String, transcript: String) -> Dictionary:
+func _fail(
+	reason: String,
+	normalized_text: String,
+	transcript: String,
+	who_resolution: Dictionary = {}
+) -> Dictionary:
 	return {
 		"ok": false,
 		"command_data": {},
 		"reason": reason,
 		"transcript": transcript,
-		"normalized_text": normalized_text
+		"normalized_text": normalized_text,
+		"who_resolution": who_resolution
 	}

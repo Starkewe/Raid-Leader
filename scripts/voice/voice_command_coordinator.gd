@@ -102,10 +102,21 @@ func _connect_capture_signals() -> void:
 		voice_capture.connect("recording_failed", _on_recording_failed)
 
 
+func setup_parser_context(party_members: Array) -> void:
+	if voice_command_parser == null:
+		return
+
+	if voice_command_parser.has_method("setup_roster_context"):
+		voice_command_parser.setup_roster_context(party_members)
+
+
 func _on_transcript_received(transcript: String) -> void:
 	_set_status("Recognized command")
 	var parse_result := voice_command_parser.parse(transcript)
 	var normalized_text := String(parse_result.get("normalized_text", ""))
+	var who_resolution: Dictionary = parse_result.get("who_resolution", {})
+	var command_resolution: Dictionary = parse_result.get("command_resolution", {})
+	var command_resolution_text := String(command_resolution.get("debug_text", "-"))
 
 	if not bool(parse_result.get("ok", false)):
 		var reason := String(parse_result.get("reason", "Could not parse voice command."))
@@ -118,7 +129,8 @@ func _on_transcript_received(transcript: String) -> void:
 			"what": "-",
 			"where": "-",
 			"result": "Rejected - " + reason,
-			"command_data": "-"
+			"command_data": "-",
+			"command_resolution": command_resolution_text
 		})
 		return
 
@@ -126,7 +138,12 @@ func _on_transcript_received(transcript: String) -> void:
 	var command_executed := bool(submit_command_callable.call(
 		command_data,
 		"voice",
-		{"transcript": transcript, "normalized_text": normalized_text}
+		{
+			"transcript": transcript,
+			"normalized_text": normalized_text,
+			"who_resolution": who_resolution,
+			"command_resolution": command_resolution
+		}
 	))
 	_set_status("Command executed" if command_executed else "Command rejected", not command_executed)
 
@@ -141,7 +158,8 @@ func _on_transcription_failed(reason: String) -> void:
 		"what": "-",
 		"where": "-",
 		"result": "Transcription failed - " + reason,
-		"command_data": "-"
+		"command_data": "-",
+		"command_resolution": "-"
 	})
 
 
@@ -168,7 +186,8 @@ func _voice_state_debug(transcript: String, result: String) -> Dictionary:
 		"what": "-",
 		"where": "-",
 		"result": result,
-		"command_data": "-"
+		"command_data": "-",
+		"command_resolution": "-"
 	}
 
 

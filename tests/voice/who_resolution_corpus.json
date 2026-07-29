@@ -1,0 +1,270 @@
+[
+	{
+		"transcript": "warrior one move north close",
+		"expected_target": "unit_identity:Warrior:1",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "deterministic",
+		"expected_command": {"what": "move", "where": "movement_slot", "movement_region": "north", "movement_range": "close"},
+		"category": "exact_canonical",
+		"source": "regression"
+	},
+	{
+		"transcript": "warrior 1 attack",
+		"expected_target": "unit_identity:Warrior:1",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "deterministic",
+		"category": "numbered_individual",
+		"source": "regression"
+	},
+	{
+		"transcript": "warriors attack",
+		"expected_target": "class:Warrior",
+		"expected_target_type": "class_group",
+		"expected_method": "deterministic",
+		"category": "class_group",
+		"source": "regression"
+	},
+	{
+		"transcript": "row one move north",
+		"expected_target": "group:1",
+		"expected_target_type": "row",
+		"expected_method": "deterministic",
+		"category": "rows",
+		"source": "regression"
+	},
+	{
+		"transcript": "row 1 attack",
+		"expected_target": "group:1",
+		"expected_target_type": "row",
+		"expected_method": "deterministic",
+		"category": "rows",
+		"source": "regression"
+	},
+	{
+		"transcript": "everyone attack",
+		"expected_target": "everyone",
+		"expected_target_type": "everyone",
+		"expected_method": "deterministic",
+		"category": "everyone",
+		"source": "regression"
+	},
+	{
+		"transcript": "all move south far",
+		"expected_target": "everyone",
+		"expected_target_type": "everyone",
+		"expected_method": "deterministic",
+		"expected_command": {"what": "move", "where": "movement_slot", "movement_region": "south", "movement_range": "far"},
+		"category": "everyone",
+		"source": "regression"
+	},
+	{
+		"transcript": "raid move east mid",
+		"expected_target": "everyone",
+		"expected_target_type": "everyone",
+		"expected_method": "deterministic",
+		"category": "everyone",
+		"source": "regression"
+	},
+	{
+		"transcript": "we ll rear one move north close",
+		"expected_target": "unit_identity:Warrior:1",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "weighted_phonetic",
+		"expected_command": {"what": "move", "where": "movement_slot", "movement_region": "north", "movement_range": "close"},
+		"category": "distorted_transcripts",
+		"source": "previously_failed",
+		"notes": "Generalized recovery case; do not add a complete-phrase alias."
+	},
+	{
+		"transcript": "lawyer 1 move east",
+		"expected_target": "unit_identity:Warrior:1",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "weighted_phonetic",
+		"expected_command": {"what": "move", "where": "movement_region", "movement_region": "east", "when": "now"},
+		"category": "identity_isolation",
+		"source": "previously_failed"
+	},
+	{
+		"transcript": "lawyer one move north close",
+		"expected_target": "unit_identity:Warrior:1",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "weighted_phonetic",
+		"expected_command": {"what": "move", "where": "movement_slot", "movement_region": "north", "movement_range": "close", "when": "now"},
+		"category": "identity_isolation",
+		"source": "regression"
+	},
+	{
+		"transcript": "pre east one heal",
+		"expected_target": "unit_identity:Priest:1",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "weighted_phonetic",
+		"category": "distorted_transcripts",
+		"source": "synthetic"
+	},
+	{
+		"transcript": "roe g three attack",
+		"expected_target": "unit_identity:Rogue:3",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "weighted_phonetic",
+		"category": "distorted_transcripts",
+		"source": "synthetic"
+	},
+	{
+		"transcript": "may j two move east far",
+		"expected_target": "unit_identity:Mage:2",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "weighted_phonetic",
+		"category": "distorted_transcripts",
+		"source": "synthetic"
+	},
+	{
+		"transcript": "mage three move east",
+		"expected_target": "unit_identity:Mage:3",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "deterministic",
+		"expected_command": {"what": "move", "where": "movement_region", "movement_region": "east", "when": "now"},
+		"category": "number_isolation",
+		"source": "regression"
+	},
+	{
+		"transcript": "row one attack",
+		"expected_target": "group:1",
+		"expected_target_type": "row",
+		"expected_method": "deterministic",
+		"category": "structural_distinctions",
+		"source": "regression",
+		"notes": "A direct row phrase must beat any individual prior."
+	},
+	{
+		"transcript": "roe one move north",
+		"expected_target": "group:1",
+		"expected_target_type": "row",
+		"expected_method": "weighted_phonetic",
+		"expected_command": {"what": "move", "where": "movement_region", "movement_region": "north", "when": "now"},
+		"category": "structural_distinctions",
+		"source": "synthetic",
+		"notes": "Meaningful row-like identity evidence admits Row 1 as a competing interpretation."
+	},
+	{
+		"transcript": "war year one attack",
+		"expected_target": "unit_identity:Warrior:1",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "weighted_phonetic",
+		"category": "structural_distinctions",
+		"source": "synthetic"
+	},
+	{
+		"transcript": "warrior two attack",
+		"expected_target": "unit_identity:Warrior:2",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "deterministic",
+		"category": "numbered_individual",
+		"source": "regression"
+	},
+	{
+		"transcript": "rogue three attack",
+		"expected_target": "unit_identity:Rogue:3",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "deterministic",
+		"category": "numbered_individual",
+		"source": "regression"
+	},
+	{
+		"transcript": "rogues attack",
+		"expected_target": "class:Rogue",
+		"expected_target_type": "class_group",
+		"expected_method": "deterministic",
+		"category": "class_group",
+		"source": "regression"
+	},
+	{
+		"transcript": "priests heal",
+		"expected_target": "class:Priest",
+		"expected_target_type": "class_group",
+		"expected_method": "deterministic",
+		"category": "class_group",
+		"source": "regression"
+	},
+	{
+		"transcript": "rowgs attack",
+		"expected_target": "class:Rogue",
+		"expected_target_type": "class_group",
+		"expected_method": "weighted_phonetic",
+		"category": "distorted_transcripts",
+		"source": "synthetic",
+		"notes": "Plural grammar should favor the class group."
+	},
+	{
+		"transcript": "warrior nine attack",
+		"expected_target": "invalid",
+		"expected_target_type": "invalid",
+		"category": "invalid_targets",
+		"source": "regression"
+	},
+	{
+		"transcript": "row five move north",
+		"expected_target": "invalid",
+		"expected_target_type": "invalid",
+		"category": "invalid_targets",
+		"source": "regression"
+	},
+	{
+		"transcript": "warrior one move north close",
+		"expected_target": "unit_identity:Warrior:1",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "deterministic",
+		"expected_command": {"what": "move", "where": "movement_slot", "movement_region": "north", "movement_range": "close"},
+		"category": "what_where_regression",
+		"source": "regression"
+	},
+	{
+		"transcript": "we ll rear one move north close",
+		"expected_target": "unit_identity:Warrior:1",
+		"expected_target_type": "numbered_individual",
+		"expected_method": "weighted_phonetic",
+		"expected_command": {"what": "move", "where": "movement_slot", "movement_region": "north", "movement_range": "close"},
+		"category": "what_where_regression",
+		"source": "regression"
+	},
+	{
+		"transcript": "healers heal",
+		"expected_target": "role:healer",
+		"expected_target_type": "role_group",
+		"expected_method": "deterministic",
+		"category": "roles",
+		"source": "regression"
+	},
+	{
+		"transcript": "tank taunt",
+		"expected_target": "role:tank",
+		"expected_target_type": "role_group",
+		"expected_method": "deterministic",
+		"category": "roles",
+		"source": "regression"
+	},
+	{
+		"transcript": "interrupt",
+		"expected_target": "everyone",
+		"expected_target_type": "everyone",
+		"expected_method": "deterministic_action_default",
+		"category": "action_defaults",
+		"source": "regression"
+	},
+	{
+		"transcript": "taunt",
+		"expected_target": "role:tank",
+		"expected_target_type": "role_group",
+		"expected_method": "deterministic_action_default",
+		"category": "action_defaults",
+		"source": "regression"
+	},
+	{
+		"transcript": "everyone except tank move out",
+		"expected_target": "everyone",
+		"expected_target_type": "everyone",
+		"expected_method": "deterministic",
+		"expected_command": {"what": "move", "where": "movement_range_step", "movement_direction": "out"},
+		"category": "exclusions",
+		"source": "regression"
+	}
+]
