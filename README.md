@@ -1,43 +1,31 @@
 # Raid Leader
 
-Raid Leader is a Godot 4.6 prototype in which the player coordinates a raid rather than directly controlling one combatant. Keyboard, panel, and local voice commands are converted into the same validated command structure before they reach combat units.
+**Raid Leader** is a single-player tactical raid-management game built in Godot. Instead of controlling one character directly, the player leads an entire twenty-person raid through positioning, targeting, healing, interrupts, tank swaps, and boss mechanics.
 
-## Current foundation
+Commands can be issued through the game interface or spoken aloud. Both methods feed into the same command system, allowing the player to direct individuals, classes, roles, groups, or the entire raid while combat continues in real time.
 
-- Configurable raids of up to 20 Warriors, Rogues, Mages, and Priests.
-- Class, role, group, individual, and exclusion-based targeting.
-- Attack, heal, interrupt, taunt, and formation-preserving movement commands.
-- Eight directional regions with close, mid, and far ranges.
-- Resource-driven unit, encounter, phase, and boss-ability tuning.
-- Structured combat events containing timestamps, source, target, ability ID, amount, and metadata.
-- Reusable foundations for status effects, hazards, forced movement, targeting, and tank swaps.
-- Local push-to-talk transcription through `whisper.cpp`.
-- A continuous strategic Camp with a persistent twenty-member campaign roster, per-boss formations, attempt intelligence, immediate retry, and weighted member activities.
+> **Development status:** Raid Leader is an actively developed prototype. Core combat, voice-command parsing, raid management, persistent campaign systems, and the first set of encounters are playable, but the project is not yet a finished release.
 
-## Project structure
+## Core Gameplay
 
-```text
-data/
-  abilities/       Boss ability tuning
-  camp/            Data-driven Camp activity definitions
-  encounters/      Boss stats, loadouts, phases, and debug display
-  phases/          Health thresholds and pacing rules
-  units/           Unit stats, roles, scenes, and voice aliases
-scripts/
-  abilities/       Runtime boss ability behavior
-  camp/            Facilities, population behavior, movement, and Camp presentation
-  combat/          Encounter orchestration and shared combat systems
-  commands/        Command validation, targeting, and movement
-  data/            Resource schemas
-  units/           Combatant behavior
-  voice/           Capture, transcription, and parsing
-```
+Raid Leader is built around the pressure of coordinating a full raid team rather than performing individual attacks.
 
-Gameplay values belong in `.tres` resources under `data/`. Runtime scripts should implement behavior without replacing those values in `_ready()`.
+During an encounter, the player must:
 
-## Commands
+* Position raiders across directional and distance-based regions
+* Assign attack, healing, interrupt, and taunt commands
+* React to boss casts, hazards, forced movement, and debuffs
+* Manage threat and tank swaps
+* Preserve raid formations while adapting to changing mechanics
+* Recover from mistakes without losing control of the larger strategy
 
-Examples accepted by the voice parser include:
+The active raid can contain up to twenty Warriors, Priests, Rogues, and Mages. Each class has a different combat role, movement profile, and set of responsibilities.
+
+## Command System
+
+Commands follow a flexible **Who, What, and Where** structure.
+
+Examples include:
 
 ```text
 Everyone attack
@@ -49,78 +37,95 @@ Rogue two interrupt
 Tank taunt
 ```
 
-The parser rejects transcripts with multiple actions, missing destinations, unknown selectors, invalid current targets, or unsupported slot order. Clear exact and safely normalized commands remain on a deterministic fast path. Target indices accept digits, number words, and Roman numerals from I through XX. Hyphens and common Unicode dash characters are treated as spoken-word boundaries. When the deterministic path cannot produce a complete valid command, an experimental constrained joint decoder evaluates a bounded set of ordered Who, What, Where, and current When interpretations. It owns every used transcript span, supports bounded split and merged terms, applies movement-only `left/right/up/down` equivalents, and validates the complete canonical command before returning it.
+The command system supports:
 
-The joint decoder reuses the live-roster weighted Who candidates. Target structure and index filter eligibility before identity-only textual and phonetic scoring. Static category and recent-use priors remain small tie-breakers, and the winner margin is diagnostic rather than a rejection threshold. Omitted targets use action-specific deterministic rules only after the decoder establishes genuine omission. `please` remains available to both an explicit Priest interpretation and a filler/default interpretation.
+* Individual raiders
+* Classes and combat roles
+* Groups of raiders
+* Numbered targets
+* Exclusion-based commands
+* Directional and distance-based movement
+* Keyboard, interface, and local voice input
 
-Decoder search bounds and complete-command weights are documented in `scripts/voice/command_decoder_tuning.gd`; Who-only weights remain in `scripts/voice/who_resolver_tuning.gd`. The winning interpretation produces the same canonical selector and command dictionary consumed by the existing command validator and combat execution systems.
-
-The focused Who corpus runs with the project autoloads enabled:
-
-```text
-godot --headless --path . tests/voice/who_resolution_corpus_runner.tscn
-```
-
-Corpus entries live in `tests/voice/who_resolution_corpus.json`, so recorded failures can be added without changing resolver code. Synthetic corpus accuracy is a regression signal, not a claim about real recorded-command accuracy.
-
-The complete-command corpus covers deterministic commands, omitted and defaulted targets, semantic destinations, split target identities, merged action/destination terms, hyphenated word boundaries, Roman-numeral indices, filler ambiguity, word order, invalid targets, diagnostics, cache rebuilds, and execution mapping:
-
-```text
-godot --headless --path . tests/voice/command_decoder_corpus_runner.tscn
-```
-
-Its cases live in `tests/voice/command_decoder_corpus.json`. Both corpora are synthetic regression suites and do not establish real recorded-voice accuracy.
-
-## Encounters
-
-The menu currently exposes three tutorial encounters:
-
-- Close-region directional cleave.
-- Full-region cone across close, mid, and far range.
-- Twin Sweeping Pull: a 1.5-second random close-range pull, a 2.5-second counterclockwise sweep, and a four-second clockwise sweep (eight seconds total).
-
-Twin Sweeping Pull is target-independent and continues if the boss's current target dies. Directional cleaves require an active target and lock their region when the cast starts.
+The voice parser is designed to handle imperfect speech recognition while still rejecting commands that are incomplete or unsafe to execute.
 
 ## Strategic Camp
 
-Choose **Enter Camp** from the main menu. The campaign path seeds a deterministic first Writ of exactly 2 Warriors, 5 Priests, 6 Rogues, and 7 Mages. This campaign roster is separate from the legacy class-count roster used by the tutorial test path.
+Between encounters, the player returns to a persistent camp where the raid can be prepared for its next attempt.
 
-- Move with `WASD`, interact with a functional facility using `E`, and close the current journal with `Esc`.
-- Select either Ogre or Chainmaster and manage the active twenty at the command tent.
-- Edit the selected boss's persistent starting formation at the formation yard.
-- Review observed abilities, phases, death timing, reliable failures, and attempt history at the archive.
-- After a wipe, retry the exact Raid Plan, review the attempt, make a bounded formation edit, or return to Camp.
-- In development builds, the command tent can seed twenty campaign-marked reserves for forty-member population and roster-swap testing.
+Current camp features include:
 
-Campaign data is versioned independently at `user://raid_leader_campaign_v1.json`. Voice settings and the legacy tutorial roster continue to use the existing settings file. Camp facility art is an original modular atlas documented under `assets/camp/README.md`.
+* A persistent campaign roster
+* Raid-member selection and role management
+* Boss-specific starting formations
+* Encounter and attempt history
+* Observed boss-mechanic records
+* Immediate encounter retries
+* Camp facilities and ambient member activities
+* Persistent raider memories and relationships
 
-The complete round-trip and forty-member acceptance pass is in [`CAMP_V1_PLAYTEST.md`](CAMP_V1_PLAYTEST.md).
+The long-term goal is for the raid to feel like a developing organization rather than a collection of interchangeable combat units.
 
-## Local voice setup
+## Encounters
 
-The default paths are project-relative:
+The current build includes tutorial content and the first encounters from the **Beast Crucible** region.
 
-```text
-tools/whisper.cpp/build/bin/whisper-cli
-tools/whisper.cpp/build/bin/Release/whisper-cli.exe
-tools/whisper.cpp/models/
-```
+### Earthgnasher
 
-The platform-specific CLI path and selected model are resolved by `GameState`. Local binaries, models, generated WAV files, build outputs, and editor state are intentionally ignored by Git.
+A tank-swap encounter centered on stacking attacks, displacement, directional pressure, ground hazards, and raid-wide damage.
 
-Hold `V` to record a command. Recordings are trimmed only at their edges, queued with a short lifetime, and discarded if transcription finishes too late to be safe for real-time combat.
+### Chainwarden
 
-## Manual verification
+A mid-range melee encounter built around chained attacks, target positioning, forced movement, and escalating phase pressure.
 
-This prototype currently uses manual encounter testing rather than an automated gameplay test suite. Before merging gameplay changes, verify at minimum:
+Each boss is designed to test raid-level decision-making rather than individual mechanical execution.
 
-1. Build a 20-member roster and confirm frames, formations, roles, and identities remain distinct.
-2. Exercise every panel action and representative voice commands, including rejected ambiguous input.
-3. Kill the current boss target during both a target-locked cleave and Twin Sweeping Pull.
-4. Taunt between two Warriors and confirm active-tank and raid healing scopes update immediately.
-5. Reset after a wipe and victory and confirm health, casts, movement, statuses, targets, and the combat log are cleared.
-6. Run each tutorial at multiple window sizes and confirm the raid frames, boss frame, and command panel remain usable.
+## Project Goals
 
-## Status
+Raid Leader explores several design and engineering problems:
 
-The repository now contains the first-region Camp V1 foundation. Ogre and Chainmaster are both available non-apex encounters. Later bosses can use the dormant recruitment, regional-apex, liaison, support, facility-tier, and forty-member data seams without redesigning current combat state.
+* Translating natural-language commands into deterministic game actions
+* Controlling many autonomous units without overwhelming the player
+* Communicating complex combat information clearly
+* Balancing real-time pressure with strategic decision-making
+* Maintaining persistent characters and campaign state across encounters
+* Building reusable encounter systems for future bosses and regions
+
+The project combines game design, artificial intelligence, command parsing, data-driven architecture, and user-interface development.
+
+## Built With
+
+* **Godot 4.7**
+* **GDScript**
+* **whisper.cpp** for optional local speech transcription
+* Data-driven resources for units, abilities, encounters, and phases
+
+Voice transcription runs locally and does not require a hosted speech service.
+
+## Running the Project
+
+Raid Leader is currently intended to be run from the Godot editor.
+
+1. Install Godot 4.7 or a compatible Godot 4 release.
+2. Clone this repository.
+3. Import `project.godot` into Godot.
+4. Run the main project scene.
+
+The interface and keyboard controls can be used without installing the optional voice-transcription components.
+
+## Current Development Focus
+
+Current work is focused on:
+
+* Improving raid-combat readability
+* Expanding boss mechanics and encounter variety
+* Refining voice-command accuracy
+* Developing threat, targeting, and tank behavior
+* Expanding persistent raider progression and relationships
+* Building additional regions and advanced classes
+
+## About the Project
+
+Raid Leader is an independent portfolio project created to explore large-group tactical control and voice-assisted gameplay.
+
+It is under active development, so systems, balance, visuals, and content may change substantially as the project evolves.
