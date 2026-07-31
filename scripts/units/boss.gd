@@ -177,6 +177,9 @@ func _physics_process(delta):
 	if is_dead:
 		return
 
+	if target_controller != null:
+		target_controller.update(delta)
+
 	enforce_movement_mode()
 
 	if not encounter_active:
@@ -305,7 +308,12 @@ func set_party_members(new_party_members: Array) -> void:
 
 
 func taunt(new_target: Node) -> bool:
-	if is_dead or target_controller == null:
+	if (
+		is_dead
+		or phase_transition_pending
+		or current_ability_is_phase_transition
+		or target_controller == null
+	):
 		return false
 
 	var success := target_controller.taunt(new_target)
@@ -321,6 +329,9 @@ func set_encounter_active(active: bool) -> void:
 	encounter_active = active and not is_dead
 
 	if not encounter_active:
+		if target_controller != null:
+			target_controller.reset_threat()
+
 		velocity = Vector2.ZERO
 
 		if is_casting and current_ability != null:
@@ -903,6 +914,10 @@ func take_damage(
 	health -= maxi(amount, 0)
 	health = max(health, 0)
 	var actual_amount := previous_health - health
+
+	if actual_amount > 0 and target_controller != null:
+		target_controller.record_damage_threat(source, actual_amount)
+
 	update_health_bar()
 	emit_combat_event("damage", source, ability_id, actual_amount, metadata)
 	update_current_phase()
@@ -940,7 +955,7 @@ func die():
 	reset_basic_attack_trigger_sequence(false)
 	update_cast_bar()
 	clear_encounter_objects()
-	clear_target()
+	reset_threat()
 
 	print("Boss defeated!")
 	emit_combat_event("boss_defeated", null, "", 0)
@@ -981,7 +996,7 @@ func reset_boss(new_position: Vector2):
 	is_dead = false
 	encounter_active = false
 	health = max_health
-	clear_target()
+	reset_threat()
 	next_ability_index = 0
 	next_ability = null
 	current_phase = null
@@ -1011,6 +1026,30 @@ func reset_boss(new_position: Vector2):
 	update_health_bar()
 	update_cast_bar()
 	visible = true
+
+
+func remove_threat(source: Node) -> void:
+	if target_controller != null:
+		target_controller.remove_threat(source)
+
+
+func reset_threat() -> void:
+	if target_controller != null:
+		target_controller.reset_threat()
+
+
+func get_threat_for(source: Node) -> float:
+	if target_controller == null:
+		return 0.0
+
+	return target_controller.get_threat_for(source)
+
+
+func get_threat_table_snapshot() -> Dictionary:
+	if target_controller == null:
+		return {}
+
+	return target_controller.get_threat_table_snapshot()
 func get_status_text() -> String:
 	if is_dead:
 		return "Defeated"
