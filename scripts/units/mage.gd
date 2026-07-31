@@ -2,6 +2,35 @@ extends BaseCombatUnit
 
 class_name Mage
 
+enum FacingDirection {
+	EAST,
+	SOUTHEAST,
+	SOUTH,
+	SOUTHWEST,
+	WEST,
+	NORTHWEST,
+	NORTH,
+	NORTHEAST,
+}
+
+const DIRECTION_STEP_RADIANS := PI / 4.0
+const DIRECTION_HALF_STEP_RADIANS := DIRECTION_STEP_RADIANS / 2.0
+const DIRECTION_HYSTERESIS_RADIANS := 4.0 * PI / 180.0
+const MIN_MOVEMENT_DISPLACEMENT := 0.1
+const MIN_MOVEMENT_DISPLACEMENT_SQUARED := (
+	MIN_MOVEMENT_DISPLACEMENT * MIN_MOVEMENT_DISPLACEMENT
+)
+const FACING_TEXTURES := {
+	FacingDirection.NORTH: preload("res://assets/units/mage/mage_north.png"),
+	FacingDirection.NORTHEAST: preload("res://assets/units/mage/mage_northeast.png"),
+	FacingDirection.EAST: preload("res://assets/units/mage/mage_east.png"),
+	FacingDirection.SOUTHEAST: preload("res://assets/units/mage/mage_southeast.png"),
+	FacingDirection.SOUTH: preload("res://assets/units/mage/mage_south.png"),
+	FacingDirection.SOUTHWEST: preload("res://assets/units/mage/mage_southwest.png"),
+	FacingDirection.WEST: preload("res://assets/units/mage/mage_west.png"),
+	FacingDirection.NORTHWEST: preload("res://assets/units/mage/mage_northwest.png"),
+}
+
 var cast_range_units: float = 40.0
 
 var spell_damage: int = 18
@@ -9,15 +38,20 @@ var spell_cooldown: float = 1.0
 var spell_cast_time: float = 1.5
 @export var show_world_cast_bar: bool = false
 
+@onready var combat_sprite: Sprite2D = get_node_or_null("Sprite2D") as Sprite2D
 @onready var cast_bar = get_node_or_null("CastBar")
 
 var target: Node2D = null
+var combat_facing_target: Node2D = null
 
 var cooldown_timer: float = 0.0
 var cast_timer: float = 0.0
 var is_casting: bool = false
 var spell_ability_id: String = "fireball"
 var spell_display_name: String = "Fireball"
+var current_facing_direction: int = FacingDirection.SOUTH
+var last_movement_direction: int = FacingDirection.SOUTH
+var was_moving_last_frame: bool = false
 
 
 func configure_from_definition(definition: UnitDefinition) -> void:
@@ -38,10 +72,13 @@ func configure_from_definition(definition: UnitDefinition) -> void:
 
 func _ready():
 	super._ready()
+	_set_facing_direction(FacingDirection.SOUTH)
 	update_cast_bar()
 	print("Mage ready. HP:", health)
 
 func _physics_process(delta):
+	var step_start_position := global_position
+
 	if is_dead:
 		stop_movement()
 		move_and_slide()
@@ -50,26 +87,147 @@ func _physics_process(delta):
 	update_cooldown(delta)
 
 	if update_forced_movement(delta):
-		move_and_slide()
+		_finish_movement_step(step_start_position)
 		return
 
 	if update_manual_move_order(delta):
-		move_and_slide()
+		_finish_movement_step(step_start_position)
 		return
 
 	if is_casting:
 		handle_active_cast(delta)
-		move_and_slide()
+		_finish_movement_step(step_start_position)
 		return
 
 	if not has_valid_cast_target():
 		stop_action()
-		move_and_slide()
+		_finish_movement_step(step_start_position)
 		return
 
 	handle_cast_positioning()
 
+	_finish_movement_step(step_start_position)
+
+
+func _finish_movement_step(step_start_position: Vector2) -> void:
 	move_and_slide()
+	_update_combat_facing_from_displacement(global_position - step_start_position)
+
+
+func set_combat_facing_target(new_target: Node2D) -> void:
+	combat_facing_target = new_target
+	_update_combat_facing_from_displacement(Vector2.ZERO)
+
+
+func _update_combat_facing_from_displacement(displacement: Vector2) -> void:
+	if displacement.length_squared() >= MIN_MOVEMENT_DISPLACEMENT_SQUARED:
+		var movement_direction := _resolve_facing_direction(
+			displacement,
+			last_movement_direction,
+			true
+		)
+		last_movement_direction = movement_direction
+		was_moving_last_frame = true
+		_set_facing_direction(movement_direction)
+		return
+
+	if not is_valid_node(combat_facing_target):
+		was_moving_last_frame = false
+		return
+
+	var boss_direction := (
+		combat_facing_target.global_position
+		- global_position
+	)
+
+	if boss_direction.is_zero_approx():
+		was_moving_last_frame = false
+		return
+
+	var idle_direction := _resolve_facing_direction(
+		boss_direction,
+		current_facing_direction,
+		not was_moving_last_frame
+	)
+	was_moving_last_frame = false
+	_set_facing_direction(idle_direction)
+
+
+func _resolve_facing_direction(
+	direction_vector: Vector2,
+	previous_direction: int,
+	apply_hysteresis: bool
+) -> int:
+	if direction_vector.is_zero_approx():
+		return previous_direction
+
+	var vector_angle := direction_vector.angle()
+	var direction := wrapi(
+		floori(
+			(vector_angle + DIRECTION_HALF_STEP_RADIANS)
+			/ DIRECTION_STEP_RADIANS
+		),
+		0,
+		FacingDirection.size()
+	)
+
+	if apply_hysteresis and direction != previous_direction:
+		var previous_angle := float(previous_direction) * DIRECTION_STEP_RADIANS
+		var angle_from_previous := absf(
+			wrapf(vector_angle - previous_angle, -PI, PI)
+		)
+
+		if angle_from_previous <= (
+			DIRECTION_HALF_STEP_RADIANS
+			+ DIRECTION_HYSTERESIS_RADIANS
+		):
+			return previous_direction
+
+	return direction
+
+
+func _set_facing_direction(direction: int) -> void:
+	if combat_sprite == null:
+		return
+
+	var next_texture := FACING_TEXTURES.get(direction) as Texture2D
+
+	if next_texture == null:
+		return
+
+	if current_facing_direction == direction and combat_sprite.texture == next_texture:
+		return
+
+	current_facing_direction = direction
+	combat_sprite.texture = next_texture
+
+
+func get_facing_direction() -> int:
+	return current_facing_direction
+
+
+func finish_forced_movement() -> void:
+	var movement_start_position := global_position
+	super.finish_forced_movement()
+	_update_combat_facing_from_displacement(global_position - movement_start_position)
+
+
+func command_dodge_to_position(
+	destination: Vector2,
+	command_context: Dictionary = {}
+) -> void:
+	var movement_start_position := global_position
+	super.command_dodge_to_position(destination, command_context)
+	_update_combat_facing_from_displacement(global_position - movement_start_position)
+
+
+func command_dodge_through_positions(
+	destinations: Array[Vector2],
+	command_context: Dictionary = {}
+) -> void:
+	var movement_start_position := global_position
+	super.command_dodge_through_positions(destinations, command_context)
+	_update_combat_facing_from_displacement(global_position - movement_start_position)
 
 
 func command_attack(new_target: Node2D):

@@ -166,6 +166,10 @@ func initialize_combat():
 	store_spawn_positions()
 	setup_attempt_recorder()
 
+	for unit in party_members:
+		if unit != null and unit.has_method("set_combat_facing_target"):
+			unit.set_combat_facing_target(boss)
+
 	if voice_coordinator != null:
 		voice_coordinator.setup_parser_context(party_members)
 
@@ -431,6 +435,10 @@ func _on_boss_defeated():
 func handle_unit_defeated(unit: Node) -> void:
 	if unit == null:
 		return
+
+	for enemy in get_enemy_threat_sources():
+		if enemy != null and is_instance_valid(enemy) and enemy.has_method("remove_threat"):
+			enemy.remove_threat(unit)
 
 	if command_controller != null:
 		command_controller.clear_hovered_unit_if_matches(unit)

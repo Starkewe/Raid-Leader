@@ -75,6 +75,8 @@ const MID_SLOT_RANGE_UNITS: float = 20.0
 const FAR_SLOT_RANGE_UNITS: float = 40.0
 const MINI_REGION_HALF_ANGLE: float = PI / 8.0
 const MINI_REGION_ENTRY_MARGIN_PIXELS: float = 1.0
+# Keeps the widest 60-pixel raider silhouettes readable with slight overlap.
+const RAIDER_FORMATION_SPACING_PIXELS: float = 48.0
 
 
 static func get_mini_region_spacing_pixels() -> float:
@@ -539,7 +541,7 @@ static func get_formation_positions(
 	center_position: Vector2,
 	unit_count: int,
 	outward_direction: Vector2 = Vector2.DOWN,
-	spacing: float = 28.0
+	spacing: float = RAIDER_FORMATION_SPACING_PIXELS
 ) -> Array[Vector2]:
 	var positions: Array[Vector2] = []
 
@@ -575,7 +577,7 @@ static func get_slot_formation_positions(
 	region: String,
 	range_name: String,
 	unit_count: int,
-	spacing: float = 28.0
+	spacing: float = RAIDER_FORMATION_SPACING_PIXELS
 ) -> Array[Vector2]:
 	return get_formation_positions(
 		get_slot_position(boss_node, region, range_name),

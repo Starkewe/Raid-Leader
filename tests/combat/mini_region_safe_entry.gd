@@ -165,6 +165,7 @@ func _test_bounded_local_destination_allocation(boss: DummyBoss) -> bool:
 		safety_inset
 	)
 	var occupied_destinations: Dictionary = {}
+	var maximum_adjustment := MovementCommandExecutor.LOCAL_DESTINATION_MAX_ADJUSTMENT
 
 	for _unit_index in range(20):
 		var allocated_destination := (
@@ -183,15 +184,18 @@ func _test_bounded_local_destination_allocation(boss: DummyBoss) -> bool:
 			_fail("An unoccupied destination did not use the nearest safe point.")
 			return false
 
-		if allocated_destination.distance_to(nearest_destination) > 16.01:
+		if allocated_destination.distance_to(nearest_destination) > (
+			maximum_adjustment + 0.01
+		):
 			_fail(
 				"Local spacing moved a crowded destination farther than the "
-				+ "16-pixel allocation limit."
+				+ str(maximum_adjustment)
+				+ "-pixel allocation limit."
 			)
 			return false
 
 		if source.distance_to(allocated_destination) > (
-			source.distance_to(nearest_destination) + 16.01
+			source.distance_to(nearest_destination) + maximum_adjustment + 0.01
 		):
 			_fail(
 				"Local spacing created an unnecessarily long movement path."

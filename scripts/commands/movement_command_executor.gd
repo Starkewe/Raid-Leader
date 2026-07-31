@@ -2,8 +2,10 @@ extends RefCounted
 class_name MovementCommandExecutor
 
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
-const LOCAL_DESTINATION_SPACING: float = 28.0
-const LOCAL_DESTINATION_MAX_ADJUSTMENT: float = 16.0
+const LOCAL_DESTINATION_SPACING: float = (
+	MovementSlotResolverScript.RAIDER_FORMATION_SPACING_PIXELS
+)
+const LOCAL_DESTINATION_MAX_ADJUSTMENT: float = LOCAL_DESTINATION_SPACING * 3.0
 const LOCAL_DESTINATION_ADJUSTMENT_STEP: float = 4.0
 const LOCAL_DESTINATION_CANDIDATE_DIRECTIONS: int = 16
 const MINI_REGION_SAFETY_BUFFER: float = 4.0
@@ -105,7 +107,7 @@ func execute_move_to_slot(selected_units: Array, region: String, range_name: Str
 
 	var living_units := get_living_movable_units(selected_units)
 	var destinations: Array[Vector2] = []
-	var occupied_destinations: Dictionary = {}
+	var occupied_destinations := build_occupied_destinations(living_units)
 
 	for unit in living_units:
 		destinations.append(
@@ -133,7 +135,7 @@ func execute_move_to_region(selected_units: Array, region: String) -> bool:
 
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
-	var occupied_destinations: Dictionary = {}
+	var occupied_destinations := build_occupied_destinations(living_units)
 
 	for unit in living_units:
 		var unit_2d := unit as Node2D
@@ -181,7 +183,7 @@ func execute_rotate_step(selected_units: Array, rotation_direction: String) -> b
 	var boss_2d := boss as Node2D
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
-	var occupied_destinations: Dictionary = {}
+	var occupied_destinations := build_occupied_destinations(living_units)
 
 	for unit in living_units:
 		var unit_2d := unit as Node2D
@@ -239,7 +241,7 @@ func execute_rotate_to_region(selected_units: Array, region: String) -> bool:
 	var boss_2d := boss as Node2D
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
-	var occupied_destinations: Dictionary = {}
+	var occupied_destinations := build_occupied_destinations(living_units)
 
 	for unit in living_units:
 		var unit_2d := unit as Node2D
@@ -314,7 +316,7 @@ func execute_move_to_range(selected_units: Array, range_name: String) -> bool:
 	var boss_2d := boss as Node2D
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
-	var occupied_destinations: Dictionary = {}
+	var occupied_destinations := build_occupied_destinations(living_units)
 
 	for unit in living_units:
 		var unit_2d := unit as Node2D
@@ -362,7 +364,7 @@ func execute_range_step(selected_units: Array, range_direction: String) -> bool:
 	var boss_2d := boss as Node2D
 	var issued_command := false
 	var living_units := get_living_movable_units(selected_units)
-	var occupied_destinations: Dictionary = {}
+	var occupied_destinations := build_occupied_destinations(living_units)
 
 	for unit in living_units:
 		var unit_2d := unit as Node2D
@@ -571,6 +573,32 @@ func get_nearest_available_mini_region_destination(
 	occupied.append(destination)
 	occupied_destinations[destination_key] = occupied
 	return destination
+
+
+func build_occupied_destinations(moving_units: Array) -> Dictionary:
+	var occupied_destinations: Dictionary = {}
+
+	if not is_valid_node(boss) or boss.get_tree() == null:
+		return occupied_destinations
+
+	for party_member in boss.get_tree().get_nodes_in_group("party_member"):
+		if not is_unit_alive(party_member):
+			continue
+
+		if moving_units.has(party_member) or not party_member is Node2D:
+			continue
+
+		var member_position := (party_member as Node2D).global_position
+		var mini_region := MovementSlotResolverScript.get_mini_region_from_position(
+			boss,
+			member_position
+		)
+		var destination_key := String(mini_region.get("key", ""))
+		var occupied: Array = occupied_destinations.get(destination_key, [])
+		occupied.append(member_position)
+		occupied_destinations[destination_key] = occupied
+
+	return occupied_destinations
 
 
 func get_best_local_destination_candidate(

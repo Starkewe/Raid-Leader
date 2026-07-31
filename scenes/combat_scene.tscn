@@ -24,6 +24,7 @@
 
 [node name="Main" type="Node2D" unique_id=592902322]
 position = Vector2(-106, -214)
+y_sort_enabled = true
 
 [node name="Player" type="CharacterBody2D" parent="." unique_id=1652335767]
 position = Vector2(106, 277)
