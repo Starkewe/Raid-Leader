@@ -4,6 +4,9 @@ class_name RaidMemberFrame
 signal hovered(unit)
 signal unhovered(unit)
 
+const CriticalDebuffCatalogScript := preload(
+	"res://scripts/ui/critical_debuff_catalog.gd"
+)
 const ROLE_TEXTURES := {
 	"tank": preload("res://icons/Warrior (Small).png"),
 	"healer": preload("res://icons/Priest (Small).png"),
@@ -16,6 +19,12 @@ const ROLE_TEXTURES := {
 const FRAME_MARGIN := 2.0
 const HEADER_HEIGHT := 20.0
 const COOLDOWN_STRIP_HEIGHT := 2.0
+const CRITICAL_DEBUFF_ICON_SIZE := 22.0
+const STACKING_DEBUFF_ICON_SIZE := 28.0
+const CRITICAL_DEBUFF_ICON_GAP := 4.0
+const CRITICAL_DEBUFF_BOTTOM_MARGIN := 11.0
+const CRITICAL_DEBUFF_STACK_FONT_SIZE := 13
+const MAX_CRITICAL_DEBUFF_ICONS := 5
 
 const HEALTH_COLOR := Color(0.12, 0.52, 0.20, 1.0)
 const MISSING_HEALTH_COLOR := Color(0.48, 0.08, 0.08, 1.0)
@@ -42,6 +51,7 @@ var maximum_health: int = 1
 var incoming_healing: int = 0
 var absorb_amount: int = 0
 var harmful_overlay_kind: String = ""
+var critical_debuffs: Array[Dictionary] = []
 var unit_is_dead: bool = false
 var state_initialized: bool = false
 
@@ -110,6 +120,7 @@ func _draw() -> void:
 	if is_hovered:
 		draw_rect(inner_rect, Color(1.0, 1.0, 1.0, 0.09))
 
+	draw_critical_debuff_icons()
 	draw_rect(
 		Rect2(Vector2(0.5, 0.5), size - Vector2.ONE),
 		Color(0.02, 0.02, 0.025, 0.96),
@@ -118,6 +129,83 @@ func _draw() -> void:
 	)
 	draw_threat_indicator()
 	draw_dodge_cooldown_strip()
+
+
+func draw_critical_debuff_icons() -> void:
+	if critical_debuffs.is_empty() or unit_is_dead:
+		return
+
+	var icon_right := size.x - FRAME_MARGIN - 2.0
+	var icon_bottom := size.y - COOLDOWN_STRIP_HEIGHT - CRITICAL_DEBUFF_BOTTOM_MARGIN
+	var fallback_font := ThemeDB.fallback_font
+	var visible_count := mini(critical_debuffs.size(), MAX_CRITICAL_DEBUFF_ICONS)
+
+	for debuff_index in range(visible_count):
+		var debuff: Dictionary = critical_debuffs[debuff_index]
+		var show_stack_count := bool(debuff.get("show_stack_count", false))
+		var emphasize_stacking := bool(debuff.get("emphasize_stacking", false))
+		var icon_size := (
+			STACKING_DEBUFF_ICON_SIZE
+			if emphasize_stacking
+			else CRITICAL_DEBUFF_ICON_SIZE
+		)
+		var icon_rect := Rect2(
+			Vector2(icon_right - icon_size, icon_bottom - icon_size),
+			Vector2.ONE * icon_size
+		)
+		var accent_color: Color = debuff.get(
+			"accent_color",
+			Color(0.95, 0.26, 0.18, 1.0)
+		)
+
+		draw_rect(icon_rect.grow(2.0), Color(0.02, 0.02, 0.025, 0.94))
+		draw_rect(
+			icon_rect.grow(1.0),
+			accent_color if emphasize_stacking else accent_color.darkened(0.25),
+			false,
+			2.0 if emphasize_stacking else 1.0
+		)
+
+		var icon := debuff.get("icon") as Texture2D
+
+		if icon != null:
+			draw_texture_rect(icon, icon_rect, false)
+
+		if show_stack_count:
+			draw_debuff_stack_count(
+				icon_rect,
+				maxi(int(debuff.get("stacks", 1)), 1),
+				fallback_font
+			)
+
+		icon_right = icon_rect.position.x - CRITICAL_DEBUFF_ICON_GAP
+
+
+func draw_debuff_stack_count(icon_rect: Rect2, stacks: int, font: Font) -> void:
+	var stack_text := str(stacks)
+	var text_size := font.get_string_size(
+		stack_text,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1.0,
+		CRITICAL_DEBUFF_STACK_FONT_SIZE
+	)
+	var badge_size := Vector2(maxf(text_size.x + 6.0, 15.0), 16.0)
+	var badge_rect := Rect2(icon_rect.end - badge_size, badge_size)
+
+	draw_rect(badge_rect, Color(0.025, 0.02, 0.02, 0.96))
+	draw_rect(badge_rect, Color(1.0, 0.72, 0.30, 0.94), false, 1.0)
+	draw_string(
+		font,
+		Vector2(
+			badge_rect.position.x + (badge_size.x - text_size.x) * 0.5,
+			badge_rect.end.y - 3.0
+		),
+		stack_text,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1.0,
+		CRITICAL_DEBUFF_STACK_FONT_SIZE,
+		Color.WHITE
+	)
 
 
 func draw_incoming_heal(inner_rect: Rect2, fill_width: float) -> void:
@@ -364,6 +452,7 @@ func sync_visual_state(show_flash: bool) -> void:
 		incoming_healing = 0
 		absorb_amount = 0
 		harmful_overlay_kind = ""
+		critical_debuffs.clear()
 		unit_is_dead = true
 		name_label.text = display_name
 		return
@@ -374,6 +463,7 @@ func sync_visual_state(show_flash: bool) -> void:
 	incoming_healing = get_unit_incoming_healing()
 	absorb_amount = get_unit_absorb_amount()
 	harmful_overlay_kind = get_unit_harmful_overlay_kind()
+	critical_debuffs = get_unit_critical_debuffs()
 	unit_is_dead = not get_unit_is_alive()
 
 	if show_flash and state_initialized:
@@ -386,13 +476,23 @@ func sync_visual_state(show_flash: bool) -> void:
 	name_label.modulate = Color(0.68, 0.68, 0.70, 1.0) if unit_is_dead else Color.WHITE
 	number_label.modulate = name_label.modulate
 	role_icon.modulate = name_label.modulate
-	tooltip_text = (
-		display_name
-		+ "\n"
-		+ str(current_health)
-		+ " / "
-		+ str(maximum_health)
-	)
+	var tooltip_lines: Array[String] = [
+		display_name,
+		str(current_health) + " / " + str(maximum_health)
+	]
+
+	for debuff in critical_debuffs:
+		var debuff_label := String(debuff.get(
+			"display_name",
+			debuff.get("effect_id", "Critical Debuff")
+		))
+
+		if bool(debuff.get("show_stack_count", false)):
+			debuff_label += " x" + str(int(debuff.get("stacks", 1)))
+
+		tooltip_lines.append(debuff_label)
+
+	tooltip_text = "\n".join(tooltip_lines)
 
 
 func update_cast_bar() -> void:
@@ -477,6 +577,18 @@ func get_unit_harmful_overlay_kind() -> String:
 		return String(unit.get_raid_frame_overlay_kind())
 
 	return ""
+
+
+func get_unit_critical_debuffs() -> Array[Dictionary]:
+	if not unit.has_method("get_active_status_effects"):
+		return []
+
+	var active_status_effects: Array = unit.get_active_status_effects()
+	return CriticalDebuffCatalogScript.get_critical_debuffs(active_status_effects)
+
+
+func get_critical_debuff_display_state() -> Array[Dictionary]:
+	return critical_debuffs.duplicate(true)
 
 
 func get_unit_is_alive() -> bool:

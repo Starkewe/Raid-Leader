@@ -13,6 +13,7 @@ signal combat_event(event: Dictionary)
 const ACTION_NONE := ""
 const ACTION_ATTACK := "attack"
 const ACTION_MOVE := "move"
+const TAUNT_COOLDOWN_DURATION := 5.0
 
 var max_health: int = 100
 var speed: float = 140.0
@@ -28,6 +29,7 @@ var damage_absorb: int = 0
 var pending_heals: Dictionary = {}
 var unit_definition: UnitDefinition = null
 var unit_roles: Array[String] = []
+var taunt_cooldown_remaining: float = 0.0
 
 var unit_class: String = ""
 var unit_number: int = 0
@@ -89,6 +91,7 @@ func _ready():
 
 func _process(delta: float) -> void:
 	update_status_effects(delta)
+	update_taunt_cooldown(delta)
 
 	if not is_dead:
 		update_dodge_recharge(delta)
@@ -211,6 +214,7 @@ func reset_unit(new_position: Vector2):
 	health = max_health
 	damage_absorb = 0
 	clear_pending_heals()
+	reset_taunt_cooldown()
 	velocity = Vector2.ZERO
 	global_position = new_position
 	visible = true
@@ -999,6 +1003,33 @@ func get_roles() -> Array[String]:
 	return unit_roles.duplicate()
 
 
+func get_base_class() -> String:
+	if unit_definition != null:
+		return unit_definition.get_base_class()
+
+	return unit_class
+
+
+func update_taunt_cooldown(delta: float) -> void:
+	taunt_cooldown_remaining = maxf(taunt_cooldown_remaining - maxf(delta, 0.0), 0.0)
+
+
+func is_taunt_ready() -> bool:
+	return taunt_cooldown_remaining <= 0.0
+
+
+func start_taunt_cooldown() -> void:
+	taunt_cooldown_remaining = TAUNT_COOLDOWN_DURATION
+
+
+func reset_taunt_cooldown() -> void:
+	taunt_cooldown_remaining = 0.0
+
+
+func get_taunt_cooldown_remaining() -> float:
+	return taunt_cooldown_remaining
+
+
 func get_display_name() -> String:
 	if display_name != "":
 		return display_name
@@ -1256,6 +1287,14 @@ func clear_all_status_effects() -> void:
 
 func get_status_effect_stacks(effect_id: String) -> int:
 	return status_effect_controller.get_stacks(effect_id)
+
+
+func remove_status_effect_stacks(effect_id: String, amount: int = 1) -> int:
+	return status_effect_controller.remove_stacks(effect_id, amount)
+
+
+func get_active_status_effects() -> Array[Dictionary]:
+	return status_effect_controller.get_active_effect_summaries()
 
 
 func has_dispellable_status(dispel_category: String = "") -> bool:

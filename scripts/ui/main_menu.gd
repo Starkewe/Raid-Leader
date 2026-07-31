@@ -1,6 +1,9 @@
 extends Control
 
 const CampaignSaveManagerScript := preload("res://scripts/core/campaign_save_manager.gd")
+const ScrollingMapBackgroundScript := preload(
+	"res://scripts/ui/scrolling_map_background.gd"
+)
 const DISPLAY_VERSION := "0.1.0"
 
 var main_panel: VBoxContainer = null
@@ -22,12 +25,39 @@ func _rebuild_root() -> void:
 		remove_child(child)
 		child.queue_free()
 
+	# Keep the animated background on its own canvas below the menu. Background
+	# fades can never alter or cover the menu controls on the default canvas.
+	var background_layer := CanvasLayer.new()
+	background_layer.name = "BackgroundLayer"
+	background_layer.layer = -1
+	add_child(background_layer)
+
+	var background_root := Control.new()
+	background_root.name = "BackgroundRoot"
+	background_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	background_layer.add_child(background_root)
+	background_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
 	var background := ColorRect.new()
-	background.set_anchors_preset(Control.PRESET_FULL_RECT)
-	background.color = Color("0c1318")
-	add_child(background)
+	background.name = "FallbackBackground"
+	background_root.add_child(background)
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	background.color = Color.BLACK
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var scrolling_background := ScrollingMapBackgroundScript.new()
+	scrolling_background.name = "ScrollingMapBackground"
+	background_root.add_child(scrolling_background)
+
+	var map_tint := ColorRect.new()
+	map_tint.name = "MapTint"
+	background_root.add_child(map_tint)
+	map_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	map_tint.color = Color(0.0, 0.0, 0.0, 0.18)
+	map_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var center := CenterContainer.new()
+	center.name = "MenuCenter"
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	center.offset_left = 40
 	center.offset_top = 35
@@ -36,6 +66,7 @@ func _rebuild_root() -> void:
 	add_child(center)
 
 	var panel := PanelContainer.new()
+	panel.name = "MenuPanel"
 	panel.custom_minimum_size = Vector2(720, 820)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("172027")

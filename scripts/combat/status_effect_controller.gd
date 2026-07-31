@@ -148,22 +148,46 @@ func get_stacks(effect_id: String) -> int:
 	return total_stacks
 
 
+func remove_stacks(effect_id: String, amount: int = 1) -> int:
+	var stacks_to_remove := maxi(amount, 0)
+
+	if stacks_to_remove <= 0:
+		return get_stacks(effect_id)
+
+	for state_key in _get_matching_keys(effect_id):
+		if stacks_to_remove <= 0 or not active_effects.has(state_key):
+			break
+
+		var state: Dictionary = active_effects[state_key]
+		var current_stacks := int(state.get("stacks", 0))
+		var removed_stacks := mini(current_stacks, stacks_to_remove)
+		current_stacks -= removed_stacks
+		stacks_to_remove -= removed_stacks
+
+		if current_stacks <= 0:
+			_remove_state(state_key)
+		else:
+			state["stacks"] = current_stacks
+			active_effects[state_key] = state
+
+	return get_stacks(effect_id)
+
+
+func get_active_effect_summaries() -> Array[Dictionary]:
+	var summaries := _build_effect_summaries()
+	var active_summaries: Array[Dictionary] = []
+
+	for effect_id_value in summaries.keys():
+		active_summaries.append(summaries[effect_id_value])
+
+	active_summaries.sort_custom(func(a: Dictionary, b: Dictionary):
+		return String(a.get("effect_id", "")) < String(b.get("effect_id", ""))
+	)
+	return active_summaries
+
+
 func get_display_text() -> String:
-	var summaries: Dictionary = {}
-
-	for state_value in active_effects.values():
-		var state: Dictionary = state_value
-		var definition := state.get("definition") as StatusEffectDefinition
-
-		if definition == null:
-			continue
-
-		var summary: Dictionary = summaries.get(definition.effect_id, {
-			"display_name": definition.display_name,
-			"stacks": 0
-		})
-		summary["stacks"] = int(summary.get("stacks", 0)) + int(state.get("stacks", 1))
-		summaries[definition.effect_id] = summary
+	var summaries := _build_effect_summaries()
 
 	var labels: Array[String] = []
 
@@ -179,6 +203,29 @@ func get_display_text() -> String:
 
 	labels.sort()
 	return ", ".join(labels)
+
+
+func _build_effect_summaries() -> Dictionary:
+	var summaries: Dictionary = {}
+
+	for state_value in active_effects.values():
+		var state: Dictionary = state_value
+		var definition := state.get("definition") as StatusEffectDefinition
+
+		if definition == null:
+			continue
+
+		var summary: Dictionary = summaries.get(definition.effect_id, {
+			"effect_id": definition.effect_id,
+			"display_name": definition.display_name,
+			"is_harmful": definition.is_harmful,
+			"max_stacks": maxi(definition.max_stacks, 1),
+			"stacks": 0
+		})
+		summary["stacks"] = int(summary.get("stacks", 0)) + int(state.get("stacks", 1))
+		summaries[definition.effect_id] = summary
+
+	return summaries
 
 
 func update(delta: float) -> void:
