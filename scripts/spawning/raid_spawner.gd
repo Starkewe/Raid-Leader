@@ -165,8 +165,7 @@ func apply_campaign_formation_positions() -> void:
 			boss,
 			String(slot_data.get("region", "south")),
 			String(slot_data.get("range", "mid")),
-			units.size(),
-			30.0
+			units.size()
 		)
 
 		for index in range(units.size()):
