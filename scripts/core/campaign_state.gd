@@ -38,7 +38,7 @@ const ATTEMPT_HISTORY_LIMIT := 5
 const FIRST_REGION_ID := "beast_crucible"
 const DEFAULT_FORMATION_NAME := "Default"
 const QUARTERS_ROOM_COUNT := 20
-const QUARTERS_ROOM_CAPACITY := 2
+const QUARTERS_ROOM_CAPACITY := 4
 
 var campaign: Dictionary = {}
 var missing_definition_warnings_emitted: Dictionary = {}
@@ -713,11 +713,20 @@ func get_roommate_summary(raider_id: String) -> String:
 	if room_id.is_empty():
 		return "Automatic assignment pending."
 
+	var roommate_names: Array[String] = []
+
 	for occupant_id in _room_occupants_by_id(campaign).get(room_id, []):
 		if String(occupant_id) == raider_id:
 			continue
 		var roommate := get_member(String(occupant_id))
-		return "Roommate: %s" % String(roommate.get("display_name", occupant_id))
+		roommate_names.append(String(roommate.get("display_name", occupant_id)))
+
+	if roommate_names.size() == 1:
+		return "Roommate: %s" % roommate_names[0]
+
+	if roommate_names.size() > 1:
+		return "Roommates: %s" % ", ".join(roommate_names)
+
 	return "Private for now."
 
 

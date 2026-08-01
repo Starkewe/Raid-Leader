@@ -242,7 +242,7 @@ static func _build_validation_report(catalog: Dictionary, entries: Array) -> Dic
 		"valid": errors.is_empty(),
 		"catalog_version": int(catalog.get("catalog_version", 0)),
 		"definition_count": _ordered_ids.size(),
-		"capacity_target": int(schema.get("capacity_target", 150)),
+		"capacity_target": int(schema.get("capacity_target", 160)),
 		"duplicate_ids": duplicate_ids,
 		"missing_asset_paths": missing_asset_paths,
 		"invalid_authored_connections": invalid_connections,

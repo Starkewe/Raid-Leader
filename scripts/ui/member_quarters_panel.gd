@@ -449,7 +449,7 @@ func _build_room_controls(parent: VBoxContainer, current_room_id: String) -> voi
 		var index := dropdown.item_count
 		var room_id := String(option.get("room_id", ""))
 		var occupants: Array = option.get("occupant_ids", [])
-		dropdown.add_item("%s · %d/%d" % [option.get("label", "Room"), occupants.size(), int(option.get("capacity", 2))])
+		dropdown.add_item("%s · %d/%d" % [option.get("label", "Room"), occupants.size(), int(option.get("capacity", 4))])
 		dropdown.set_item_metadata(index, room_id)
 		dropdown.set_item_disabled(index, not bool(option.get("available", false)) and room_id != current_room_id)
 		if room_id == current_room_id:
