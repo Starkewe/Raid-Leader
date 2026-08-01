@@ -12,8 +12,8 @@ signal command_panel_submitted(command_data: Dictionary)
 @export var raid_panel_size: Vector2 = Vector2(1200, 320)
 @export var command_panel_reserved_width: float = 340.0
 
-@export var boss_panel_top_margin: float = 20.0
-@export var boss_panel_size: Vector2 = Vector2(520, 90)
+@export var boss_overlay_size: Vector2 = Vector2(360.0, 92.0)
+@export var boss_overlay_offset: Vector2 = Vector2(0.0, -176.0)
 @export var show_command_debug_in_development: bool = true
 @export var show_legacy_command_panel_in_development: bool = false
 
@@ -24,6 +24,9 @@ signal command_panel_submitted(command_data: Dictionary)
 @onready var boss_name_label: Label = get_node_or_null("BossFramePanel/VBoxContainer/BossNameLabel")
 @onready var boss_health_bar: ProgressBar = get_node_or_null("BossFramePanel/VBoxContainer/BossHealthBar")
 @onready var boss_cast_bar: ProgressBar = get_node_or_null("BossFramePanel/VBoxContainer/BossCastBar")
+@onready var boss_cast_label: Label = get_node_or_null(
+	"BossFramePanel/VBoxContainer/BossCastBar/BossCastLabel"
+)
 @onready var boss_status_label: Label = get_node_or_null("BossFramePanel/VBoxContainer/BossStatusLabel")
 @onready var command_panel = get_node_or_null("CommandPanel")
 @onready var raid_command_bar: RaidCommandBar = get_node_or_null("RaidCommandBar") as RaidCommandBar
@@ -36,6 +39,10 @@ func _ready():
 	configure_command_interfaces()
 	connect_command_panel_signals()
 	setup_command_debug_panel()
+
+	if boss_frame_panel != null:
+		boss_frame_panel.visible = false
+
 	position_ui_panels()
 
 	if raid_frame_grid == null:
@@ -49,6 +56,10 @@ func _ready():
 		boss_cast_bar.visible = false
 
 	get_tree().root.size_changed.connect(position_ui_panels)
+
+
+func _process(_delta: float) -> void:
+	position_boss_frame_panel()
 
 func position_ui_panels():
 	position_raid_frames_panel()
@@ -92,18 +103,17 @@ func position_boss_frame_panel():
 	if boss_frame_panel == null:
 		return
 
-	var viewport_size := get_viewport().get_visible_rect().size
+	if boss == null or not is_instance_valid(boss) or not boss is Node2D:
+		boss_frame_panel.visible = false
+		return
 
-	var responsive_size := Vector2(
-		minf(boss_panel_size.x, maxf(viewport_size.x - 40.0, 240.0)),
-		boss_panel_size.y
-	)
-
-	boss_frame_panel.size = responsive_size
-	boss_frame_panel.position = Vector2(
-		(viewport_size.x - responsive_size.x) / 2.0,
-		boss_panel_top_margin
-	)
+	var boss_world_position := (boss as Node2D).global_position
+	var boss_screen_position := get_viewport().get_canvas_transform() * boss_world_position
+	boss_frame_panel.size = boss_overlay_size
+	boss_frame_panel.position = (
+		boss_screen_position + boss_overlay_offset - boss_overlay_size * 0.5
+	).round()
+	boss_frame_panel.visible = true
 
 func setup_raid_frames(units: Array):
 	clear_raid_frames()
@@ -186,6 +196,7 @@ func setup_boss_frame(new_boss: Node):
 	boss = new_boss
 	set_boss_target(get_boss_target())
 	refresh_boss_frame()
+	position_boss_frame_panel()
 
 
 func set_boss_target(target: Node) -> void:
@@ -216,6 +227,9 @@ func refresh_boss_frame(update_status: bool = true):
 		if boss_cast_bar != null:
 			boss_cast_bar.visible = false
 
+		if boss_cast_label != null:
+			boss_cast_label.text = ""
+
 		if boss_status_label != null and update_status:
 			boss_status_label.text = "Missing"
 
@@ -223,9 +237,6 @@ func refresh_boss_frame(update_status: bool = true):
 
 	update_boss_health_bar()
 	update_boss_cast_bar()
-
-	if boss_name_label != null:
-		boss_name_label.text = get_boss_display_name()
 
 	if boss_status_label != null and update_status:
 		if boss.has_method("get_status_text"):
@@ -252,6 +263,10 @@ func update_boss_cast_bar():
 
 	if boss == null or not is_instance_valid(boss):
 		boss_cast_bar.visible = false
+
+		if boss_cast_label != null:
+			boss_cast_label.text = ""
+
 		return
 
 	if boss.has_method("is_casting_ability") and boss.is_casting_ability():
@@ -262,9 +277,18 @@ func update_boss_cast_bar():
 			boss_cast_bar.value = boss.get_cast_progress_percent()
 		else:
 			boss_cast_bar.value = 0
+
+		if boss_cast_label != null:
+			var cast_name := (
+				String(boss.get_cast_name()) if boss.has_method("get_cast_name") else ""
+			)
+			boss_cast_label.text = cast_name if not cast_name.is_empty() else "Casting"
 	else:
 		boss_cast_bar.visible = false
 		boss_cast_bar.value = 0
+
+		if boss_cast_label != null:
+			boss_cast_label.text = ""
 
 func set_boss_status(text: String):
 	if boss_status_label != null:

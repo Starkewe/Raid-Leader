@@ -16,6 +16,14 @@ func _run() -> void:
 	var ui := combat_scene.get_node("UI")
 	var command_bar := ui.get_node("RaidCommandBar") as RaidCommandBar
 	var legacy_panel := ui.get_node("CommandPanel") as Control
+	var boss := combat_scene.get_node("Boss") as Node2D
+	var boss_frame := ui.get_node("BossFramePanel") as Control
+	var boss_cast_bar := ui.get_node(
+		"BossFramePanel/VBoxContainer/BossCastBar"
+	) as ProgressBar
+	var boss_name_label := ui.get_node(
+		"BossFramePanel/VBoxContainer/BossNameLabel"
+	) as Label
 	var combat_manager := combat_scene.get_node("CombatManager")
 	var voice_capture := combat_scene.get_node("VoicePipeline/VoiceCaptureController")
 	var voice_transcriber := combat_scene.get_node(
@@ -33,6 +41,58 @@ func _run() -> void:
 	if not command_bar.position.is_equal_approx(Vector2(384.0, 0.0)):
 		_fail("The combat command bar is not centered and flush to the top edge.")
 		return
+
+	if boss == null or boss_frame == null or not boss_frame.visible:
+		_fail("The sprite-anchored boss overlay is not visible in combat.")
+		return
+
+	if boss_name_label == null or not boss_name_label.text.contains("/"):
+		_fail("The boss overlay does not display numeric health.")
+		return
+
+	var original_boss_position := boss.global_position
+	var original_boss_scale := boss.scale
+	var original_overlay_position := boss_frame.position
+	var original_overlay_size := boss_frame.size
+	boss.global_position += Vector2(72.0, 38.0)
+	await get_tree().process_frame
+
+	if not boss_frame.position.is_equal_approx(
+		original_overlay_position + Vector2(72.0, 38.0)
+	):
+		_fail("The boss overlay did not remain locked to boss movement.")
+		return
+
+	boss.scale = Vector2(2.5, 2.5)
+	await get_tree().process_frame
+
+	if not boss_frame.size.is_equal_approx(original_overlay_size) or not boss_frame.scale.is_equal_approx(Vector2.ONE):
+		_fail("The boss overlay scaled with the boss sprite.")
+		return
+
+	boss.set("is_casting", true)
+	ui.refresh_boss_frame()
+
+	if boss_cast_bar == null or not boss_cast_bar.visible:
+		_fail("The boss overlay did not reveal cast information while casting.")
+		return
+
+	boss.set("is_casting", false)
+	ui.refresh_boss_frame()
+
+	if boss_cast_bar.visible:
+		_fail("The boss overlay kept cast information visible after casting ended.")
+		return
+
+	var target_indicator := boss.get_node_or_null("TargetDirectionIndicator") as Node2D
+
+	if target_indicator == null or target_indicator.get_parent() != boss:
+		_fail("The boss targeting ring and arrow left world space.")
+		return
+
+	boss.global_position = original_boss_position
+	boss.scale = original_boss_scale
+	await get_tree().process_frame
 
 	command_bar.display_parsed_command(_old_result())
 	await get_tree().create_timer(0.22).timeout
