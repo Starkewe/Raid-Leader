@@ -11,6 +11,8 @@ var voice_capture: Node = null
 var submit_command_callable: Callable = Callable()
 var update_debug_callable: Callable = Callable()
 var set_status_callable: Callable = Callable()
+var notify_transcription_started_callable: Callable = Callable()
+var display_parsed_command_callable: Callable = Callable()
 
 
 func setup(
@@ -19,12 +21,16 @@ func setup(
 	parser_path: NodePath,
 	new_submit_command_callable: Callable,
 	new_update_debug_callable: Callable,
-	new_set_status_callable: Callable
+	new_set_status_callable: Callable,
+	new_notify_transcription_started_callable: Callable,
+	new_display_parsed_command_callable: Callable
 ) -> void:
 	owner_node = new_owner_node
 	submit_command_callable = new_submit_command_callable
 	update_debug_callable = new_update_debug_callable
 	set_status_callable = new_set_status_callable
+	notify_transcription_started_callable = new_notify_transcription_started_callable
+	display_parsed_command_callable = new_display_parsed_command_callable
 
 	voice_transcriber = _find_transcriber(transcriber_path)
 	voice_command_parser = _find_parser(parser_path)
@@ -135,6 +141,7 @@ func _on_transcript_received(transcript: String) -> void:
 		return
 
 	var command_data: Dictionary = parse_result.get("command_data", {})
+	_display_parsed_command(parse_result)
 	var command_executed := bool(submit_command_callable.call(
 		command_data,
 		"voice",
@@ -169,6 +176,7 @@ func _on_recording_started() -> void:
 
 
 func _on_recording_finished(_wav_path: String) -> void:
+	_notify_transcription_started()
 	_set_status("Transcribing...")
 	_update_debug(_voice_state_debug("Processing...", "Queued for transcription"))
 
@@ -199,3 +207,13 @@ func _set_status(text: String, is_error: bool = false) -> void:
 func _update_debug(data: Dictionary) -> void:
 	if not update_debug_callable.is_null():
 		update_debug_callable.call(data)
+
+
+func _notify_transcription_started() -> void:
+	if not notify_transcription_started_callable.is_null():
+		notify_transcription_started_callable.call()
+
+
+func _display_parsed_command(parse_result: Dictionary) -> void:
+	if not display_parsed_command_callable.is_null():
+		display_parsed_command_callable.call(parse_result)

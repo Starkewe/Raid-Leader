@@ -15,6 +15,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/fail_screen.tscn" id="17_fail"]
 [ext_resource type="Script" path="res://scripts/ui/game_pause_menu.gd" id="18_pause"]
 [ext_resource type="Script" path="res://scripts/combat/movement_destination_visualizer.gd" id="19_paths"]
+[ext_resource type="PackedScene" path="res://scenes/ui/raid_command_bar.tscn" id="20_command_bar"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
 
@@ -84,6 +85,7 @@ script = ExtResource("19_paths")
 [node name="UI" type="CanvasLayer" parent="." unique_id=1494368386]
 script = ExtResource("14_62tjo")
 raid_member_frame_scene = ExtResource("15_ygsf8")
+boss_panel_top_margin = 128.0
 
 [node name="BossFramePanel" type="PanelContainer" parent="UI" unique_id=746933485]
 custom_minimum_size = Vector2(520, 90)
@@ -128,11 +130,14 @@ layout_mode = 2
 columns = 5
 
 [node name="CommandPanel" type="PanelContainer" parent="UI" unique_id=555858210]
+visible = false
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 grow_horizontal = 0
 script = ExtResource("8_ivkwx")
+
+[node name="RaidCommandBar" parent="UI" instance=ExtResource("20_command_bar")]
 
 [node name="FailScreen" parent="UI" instance=ExtResource("17_fail")]
 

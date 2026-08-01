@@ -2,8 +2,9 @@ extends PanelContainer
 
 class_name CommandPanel
 
-const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
-const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
+const RaidCommandReferenceCatalogScript := preload(
+	"res://scripts/ui/raid_command_reference_catalog.gd"
+)
 
 signal command_submitted(command_data: Dictionary)
 
@@ -110,42 +111,12 @@ func populate_who_options() -> void:
 
 	who_dropdown.clear()
 
-	add_option(who_dropdown, "Everyone", {
-		"who_type": "everyone",
-		"who_value": ""
-	})
-
-	for unit_class in GameState.get_available_classes():
-		add_option(who_dropdown, "Class: " + unit_class, {
-			"who_type": CommandSchemaScript.SELECTOR_CLASS,
-			"who_value": unit_class
-		})
-
-	for role_data in GameState.get_role_options():
-		add_option(who_dropdown, "Role: " + String(role_data.get("display_name", "Role")), {
-			"who_type": CommandSchemaScript.SELECTOR_ROLE,
-			"who_value": String(role_data.get("role", ""))
-		})
-
-	var group_count := ceili(float(GameState.MAX_RAID_SIZE) / 5.0)
-
-	for group_number in range(1, group_count + 1):
-		add_option(who_dropdown, "Group " + str(group_number), {
-			"who_type": "group",
-			"who_value": group_number
-		})
-
-	for unit in party_members:
-		if unit == null or not is_instance_valid(unit):
-			continue
-
-		var unit_label := get_unit_display_name(unit)
-
-		add_option(who_dropdown, "Unit: " + unit_label, {
-			"who_type": "unit",
-			"who_value": unit_label,
-			"unit": unit
-		})
+	for entry in RaidCommandReferenceCatalogScript.get_who_entries(party_members, GameState):
+		add_option(
+			who_dropdown,
+			String(entry.get("label", "")),
+			Dictionary(entry.get("metadata", {}))
+		)
 
 	who_dropdown.select(0)
 
@@ -156,33 +127,12 @@ func populate_what_options() -> void:
 
 	what_dropdown.clear()
 
-	add_option(what_dropdown, "Attack", {
-		"what": "attack"
-	})
-
-	add_option(what_dropdown, "Move", {
-		"what": "move"
-	})
-
-	add_option(what_dropdown, "Dodge", {
-		"what": CommandSchemaScript.ACTION_DODGE
-	})
-
-	add_option(what_dropdown, "Interrupt", {
-		"what": "interrupt"
-	})
-
-	add_option(what_dropdown, "Heal", {
-		"what": "heal"
-	})
-
-	add_option(what_dropdown, "Cure", {
-		"what": CommandSchemaScript.ACTION_CURE
-	})
-
-	add_option(what_dropdown, "Taunt", {
-		"what": CommandSchemaScript.ACTION_TAUNT
-	})
+	for entry in RaidCommandReferenceCatalogScript.get_what_entries():
+		add_option(
+			what_dropdown,
+			String(entry.get("label", "")),
+			Dictionary(entry.get("metadata", {}))
+		)
 
 	what_dropdown.select(0)
 
@@ -195,62 +145,16 @@ func populate_where_options_for_current_action() -> void:
 
 	var selected_action := get_selected_what()
 
-	match selected_action:
-		"attack":
-			add_option(where_dropdown, "Boss", {
-				"where": "boss"
-			})
-
-		"move", "dodge":
-			add_option(where_dropdown, "Me", {
-				"where": "me"
-			})
-
-			add_option(where_dropdown, "Move In One Range", {
-				"where": "movement_range_step",
-				"movement_direction": "in"
-			})
-
-			add_option(where_dropdown, "Move Out One Range", {
-				"where": "movement_range_step",
-				"movement_direction": "out"
-			})
-
-			add_option(where_dropdown, "Close Range - Current Direction", {
-				"where": "movement_range",
-				"movement_range": "close"
-			})
-
-			add_option(where_dropdown, "Mid Range - Current Direction", {
-				"where": "movement_range",
-				"movement_range": "mid"
-			})
-
-			add_option(where_dropdown, "Far Range - Current Direction", {
-				"where": "movement_range",
-				"movement_range": "far"
-			})
-
-			add_movement_region_options()
-			add_movement_slot_options()
-
-		"interrupt", "taunt":
-			add_option(where_dropdown, "Boss", {
-				"where": "boss"
-			})
-
-		"heal":
-			add_healing_target_options()
-
-		"cure":
-			add_option(where_dropdown, "Curable Allies", {
-				"where": CommandSchemaScript.DESTINATION_CURABLE_ALLIES
-			})
-
-		_:
-			add_option(where_dropdown, "None", {
-				"where": "none"
-			})
+	for entry in RaidCommandReferenceCatalogScript.get_where_entries_for_action(
+		selected_action,
+		party_members,
+		GameState
+	):
+		add_option(
+			where_dropdown,
+			String(entry.get("label", "")),
+			Dictionary(entry.get("metadata", {}))
+		)
 
 	where_dropdown.select(0)
 
@@ -261,62 +165,11 @@ func populate_when_options() -> void:
 
 	when_dropdown.clear()
 
-	add_option(when_dropdown, "Now", {
-		"when": "now"
-	})
+	for entry in RaidCommandReferenceCatalogScript.get_when_entries():
+		var metadata: Dictionary = entry.get("metadata", {})
+		add_option(when_dropdown, "Now", metadata)
 
 	when_dropdown.select(0)
-
-
-func add_healing_target_options() -> void:
-	add_option(where_dropdown, "Select Heal Target", {
-		"where": "none"
-	})
-	add_option(where_dropdown, "The Active Tank", {
-		"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
-		"healing_scope": {
-			"type": CommandSchemaScript.HEAL_SCOPE_ACTIVE_TANK
-		}
-	})
-	add_option(where_dropdown, "The Raid", {
-		"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
-		"healing_scope": {
-			"type": CommandSchemaScript.HEAL_SCOPE_RAID
-		}
-	})
-
-	for unit_class in GameState.get_available_classes():
-		add_option(where_dropdown, "Class: " + unit_class, {
-			"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
-			"healing_scope": {
-				"type": CommandSchemaScript.SELECTOR_CLASS,
-				"value": unit_class
-			}
-		})
-
-	var group_count := ceili(float(GameState.MAX_RAID_SIZE) / 5.0)
-
-	for group_number in range(1, group_count + 1):
-		add_option(where_dropdown, "Group " + str(group_number), {
-			"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
-			"healing_scope": {
-				"type": CommandSchemaScript.SELECTOR_GROUP,
-				"value": group_number
-			}
-		})
-
-	for unit in party_members:
-		if unit == null or not is_instance_valid(unit):
-			continue
-
-		add_option(where_dropdown, "Unit: " + get_unit_display_name(unit), {
-			"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
-			"healing_scope": {
-				"type": CommandSchemaScript.SELECTOR_UNIT,
-				"value": get_unit_display_name(unit),
-				"unit": unit
-			}
-		})
 
 
 func add_option(dropdown: OptionButton, label_text: String, metadata: Dictionary) -> void:
@@ -375,16 +228,6 @@ func build_command_data() -> Dictionary:
 
 	return command_data
 
-func get_unit_display_name(unit: Node) -> String:
-	if unit == null or not is_instance_valid(unit):
-		return "Unknown"
-
-	if unit.has_method("get_display_name"):
-		return String(unit.get_display_name())
-
-	return unit.name
-
-
 func _on_what_selected(_index: int) -> void:
 	populate_where_options_for_current_action()
 
@@ -403,53 +246,3 @@ func set_voice_status(text: String, is_error: bool = false) -> void:
 
 	voice_status_label.text = "Voice: " + text
 	voice_status_label.modulate = Color(1.0, 0.55, 0.55) if is_error else Color.WHITE
-
-func add_movement_region_options() -> void:
-	var regions := get_region_options()
-
-	for region_data in regions:
-		add_option(where_dropdown, "Move " + region_data[0] + " - Current Range", {
-			"where": "movement_region",
-			"movement_region": region_data[1]
-		})
-
-	add_option(where_dropdown, "Rotate Counterclockwise", {
-		"where": "movement_rotate_step",
-		"movement_direction": "counterclockwise"
-	})
-
-	add_option(where_dropdown, "Rotate Clockwise", {
-		"where": "movement_rotate_step",
-		"movement_direction": "clockwise"
-	})
-
-	for region_data in regions:
-		add_option(where_dropdown, "Rotate " + region_data[0], {
-			"where": "movement_rotate",
-			"movement_region": region_data[1]
-		})
-
-
-func add_movement_slot_options() -> void:
-	var regions := get_region_options()
-	var ranges: Array = []
-
-	for range_name in MovementSlotResolverScript.RANGE_ORDER:
-		ranges.append([String(range_name).capitalize(), range_name])
-
-	for region_data in regions:
-		for range_data in ranges:
-			add_option(where_dropdown, region_data[0] + " - " + range_data[0], {
-				"where": "movement_slot",
-				"movement_region": region_data[1],
-				"movement_range": range_data[1]
-			})
-
-
-func get_region_options() -> Array:
-	var options: Array = []
-
-	for region in MovementSlotResolverScript.REGION_ORDER:
-		options.append([String(region).capitalize(), region])
-
-	return options

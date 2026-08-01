@@ -15,6 +15,7 @@ signal command_panel_submitted(command_data: Dictionary)
 @export var boss_panel_top_margin: float = 20.0
 @export var boss_panel_size: Vector2 = Vector2(520, 90)
 @export var show_command_debug_in_development: bool = true
+@export var show_legacy_command_panel_in_development: bool = false
 
 @onready var raid_frames_panel: Control = get_node_or_null("RaidFramesPanel")
 @onready var raid_frame_grid: GridContainer = get_node_or_null("RaidFramesPanel/RaidFrameGrid")
@@ -25,12 +26,14 @@ signal command_panel_submitted(command_data: Dictionary)
 @onready var boss_cast_bar: ProgressBar = get_node_or_null("BossFramePanel/VBoxContainer/BossCastBar")
 @onready var boss_status_label: Label = get_node_or_null("BossFramePanel/VBoxContainer/BossStatusLabel")
 @onready var command_panel = get_node_or_null("CommandPanel")
+@onready var raid_command_bar: RaidCommandBar = get_node_or_null("RaidCommandBar") as RaidCommandBar
 
 var command_debug_panel: Control = null
 var frame_by_unit: Dictionary = {}
 var boss: Node = null
 
 func _ready():
+	configure_command_interfaces()
 	connect_command_panel_signals()
 	setup_command_debug_panel()
 	position_ui_panels()
@@ -57,8 +60,13 @@ func position_raid_frames_panel():
 		return
 
 	var viewport_size := get_viewport().get_visible_rect().size
+	var reserved_width := (
+		command_panel_reserved_width
+		if command_panel != null and command_panel.visible
+		else 0.0
+	)
 	var available_width := maxf(
-		viewport_size.x - raid_panel_margin.x * 2.0 - command_panel_reserved_width,
+		viewport_size.x - raid_panel_margin.x * 2.0 - reserved_width,
 		320.0
 	)
 	var responsive_width := minf(raid_panel_size.x, available_width)
@@ -310,7 +318,7 @@ func _on_raid_member_frame_hovered(unit: Node):
 func _on_raid_member_frame_unhovered(unit: Node):
 	raid_frame_unhovered.emit(unit)
 func connect_command_panel_signals() -> void:
-	if command_panel == null:
+	if command_panel == null or not command_panel.visible:
 		return
 
 	if not command_panel.has_signal("command_submitted"):
@@ -321,11 +329,11 @@ func connect_command_panel_signals() -> void:
 	if not command_panel.is_connected("command_submitted", callback):
 		command_panel.connect("command_submitted", callback)
 func setup_command_panel(party_members: Array) -> void:
-	if command_panel == null:
-		return
-
-	if command_panel.has_method("setup_units"):
+	if command_panel != null and command_panel.has_method("setup_units"):
 		command_panel.setup_units(party_members)
+
+	if raid_command_bar != null:
+		raid_command_bar.setup_units(party_members)
 func _on_command_panel_submitted(command_data: Dictionary) -> void:
 	command_panel_submitted.emit(command_data)
 func setup_command_debug_panel() -> void:
@@ -370,3 +378,28 @@ func clear_command_debug_info() -> void:
 func set_voice_status(text: String, is_error: bool = false) -> void:
 	if command_panel != null and command_panel.has_method("set_voice_status"):
 		command_panel.set_voice_status(text, is_error)
+
+
+func notify_transcription_started() -> void:
+	if raid_command_bar != null:
+		raid_command_bar.notify_transcription_started()
+
+
+func display_parsed_command(parsed_result: Dictionary) -> void:
+	if raid_command_bar != null:
+		raid_command_bar.display_parsed_command(parsed_result)
+
+
+func clear_raid_command_transcription(immediate: bool = false) -> void:
+	if raid_command_bar != null:
+		raid_command_bar.clear_transcription(immediate)
+
+
+func configure_command_interfaces() -> void:
+	var show_legacy := show_legacy_command_panel_in_development and OS.is_debug_build()
+
+	if command_panel != null:
+		command_panel.visible = show_legacy
+
+	if raid_command_bar != null:
+		raid_command_bar.visible = not show_legacy

@@ -1,0 +1,453 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/raid_command_bar.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/ui/raid_command_bar/raid_command_bar_endcap_left.png" id="2_left"]
+[ext_resource type="Texture2D" path="res://assets/ui/raid_command_bar/raid_command_bar_category_01.png" id="3_who"]
+[ext_resource type="Texture2D" path="res://assets/ui/raid_command_bar/raid_command_bar_category_02.png" id="4_what"]
+[ext_resource type="Texture2D" path="res://assets/ui/raid_command_bar/raid_command_bar_category_03.png" id="5_where"]
+[ext_resource type="Texture2D" path="res://assets/ui/raid_command_bar/raid_command_bar_category_04.png" id="6_when"]
+[ext_resource type="Texture2D" path="res://assets/ui/raid_command_bar/raid_command_bar_endcap_right.png" id="7_right"]
+
+[node name="RaidCommandBar" type="Control"]
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -576.0
+offset_right = 576.0
+offset_bottom = 520.0
+grow_horizontal = 2
+mouse_filter = 2
+texture_filter = 1
+script = ExtResource("1_script")
+
+[node name="StructuralBar" type="Control" parent="."]
+layout_mode = 0
+offset_right = 1152.0
+offset_bottom = 64.0
+mouse_filter = 2
+
+[node name="LeftEndcap" type="TextureRect" parent="StructuralBar"]
+layout_mode = 0
+offset_right = 64.0
+offset_bottom = 64.0
+mouse_filter = 2
+texture = ExtResource("2_left")
+expand_mode = 1
+stretch_mode = 2
+
+[node name="WhoBase" type="TextureRect" parent="StructuralBar"]
+layout_mode = 0
+offset_left = 64.0
+offset_right = 320.0
+offset_bottom = 64.0
+mouse_filter = 2
+texture = ExtResource("3_who")
+expand_mode = 1
+stretch_mode = 2
+
+[node name="WhatBase" type="TextureRect" parent="StructuralBar"]
+layout_mode = 0
+offset_left = 320.0
+offset_right = 576.0
+offset_bottom = 64.0
+mouse_filter = 2
+texture = ExtResource("4_what")
+expand_mode = 1
+stretch_mode = 2
+
+[node name="WhereBase" type="TextureRect" parent="StructuralBar"]
+layout_mode = 0
+offset_left = 576.0
+offset_right = 832.0
+offset_bottom = 64.0
+mouse_filter = 2
+texture = ExtResource("5_where")
+expand_mode = 1
+stretch_mode = 2
+
+[node name="WhenBase" type="TextureRect" parent="StructuralBar"]
+layout_mode = 0
+offset_left = 832.0
+offset_right = 1088.0
+offset_bottom = 64.0
+mouse_filter = 2
+texture = ExtResource("6_when")
+expand_mode = 1
+stretch_mode = 2
+
+[node name="RightEndcap" type="TextureRect" parent="StructuralBar"]
+layout_mode = 0
+offset_left = 1088.0
+offset_right = 1152.0
+offset_bottom = 64.0
+mouse_filter = 2
+texture = ExtResource("7_right")
+expand_mode = 1
+stretch_mode = 2
+
+[node name="CategoryInteractionLayer" type="Control" parent="."]
+layout_mode = 0
+offset_right = 1152.0
+offset_bottom = 64.0
+mouse_filter = 2
+
+[node name="WhoRegion" type="Control" parent="CategoryInteractionLayer"]
+layout_mode = 0
+offset_left = 64.0
+offset_right = 320.0
+offset_bottom = 64.0
+mouse_filter = 2
+
+[node name="StateOverlay" type="TextureRect" parent="CategoryInteractionLayer/WhoRegion"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 2
+
+[node name="CategoryLabel" type="Label" parent="CategoryInteractionLayer/WhoRegion"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.835294, 0.756863, 0.541176, 1)
+theme_override_colors/font_outline_color = Color(0.0627451, 0.054902, 0.0431373, 0.9)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 20
+text = "WHO"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HitRegion" type="Button" parent="CategoryInteractionLayer/WhoRegion"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="WhatRegion" type="Control" parent="CategoryInteractionLayer"]
+layout_mode = 0
+offset_left = 320.0
+offset_right = 576.0
+offset_bottom = 64.0
+mouse_filter = 2
+
+[node name="StateOverlay" type="TextureRect" parent="CategoryInteractionLayer/WhatRegion"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 2
+
+[node name="CategoryLabel" type="Label" parent="CategoryInteractionLayer/WhatRegion"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.835294, 0.756863, 0.541176, 1)
+theme_override_colors/font_outline_color = Color(0.0627451, 0.054902, 0.0431373, 0.9)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 20
+text = "WHAT"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HitRegion" type="Button" parent="CategoryInteractionLayer/WhatRegion"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="WhereRegion" type="Control" parent="CategoryInteractionLayer"]
+layout_mode = 0
+offset_left = 576.0
+offset_right = 832.0
+offset_bottom = 64.0
+mouse_filter = 2
+
+[node name="StateOverlay" type="TextureRect" parent="CategoryInteractionLayer/WhereRegion"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 2
+
+[node name="CategoryLabel" type="Label" parent="CategoryInteractionLayer/WhereRegion"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.835294, 0.756863, 0.541176, 1)
+theme_override_colors/font_outline_color = Color(0.0627451, 0.054902, 0.0431373, 0.9)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 20
+text = "WHERE"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HitRegion" type="Button" parent="CategoryInteractionLayer/WhereRegion"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="WhenRegion" type="Control" parent="CategoryInteractionLayer"]
+layout_mode = 0
+offset_left = 832.0
+offset_right = 1088.0
+offset_bottom = 64.0
+mouse_filter = 2
+
+[node name="StateOverlay" type="TextureRect" parent="CategoryInteractionLayer/WhenRegion"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 2
+
+[node name="CategoryLabel" type="Label" parent="CategoryInteractionLayer/WhenRegion"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.54902, 0.501961, 0.392157, 1)
+theme_override_colors/font_outline_color = Color(0.0627451, 0.054902, 0.0431373, 0.85)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 20
+text = "WHEN"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HitRegion" type="Button" parent="CategoryInteractionLayer/WhenRegion"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TranscriptionLayer" type="Control" parent="."]
+layout_mode = 0
+offset_right = 1152.0
+offset_bottom = 116.0
+mouse_filter = 2
+
+[node name="WhoTranscription" type="Label" parent="TranscriptionLayer"]
+visible = false
+modulate = Color(1, 1, 1, 0)
+layout_mode = 0
+offset_left = 64.0
+offset_top = 68.0
+offset_right = 320.0
+offset_bottom = 116.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.909804, 0.87451, 0.780392, 1)
+theme_override_colors/font_outline_color = Color(0.027451, 0.0313726, 0.0352941, 0.95)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.75)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+text_overrun_behavior = 4
+max_lines_visible = 2
+
+[node name="WhatTranscription" type="Label" parent="TranscriptionLayer"]
+visible = false
+modulate = Color(1, 1, 1, 0)
+layout_mode = 0
+offset_left = 320.0
+offset_top = 68.0
+offset_right = 576.0
+offset_bottom = 116.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.909804, 0.87451, 0.780392, 1)
+theme_override_colors/font_outline_color = Color(0.027451, 0.0313726, 0.0352941, 0.95)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.75)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+text_overrun_behavior = 4
+max_lines_visible = 2
+
+[node name="WhereTranscription" type="Label" parent="TranscriptionLayer"]
+visible = false
+modulate = Color(1, 1, 1, 0)
+layout_mode = 0
+offset_left = 576.0
+offset_top = 68.0
+offset_right = 832.0
+offset_bottom = 116.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.909804, 0.87451, 0.780392, 1)
+theme_override_colors/font_outline_color = Color(0.027451, 0.0313726, 0.0352941, 0.95)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.75)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+text_overrun_behavior = 4
+max_lines_visible = 2
+
+[node name="WhenTranscription" type="Label" parent="TranscriptionLayer"]
+visible = false
+modulate = Color(1, 1, 1, 0)
+layout_mode = 0
+offset_left = 832.0
+offset_top = 68.0
+offset_right = 1088.0
+offset_bottom = 116.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.72549, 0.698039, 0.631373, 1)
+theme_override_colors/font_outline_color = Color(0.027451, 0.0313726, 0.0352941, 0.95)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.75)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+text_overrun_behavior = 4
+max_lines_visible = 2
+
+[node name="DependencyFeedbackLayer" type="Control" parent="."]
+layout_mode = 0
+offset_right = 1152.0
+offset_bottom = 140.0
+mouse_filter = 2
+
+[node name="WhoFeedback" type="Label" parent="DependencyFeedbackLayer"]
+visible = false
+modulate = Color(1, 1, 1, 0)
+layout_mode = 0
+offset_left = 64.0
+offset_top = 116.0
+offset_right = 320.0
+offset_bottom = 140.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.827451, 0.694118, 0.545098, 1)
+theme_override_colors/font_outline_color = Color(0.027451, 0.0313726, 0.0352941, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+vertical_alignment = 1
+text_overrun_behavior = 4
+
+[node name="WhatFeedback" type="Label" parent="DependencyFeedbackLayer"]
+visible = false
+modulate = Color(1, 1, 1, 0)
+layout_mode = 0
+offset_left = 320.0
+offset_top = 116.0
+offset_right = 576.0
+offset_bottom = 140.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.827451, 0.694118, 0.545098, 1)
+theme_override_colors/font_outline_color = Color(0.027451, 0.0313726, 0.0352941, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+vertical_alignment = 1
+text_overrun_behavior = 4
+
+[node name="WhereFeedback" type="Label" parent="DependencyFeedbackLayer"]
+visible = false
+modulate = Color(1, 1, 1, 0)
+layout_mode = 0
+offset_left = 576.0
+offset_top = 116.0
+offset_right = 832.0
+offset_bottom = 140.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.827451, 0.694118, 0.545098, 1)
+theme_override_colors/font_outline_color = Color(0.027451, 0.0313726, 0.0352941, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+vertical_alignment = 1
+text_overrun_behavior = 4
+
+[node name="WhenFeedback" type="Label" parent="DependencyFeedbackLayer"]
+visible = false
+modulate = Color(1, 1, 1, 0)
+layout_mode = 0
+offset_left = 832.0
+offset_top = 116.0
+offset_right = 1088.0
+offset_bottom = 140.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.827451, 0.694118, 0.545098, 1)
+theme_override_colors/font_outline_color = Color(0.027451, 0.0313726, 0.0352941, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+vertical_alignment = 1
+text_overrun_behavior = 4
+
+[node name="CommandReferencePopover" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 276.0
+offset_top = 144.0
+offset_right = 876.0
+offset_bottom = 500.0
+mouse_filter = 0
