@@ -15,6 +15,7 @@ static func create(
 		"recruited": recruited,
 		"active": active,
 		"current_class": current_class,
+		"assigned_roles": [],
 		"advanced_class_id": "",
 		"specialization_id": "",
 		"recruitment_source": recruitment_source,
@@ -34,6 +35,7 @@ static func sanitize(source: Dictionary, raider_id: String, default_class: Strin
 	state["current_class"] = String(
 		state.get("current_class", state.get("unit_class", default_class))
 	)
+	state["assigned_roles"] = _string_array(state.get("assigned_roles", []))
 	state["advanced_class_id"] = String(state.get("advanced_class_id", ""))
 	state["specialization_id"] = String(state.get("specialization_id", ""))
 	state["recruitment_source"] = String(

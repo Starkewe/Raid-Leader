@@ -11,8 +11,9 @@ const ACTION_ALIASES := {
 	CommandSchemaScript.ACTION_HEAL: ["heal", "healing"],
 	CommandSchemaScript.ACTION_CURE: ["cure", "dispel", "cleanse"],
 	CommandSchemaScript.ACTION_DODGE: ["dodge", "dodged", "dash", "blink"],
+	CommandSchemaScript.ACTION_ROTATE: ["rotate", "turn"],
 	CommandSchemaScript.ACTION_MOVE: [
-		"move", "moved", "moves", "moving", "go", "come", "rotate", "turn", "spread", "stack"
+		"move", "moved", "moves", "moving", "go", "come", "spread", "stack"
 	]
 }
 
@@ -67,7 +68,7 @@ static func get_action_entries() -> Array[Dictionary]:
 
 static func get_default_selector_for_action(action: String) -> Dictionary:
 	match action:
-		CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE:
+		CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE, CommandSchemaScript.ACTION_ROTATE:
 			return {
 				"selector": {"type": CommandSchemaScript.SELECTOR_EVERYONE, "value": ""},
 				"reason": "movement_default_everyone"

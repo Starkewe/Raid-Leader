@@ -12,6 +12,44 @@ const EXPECTED_PIECE_NAMES: Array[String] = [
 const EXPECTED_PIECE_WIDTHS: Array[float] = [64.0, 256.0, 256.0, 256.0, 256.0, 64.0]
 
 
+class TestRaider:
+	extends Node
+
+	var unit_class: String = "Mage"
+	var unit_roles: Array[String] = ["dps", "caster"]
+	var display_name: String = "Aster (Mage)"
+
+	func get_display_name() -> String:
+		return display_name
+
+	func get_roles() -> Array[String]:
+		return unit_roles.duplicate()
+
+	func has_role(role_name: String) -> bool:
+		return unit_roles.has(role_name)
+
+	func command_attack(_target = null) -> void:
+		pass
+
+	func command_move_to_position(_destination = Vector2.ZERO) -> void:
+		pass
+
+	func command_dodge_to_position(_destination = Vector2.ZERO) -> void:
+		pass
+
+	func command_interrupt(_target = null) -> void:
+		pass
+
+	func command_heal_scope(_scope = {}, _resolver = null) -> void:
+		pass
+
+	func command_cure(_target = null) -> void:
+		pass
+
+	func command_taunt(_target = null) -> void:
+		pass
+
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -24,6 +62,11 @@ func _run() -> void:
 	var bar := BAR_SCENE.instantiate() as RaidCommandBar
 	host.add_child(bar)
 	await process_frame
+	var test_raider := TestRaider.new()
+	root.add_child(test_raider)
+	var duplicate_raider := TestRaider.new()
+	root.add_child(duplicate_raider)
+	bar.setup_units([test_raider, duplicate_raider])
 
 	if bar == null:
 		_fail("The raid command bar scene did not instantiate.")
@@ -63,6 +106,9 @@ func _run() -> void:
 		return
 
 	if not _validate_transcription_selection(bar):
+		return
+
+	if not _validate_component_presentation(bar):
 		return
 
 	await _validate_rapid_replacement(bar)
@@ -133,6 +179,45 @@ func _validate_mouse_filters(bar: RaidCommandBar) -> bool:
 	return true
 
 
+func _validate_component_presentation(bar: RaidCommandBar) -> bool:
+	bar.display_parsed_command({
+		"ok": false,
+		"component_presentation": {
+			"slot_states": {
+				"who": "ambiguous",
+				"what": "corrected",
+				"where": "invalid",
+				"when": "missing"
+			},
+			"slot_values": {
+				"who": "Ambiguous",
+				"what": "Rotate",
+				"where": "Invalid",
+				"when": ""
+			}
+		}
+	})
+
+	var who_label := bar.get_node("TranscriptionLayer/WhoTranscription") as Label
+	var what_label := bar.get_node("TranscriptionLayer/WhatTranscription") as Label
+	var where_label := bar.get_node("TranscriptionLayer/WhereTranscription") as Label
+	var when_label := bar.get_node("TranscriptionLayer/WhenTranscription") as Label
+
+	if (
+		String(who_label.get_meta("component_state", "")) != "ambiguous"
+		or String(what_label.get_meta("component_state", "")) != "corrected"
+		or String(where_label.get_meta("component_state", "")) != "invalid"
+	):
+		_fail("The command bar did not retain rejected component presentation states.")
+		return false
+
+	if when_label.visible or not when_label.text.is_empty():
+		_fail("The command bar rendered a missing When component.")
+		return false
+
+	return true
+
+
 func _validate_reference_behavior(bar: RaidCommandBar) -> bool:
 	var was_paused := paused
 	var who_overlay := bar.get_node(
@@ -158,10 +243,50 @@ func _validate_reference_behavior(bar: RaidCommandBar) -> bool:
 		_fail("The open category did not take priority over hover.")
 		return false
 
+	var first_raider_button := _find_reference_button(bar, "Aster - #1")
+	var second_raider_button := _find_reference_button(bar, "Aster - #2")
+
+	if first_raider_button == null or second_raider_button == null:
+		_fail("Duplicate raider names were not disambiguated after stripping class suffixes.")
+		return false
+
+	if first_raider_button.icon == null or not first_raider_button.tooltip_text.contains("Class: Mage"):
+		_fail("A raider reference entry is missing its class icon or identity tooltip.")
+		return false
+
 	bar.open_reference_category("what")
 
-	if not bar.is_open():
-		_fail("Opening What did not replace the existing reference category.")
+	if String(bar.get("_open_category")) != "who":
+		_fail("What browsing was not locked until a Who target was selected.")
+		return false
+
+	var who_button := _find_reference_button(bar, "Everyone")
+
+	if who_button == null:
+		_fail("The Who reference did not contain Everyone.")
+		return false
+
+	who_button.pressed.emit()
+	bar.open_reference_category("what")
+
+	if String(bar.get("_open_category")) != "what":
+		_fail("What browsing did not unlock after selecting Who.")
+		return false
+
+	var move_button := _find_reference_button(bar, "Move")
+
+	if move_button == null:
+		_fail("The What reference did not contain Move.")
+		return false
+
+	move_button.pressed.emit()
+	bar.open_reference_category("where")
+
+	if String(bar.get("_open_category")) != "where":
+		_fail("Where browsing did not unlock after selecting What.")
+		return false
+
+	if not _validate_compact_movement_rows(bar):
 		return false
 
 	bar.open_reference_category("when")
@@ -196,6 +321,94 @@ func _validate_reference_behavior(bar: RaidCommandBar) -> bool:
 
 	if bar.has_signal("command_submitted"):
 		_fail("The informational command bar exposes an executing command signal.")
+		return false
+
+	return true
+
+
+func _find_reference_button(bar: RaidCommandBar, button_text: String) -> Button:
+	var entries := bar.get("_reference_entries") as VBoxContainer
+
+	for child in entries.find_children("*", "Button", true, false):
+		var button := child as Button
+
+		if button != null and button.text == button_text:
+			return button
+
+	return null
+
+
+func _validate_compact_movement_rows(bar: RaidCommandBar) -> bool:
+	var entries := bar.get("_reference_entries") as VBoxContainer
+	var compact_row_count := 0
+	var visible_labels: Array[String] = []
+	var move_entries := bar.RaidCommandReferenceCatalogScript.get_where_entries_for_action(
+		"move",
+		bar.party_members,
+		null
+	)
+	var dodge_entries := bar.RaidCommandReferenceCatalogScript.get_where_entries_for_action(
+		"dodge",
+		bar.party_members,
+		null
+	)
+
+	if move_entries.size() != dodge_entries.size():
+		_fail("Move and Dodge did not use the same destination catalog shape.")
+		return false
+
+	for entry_index in range(move_entries.size()):
+		var move_entry: Dictionary = move_entries[entry_index]
+		var dodge_entry: Dictionary = dodge_entries[entry_index]
+
+		if String(move_entry.get("label", "")) != String(dodge_entry.get("label", "")):
+			_fail("Move and Dodge destination labels diverged.")
+			return false
+
+		if bool(move_entry.get("compact_range_row", false)):
+			var move_ranges: Array = move_entry.get("range_entries", [])
+			var dodge_ranges: Array = dodge_entry.get("range_entries", [])
+
+			for range_index in range(move_ranges.size()):
+				if Dictionary(move_ranges[range_index]).get("metadata", {}) != Dictionary(
+					dodge_ranges[range_index]
+				).get("metadata", {}):
+					_fail("Move and Dodge compact range values diverged.")
+					return false
+		elif move_entry.get("metadata", {}) != dodge_entry.get("metadata", {}):
+			_fail("Move and Dodge destination values diverged.")
+			return false
+
+	for child in entries.get_children():
+		if child is Button:
+			visible_labels.append((child as Button).text)
+
+		if not child is HBoxContainer:
+			continue
+
+		var row := child as HBoxContainer
+		compact_row_count += 1
+
+		if row.get_child_count() != 4:
+			_fail("A compact movement row did not contain one direction and three ranges.")
+			return false
+
+		var range_labels: Array[String] = []
+
+		for row_child in row.get_children():
+			if row_child is Button:
+				range_labels.append((row_child as Button).text)
+
+		if range_labels != ["Close", "Mid", "Far"]:
+			_fail("A movement direction did not expose Close, Mid, and Far inline.")
+			return false
+
+	if compact_row_count != 8:
+		_fail("Movement browsing did not expose exactly eight compact direction rows.")
+		return false
+
+	if visible_labels.has("Me"):
+		_fail("Movement browsing still exposes Me as a destination.")
 		return false
 
 	return true

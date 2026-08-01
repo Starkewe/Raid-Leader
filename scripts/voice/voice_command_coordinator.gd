@@ -126,6 +126,7 @@ func _on_transcript_received(transcript: String) -> void:
 
 	if not bool(parse_result.get("ok", false)):
 		var reason := String(parse_result.get("reason", "Could not parse voice command."))
+		_display_parsed_command(parse_result)
 		_set_status("Rejected - " + reason, true)
 		_update_debug({
 			"source": "Voice",
