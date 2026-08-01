@@ -52,6 +52,8 @@ var incoming_healing: int = 0
 var absorb_amount: int = 0
 var harmful_overlay_kind: String = ""
 var critical_debuffs: Array[Dictionary] = []
+var critical_debuff_container: Control = null
+var critical_debuff_signature: String = ""
 var unit_is_dead: bool = false
 var state_initialized: bool = false
 
@@ -63,10 +65,17 @@ var visual_time: float = 0.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	tooltip_text = ""
 
 	for child in get_children():
 		if child is Control:
 			(child as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	critical_debuff_container = Control.new()
+	critical_debuff_container.name = "CriticalDebuffIcons"
+	critical_debuff_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(critical_debuff_container)
+	critical_debuff_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	cast_bar.show_percentage = false
 	cast_bar.visible = false
@@ -120,7 +129,6 @@ func _draw() -> void:
 	if is_hovered:
 		draw_rect(inner_rect, Color(1.0, 1.0, 1.0, 0.09))
 
-	draw_critical_debuff_icons()
 	draw_rect(
 		Rect2(Vector2(0.5, 0.5), size - Vector2.ONE),
 		Color(0.02, 0.02, 0.025, 0.96),
@@ -131,81 +139,112 @@ func _draw() -> void:
 	draw_dodge_cooldown_strip()
 
 
-func draw_critical_debuff_icons() -> void:
+func rebuild_critical_debuff_icons() -> void:
+	if critical_debuff_container == null:
+		return
+
+	var next_signature := str(unit_is_dead) + ":" + str(size)
+
+	for debuff in critical_debuffs:
+		next_signature += ":%s:%d" % [
+			String(debuff.get("effect_id", "")),
+			int(debuff.get("stacks", 1))
+		]
+
+	if next_signature == critical_debuff_signature:
+		return
+
+	critical_debuff_signature = next_signature
+
+	for child in critical_debuff_container.get_children():
+		critical_debuff_container.remove_child(child)
+		child.queue_free()
+
 	if critical_debuffs.is_empty() or unit_is_dead:
 		return
 
 	var icon_right := size.x - FRAME_MARGIN - 2.0
 	var icon_bottom := size.y - COOLDOWN_STRIP_HEIGHT - CRITICAL_DEBUFF_BOTTOM_MARGIN
-	var fallback_font := ThemeDB.fallback_font
 	var visible_count := mini(critical_debuffs.size(), MAX_CRITICAL_DEBUFF_ICONS)
 
 	for debuff_index in range(visible_count):
 		var debuff: Dictionary = critical_debuffs[debuff_index]
-		var show_stack_count := bool(debuff.get("show_stack_count", false))
 		var emphasize_stacking := bool(debuff.get("emphasize_stacking", false))
 		var icon_size := (
 			STACKING_DEBUFF_ICON_SIZE
 			if emphasize_stacking
 			else CRITICAL_DEBUFF_ICON_SIZE
 		)
-		var icon_rect := Rect2(
-			Vector2(icon_right - icon_size, icon_bottom - icon_size),
-			Vector2.ONE * icon_size
-		)
+		var icon_panel := Panel.new()
+		icon_panel.position = Vector2(icon_right - icon_size, icon_bottom - icon_size)
+		icon_panel.size = Vector2.ONE * icon_size
+		icon_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+		icon_panel.mouse_default_cursor_shape = Control.CURSOR_HELP
+		icon_panel.tooltip_text = _get_debuff_tooltip(debuff)
+
+		var border := StyleBoxFlat.new()
 		var accent_color: Color = debuff.get(
 			"accent_color",
 			Color(0.95, 0.26, 0.18, 1.0)
 		)
-
-		draw_rect(icon_rect.grow(2.0), Color(0.02, 0.02, 0.025, 0.94))
-		draw_rect(
-			icon_rect.grow(1.0),
-			accent_color if emphasize_stacking else accent_color.darkened(0.25),
-			false,
-			2.0 if emphasize_stacking else 1.0
+		border.bg_color = Color(0.02, 0.02, 0.025, 0.94)
+		border.border_color = (
+			accent_color if emphasize_stacking else accent_color.darkened(0.25)
 		)
+		var border_width := 2 if emphasize_stacking else 1
+		border.set_border_width_all(border_width)
+		icon_panel.add_theme_stylebox_override("panel", border)
+		critical_debuff_container.add_child(icon_panel)
 
-		var icon := debuff.get("icon") as Texture2D
+		var icon_rect := TextureRect.new()
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_rect.texture = debuff.get("icon") as Texture2D
+		icon_panel.add_child(icon_rect)
+		icon_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		icon_rect.offset_left = float(border_width + 1)
+		icon_rect.offset_top = float(border_width + 1)
+		icon_rect.offset_right = -float(border_width + 1)
+		icon_rect.offset_bottom = -float(border_width + 1)
 
-		if icon != null:
-			draw_texture_rect(icon, icon_rect, false)
-
-		if show_stack_count:
-			draw_debuff_stack_count(
-				icon_rect,
-				maxi(int(debuff.get("stacks", 1)), 1),
-				fallback_font
+		if bool(debuff.get("show_stack_count", false)):
+			_add_debuff_stack_badge(
+				icon_panel,
+				maxi(int(debuff.get("stacks", 1)), 1)
 			)
 
-		icon_right = icon_rect.position.x - CRITICAL_DEBUFF_ICON_GAP
+		icon_right = icon_panel.position.x - CRITICAL_DEBUFF_ICON_GAP
 
 
-func draw_debuff_stack_count(icon_rect: Rect2, stacks: int, font: Font) -> void:
-	var stack_text := str(stacks)
-	var text_size := font.get_string_size(
-		stack_text,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1.0,
-		CRITICAL_DEBUFF_STACK_FONT_SIZE
-	)
-	var badge_size := Vector2(maxf(text_size.x + 6.0, 15.0), 16.0)
-	var badge_rect := Rect2(icon_rect.end - badge_size, badge_size)
+func _add_debuff_stack_badge(icon_panel: Control, stacks: int) -> void:
+	var badge := Label.new()
+	badge.text = str(stacks)
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge.add_theme_font_size_override("font_size", CRITICAL_DEBUFF_STACK_FONT_SIZE)
+	badge.add_theme_color_override("font_color", Color.WHITE)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var badge_style := StyleBoxFlat.new()
+	badge_style.bg_color = Color(0.025, 0.02, 0.02, 0.96)
+	badge_style.border_color = Color(1.0, 0.72, 0.30, 0.94)
+	badge_style.set_border_width_all(1)
+	badge.add_theme_stylebox_override("normal", badge_style)
+	icon_panel.add_child(badge)
+	badge.position = Vector2(icon_panel.size.x - 17.0, icon_panel.size.y - 16.0)
+	badge.size = Vector2(17.0, 16.0)
 
-	draw_rect(badge_rect, Color(0.025, 0.02, 0.02, 0.96))
-	draw_rect(badge_rect, Color(1.0, 0.72, 0.30, 0.94), false, 1.0)
-	draw_string(
-		font,
-		Vector2(
-			badge_rect.position.x + (badge_size.x - text_size.x) * 0.5,
-			badge_rect.end.y - 3.0
-		),
-		stack_text,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1.0,
-		CRITICAL_DEBUFF_STACK_FONT_SIZE,
-		Color.WHITE
-	)
+
+func _get_debuff_tooltip(debuff: Dictionary) -> String:
+	var display_label := String(debuff.get(
+		"display_name",
+		debuff.get("effect_id", "Critical Debuff")
+	))
+
+	if bool(debuff.get("show_stack_count", false)):
+		display_label += " x" + str(maxi(int(debuff.get("stacks", 1)), 1))
+
+	return display_label
 
 
 func draw_incoming_heal(inner_rect: Rect2, fill_width: float) -> void:
@@ -428,9 +467,9 @@ func draw_dodge_cooldown_strip() -> void:
 
 func setup(new_unit: Node, new_display_name: String) -> void:
 	unit = new_unit
-	display_name = new_display_name
+	display_name = _without_class_suffix(new_display_name)
 	name_label.text = display_name
-	name_label.tooltip_text = display_name
+	name_label.tooltip_text = ""
 	number_label.text = get_character_number()
 	role_icon.texture = get_role_texture()
 	role_icon.tooltip_text = get_role_label()
@@ -454,6 +493,7 @@ func sync_visual_state(show_flash: bool) -> void:
 		harmful_overlay_kind = ""
 		critical_debuffs.clear()
 		unit_is_dead = true
+		rebuild_critical_debuff_icons()
 		name_label.text = display_name
 		return
 
@@ -465,6 +505,7 @@ func sync_visual_state(show_flash: bool) -> void:
 	harmful_overlay_kind = get_unit_harmful_overlay_kind()
 	critical_debuffs = get_unit_critical_debuffs()
 	unit_is_dead = not get_unit_is_alive()
+	rebuild_critical_debuff_icons()
 
 	if show_flash and state_initialized:
 		if current_health < previous_health:
@@ -476,23 +517,23 @@ func sync_visual_state(show_flash: bool) -> void:
 	name_label.modulate = Color(0.68, 0.68, 0.70, 1.0) if unit_is_dead else Color.WHITE
 	number_label.modulate = name_label.modulate
 	role_icon.modulate = name_label.modulate
-	var tooltip_lines: Array[String] = [
-		display_name,
-		str(current_health) + " / " + str(maximum_health)
-	]
+	tooltip_text = ""
 
-	for debuff in critical_debuffs:
-		var debuff_label := String(debuff.get(
-			"display_name",
-			debuff.get("effect_id", "Critical Debuff")
-		))
 
-		if bool(debuff.get("show_stack_count", false)):
-			debuff_label += " x" + str(int(debuff.get("stacks", 1)))
+func _without_class_suffix(source_name: String) -> String:
+	var stripped := source_name.strip_edges()
 
-		tooltip_lines.append(debuff_label)
+	if unit == null or not is_instance_valid(unit):
+		return stripped
 
-	tooltip_text = "\n".join(tooltip_lines)
+	var class_value = unit.get("unit_class")
+	var unit_class := String(class_value).strip_edges() if class_value != null else ""
+	var suffix := " (%s)" % unit_class
+
+	if not unit_class.is_empty() and stripped.ends_with(suffix):
+		return stripped.trim_suffix(suffix).strip_edges()
+
+	return stripped
 
 
 func update_cast_bar() -> void:
