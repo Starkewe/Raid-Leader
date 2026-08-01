@@ -15,10 +15,45 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/fail_screen.tscn" id="17_fail"]
 [ext_resource type="Script" path="res://scripts/ui/game_pause_menu.gd" id="18_pause"]
 [ext_resource type="Script" path="res://scripts/combat/movement_destination_visualizer.gd" id="19_paths"]
+[ext_resource type="PackedScene" path="res://scenes/ui/raid_command_bar.tscn" id="20_command_bar"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_0xm2m"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_6ovae"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_boss_panel"]
+content_margin_left = 9.0
+content_margin_top = 6.0
+content_margin_right = 9.0
+content_margin_bottom = 6.0
+bg_color = Color(0.0352941, 0.0313726, 0.027451, 0.88)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.47451, 0.388235, 0.239216, 0.92)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_boss_health_background"]
+bg_color = Color(0.0784314, 0.0588235, 0.0509804, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.247059, 0.188235, 0.141176, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_boss_health_fill"]
+bg_color = Color(0.596078, 0.12549, 0.101961, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_boss_cast_background"]
+bg_color = Color(0.0509804, 0.054902, 0.0627451, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.180392, 0.203922, 0.235294, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_boss_cast_fill"]
+bg_color = Color(0.329412, 0.431373, 0.568627, 1)
 
 [sub_resource type="AudioStreamMicrophone" id="AudioStreamMicrophone_ivkwx"]
 
@@ -86,32 +121,71 @@ script = ExtResource("14_62tjo")
 raid_member_frame_scene = ExtResource("15_ygsf8")
 
 [node name="BossFramePanel" type="PanelContainer" parent="UI" unique_id=746933485]
-custom_minimum_size = Vector2(520, 90)
-offset_right = 40.0
-offset_bottom = 40.0
+visible = false
+custom_minimum_size = Vector2(360, 92)
+offset_right = 360.0
+offset_bottom = 92.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_boss_panel")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/BossFramePanel" unique_id=1326856175]
 layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 3
 
 [node name="BossNameLabel" type="Label" parent="UI/BossFramePanel/VBoxContainer" unique_id=2032121931]
 layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.933333, 0.831373, 0.588235, 1)
+theme_override_colors/font_outline_color = Color(0.0196078, 0.0196078, 0.0196078, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 16
 text = "Boss"
+horizontal_alignment = 1
 
 [node name="BossHealthBar" type="ProgressBar" parent="UI/BossFramePanel/VBoxContainer" unique_id=1193399835]
 custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_boss_health_background")
+theme_override_styles/fill = SubResource("StyleBoxFlat_boss_health_fill")
 value = 100.0
 show_percentage = false
 
 [node name="BossCastBar" type="ProgressBar" parent="UI/BossFramePanel/VBoxContainer" unique_id=2095933114]
-custom_minimum_size = Vector2(0, 10)
+custom_minimum_size = Vector2(0, 16)
 layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_boss_cast_background")
+theme_override_styles/fill = SubResource("StyleBoxFlat_boss_cast_fill")
 value = 100.0
 show_percentage = false
 
+[node name="BossCastLabel" type="Label" parent="UI/BossFramePanel/VBoxContainer/BossCastBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.929412, 0.905882, 0.831373, 1)
+theme_override_colors/font_outline_color = Color(0.0196078, 0.0196078, 0.0196078, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 11
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="BossStatusLabel" type="Label" parent="UI/BossFramePanel/VBoxContainer" unique_id=1848315968]
 layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.862745, 0.827451, 0.733333, 1)
+theme_override_colors/font_outline_color = Color(0.0196078, 0.0196078, 0.0196078, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 13
 text = "Idle"
+text_overrun_behavior = 3
+horizontal_alignment = 1
 
 [node name="RaidFramesPanel" type="PanelContainer" parent="UI" unique_id=27997468]
 anchors_preset = 2
@@ -128,11 +202,14 @@ layout_mode = 2
 columns = 5
 
 [node name="CommandPanel" type="PanelContainer" parent="UI" unique_id=555858210]
+visible = false
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 grow_horizontal = 0
 script = ExtResource("8_ivkwx")
+
+[node name="RaidCommandBar" parent="UI" instance=ExtResource("20_command_bar")]
 
 [node name="FailScreen" parent="UI" instance=ExtResource("17_fail")]
 

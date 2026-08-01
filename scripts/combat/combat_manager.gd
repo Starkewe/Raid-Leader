@@ -662,13 +662,25 @@ func setup_voice_commands() -> void:
 		voice_command_parser_path,
 		Callable(self, "submit_command_data"),
 		Callable(self, "update_command_debug"),
-		Callable(self, "set_voice_status")
+		Callable(self, "set_voice_status"),
+		Callable(self, "notify_transcription_started"),
+		Callable(self, "display_parsed_command")
 	)
 
 
 func set_voice_status(text: String, is_error: bool = false) -> void:
 	if ui != null and is_instance_valid(ui) and ui.has_method("set_voice_status"):
 		ui.set_voice_status(text, is_error)
+
+
+func notify_transcription_started() -> void:
+	if ui != null and is_instance_valid(ui) and ui.has_method("notify_transcription_started"):
+		ui.notify_transcription_started()
+
+
+func display_parsed_command(parsed_result: Dictionary) -> void:
+	if ui != null and is_instance_valid(ui) and ui.has_method("display_parsed_command"):
+		ui.display_parsed_command(parsed_result)
 
 
 func setup_attempt_recorder() -> void:
