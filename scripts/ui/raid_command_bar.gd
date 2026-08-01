@@ -31,6 +31,12 @@ const FADE_DURATION_SECONDS: float = 0.25
 const FEEDBACK_HOLD_SECONDS: float = 1.5
 const POPOVER_SIZE := Vector2(600.0, 356.0)
 const POPOVER_TOP: float = 144.0
+const COMPONENT_COLORS := {
+	"explicit": Color("ded4bc"),
+	"corrected": Color("e7b95d"),
+	"ambiguous": Color("e7b95d"),
+	"invalid": Color("e87568")
+}
 
 var party_members: Array = []
 var _game_state: Node = null
@@ -50,6 +56,11 @@ var _feedback_generation: int = 0
 var _reference_context: Dictionary = {
 	"has_explicit_who": false,
 	"what": ""
+}
+var _browse_context: Dictionary = {
+	"who_metadata": {},
+	"what": "",
+	"where_metadata": {}
 }
 
 @onready var _reference_panel: PanelContainer = $CommandReferencePopover
@@ -87,11 +98,12 @@ func display_parsed_command(parsed_result: Dictionary) -> void:
 	_reset_transcription_labels()
 	_update_reference_context(parsed_result)
 
-	var recognized_values := _extract_recognized_values(parsed_result)
+	var recognized_values := _extract_component_display(parsed_result)
 	var stagger_index: int = 0
 
 	for category in CATEGORY_ORDER:
-		var value := String(recognized_values.get(category, "")).strip_edges()
+		var display_value: Dictionary = recognized_values.get(category, {})
+		var value := String(display_value.get("value", "")).strip_edges()
 
 		if value.is_empty():
 			continue
@@ -99,6 +111,7 @@ func display_parsed_command(parsed_result: Dictionary) -> void:
 		_animate_transcription_label(
 			category,
 			value,
+			String(display_value.get("state", "explicit")),
 			float(stagger_index) * STAGGER_DELAY_SECONDS,
 			_transcription_generation
 		)
@@ -149,6 +162,12 @@ func clear_transcription(immediate: bool = false) -> void:
 
 func open_reference_category(category: String) -> void:
 	if not CATEGORY_ORDER.has(category):
+		return
+
+	var dependency_message := _get_category_dependency_message(category)
+
+	if not dependency_message.is_empty():
+		show_dependency_feedback(category, dependency_message)
 		return
 
 	_open_category = category
@@ -325,7 +344,8 @@ func _rebuild_reference_entries() -> void:
 	var sections := RaidCommandReferenceCatalogScript.get_reference_sections(
 		_open_category,
 		party_members,
-		_game_state
+		_game_state,
+		_browse_context
 	)
 
 	for section_value in sections:
@@ -344,9 +364,15 @@ func _rebuild_reference_entries() -> void:
 
 
 func _add_reference_entry(entry: Dictionary) -> void:
+	if bool(entry.get("compact_range_row", false)):
+		_add_compact_range_row(entry)
+		return
+
 	var requirement := _get_entry_requirement(entry)
 	var button := Button.new()
 	button.text = String(entry.get("label", ""))
+	button.icon = entry.get("icon") as Texture2D
+	button.tooltip_text = String(entry.get("tooltip", ""))
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.flat = true
 	button.focus_mode = Control.FOCUS_NONE
@@ -357,6 +383,7 @@ func _add_reference_entry(entry: Dictionary) -> void:
 	if requirement.is_empty():
 		button.add_theme_color_override("font_color", Color("ded4bc"))
 		button.add_theme_color_override("font_hover_color", Color("f0dfad"))
+		button.pressed.connect(_on_reference_entry_selected.bind(_open_category, entry, button))
 	else:
 		button.add_theme_color_override("font_color", Color("817d72"))
 		button.add_theme_color_override("font_hover_color", Color("aaa18b"))
@@ -367,13 +394,44 @@ func _add_reference_entry(entry: Dictionary) -> void:
 	_reference_entries.add_child(button)
 
 
+func _add_compact_range_row(entry: Dictionary) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var direction := Label.new()
+	direction.text = String(entry.get("label", "")) + " -"
+	direction.custom_minimum_size = Vector2(150.0, 30.0)
+	direction.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	direction.add_theme_color_override("font_color", Color("c9b37b"))
+	row.add_child(direction)
+
+	for range_entry_value in entry.get("range_entries", []):
+		var range_entry := Dictionary(range_entry_value)
+		var button := Button.new()
+		button.text = String(range_entry.get("label", ""))
+		button.flat = true
+		button.focus_mode = Control.FOCUS_NONE
+		button.custom_minimum_size = Vector2(100.0, 30.0)
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.add_theme_color_override("font_color", Color("ded4bc"))
+		button.add_theme_color_override("font_hover_color", Color("f0dfad"))
+		button.pressed.connect(
+			_on_reference_entry_selected.bind(_open_category, range_entry, button)
+		)
+		row.add_child(button)
+
+	_reference_entries.add_child(row)
+
+
 func _get_entry_requirement(entry: Dictionary) -> String:
 	if bool(entry.get("unavailable", false)):
-		return "Timing commands are not yet available."
+		return String(entry.get(
+			"unavailable_reason",
+			"Timing commands are not yet available."
+		))
 
 	if (
 		bool(entry.get("requires_who", false))
-		and not bool(_reference_context.get("has_explicit_who", false))
+		and Dictionary(_browse_context.get("who_metadata", {})).is_empty()
 	):
 		return "A Who target is required first."
 
@@ -382,7 +440,7 @@ func _get_entry_requirement(entry: Dictionary) -> String:
 	if required_action.is_empty():
 		return ""
 
-	var current_action := String(_reference_context.get("what", ""))
+	var current_action := String(_browse_context.get("what", ""))
 
 	if current_action.is_empty():
 		return "A What action is required first."
@@ -398,6 +456,50 @@ func _on_reference_entry_pressed(category: String, requirement: String) -> void:
 		return
 
 	show_dependency_feedback(category, requirement)
+
+
+func _on_reference_entry_selected(
+	category: String,
+	entry: Dictionary,
+	button: Button
+) -> void:
+	var metadata: Dictionary = Dictionary(entry.get("metadata", {})).duplicate(true)
+
+	match category:
+		"who":
+			_browse_context["who_metadata"] = metadata
+			_browse_context["what"] = ""
+			_browse_context["where_metadata"] = {}
+		"what":
+			_browse_context["what"] = String(metadata.get("what", ""))
+			_browse_context["where_metadata"] = {}
+		"where":
+			_browse_context["where_metadata"] = metadata
+
+	_animate_reference_word(button)
+	_update_all_category_overlays()
+
+
+func _animate_reference_word(button: Button) -> void:
+	button.pivot_offset = button.size * 0.5
+	button.scale = Vector2.ONE * 0.94
+	button.modulate = Color("fff0bd")
+	var tween := button.create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(button, "scale", Vector2.ONE, 0.18).set_trans(
+		Tween.TRANS_BACK
+	).set_ease(Tween.EASE_OUT)
+	tween.tween_property(button, "modulate", Color.WHITE, 0.22)
+
+
+func _get_category_dependency_message(category: String) -> String:
+	if category == "what" and Dictionary(_browse_context.get("who_metadata", {})).is_empty():
+		return "Select a Who target first."
+
+	if category == "where" and String(_browse_context.get("what", "")).is_empty():
+		return "Select a What action first."
+
+	return ""
 
 
 func _on_category_pressed(category: String) -> void:
@@ -432,6 +534,13 @@ func _update_category_overlay(category: String) -> void:
 		overlay.visible = true
 	elif bool(_hovered_categories.get(category, false)):
 		overlay.texture = HOVER_OVERLAY
+		overlay.visible = true
+	elif (
+		(category == "who" and not Dictionary(_browse_context.get("who_metadata", {})).is_empty())
+		or (category == "what" and not String(_browse_context.get("what", "")).is_empty())
+		or (category == "where" and not Dictionary(_browse_context.get("where_metadata", {})).is_empty())
+	):
+		overlay.texture = OPEN_OVERLAY
 		overlay.visible = true
 	else:
 		overlay.texture = null
@@ -473,6 +582,42 @@ func _extract_recognized_values(parsed_result: Dictionary) -> Dictionary:
 			values[category] = _presentation_case(value)
 
 	return values
+
+
+func _extract_component_display(parsed_result: Dictionary) -> Dictionary:
+	var presentation_value = parsed_result.get("component_presentation", {})
+
+	if not presentation_value is Dictionary or Dictionary(presentation_value).is_empty():
+		var legacy_values := _extract_recognized_values(parsed_result)
+		var legacy_display: Dictionary = {}
+
+		for category in legacy_values:
+			legacy_display[category] = {
+				"state": "explicit",
+				"value": String(legacy_values[category])
+			}
+
+		return legacy_display
+
+	var presentation: Dictionary = presentation_value
+	var states: Dictionary = presentation.get("slot_states", {})
+	var values: Dictionary = presentation.get("slot_values", {})
+	var display: Dictionary = {}
+
+	for category in CATEGORY_ORDER:
+		var state := String(states.get(category, "missing"))
+
+		if state == "missing":
+			continue
+
+		var value := String(values.get(category, "")).strip_edges()
+
+		if value.is_empty():
+			value = "Ambiguous" if state == "ambiguous" else "Invalid"
+
+		display[category] = {"state": state, "value": _presentation_case(value)}
+
+	return display
 
 
 func _get_owned_slot_value(category: String, ownership: Array) -> String:
@@ -540,6 +685,7 @@ func _update_reference_context(parsed_result: Dictionary) -> void:
 func _animate_transcription_label(
 	category: String,
 	value: String,
+	state: String,
 	delay_seconds: float,
 	generation: int
 ) -> void:
@@ -550,6 +696,12 @@ func _animate_transcription_label(
 
 	var final_y := float(_transcription_rest_y.get(category, label.position.y))
 	label.text = value
+	label.set_meta("component_state", state)
+	label.tooltip_text = _get_component_state_tooltip(state)
+	label.add_theme_color_override(
+		"font_color",
+		COMPONENT_COLORS.get(state, COMPONENT_COLORS["explicit"])
+	)
 	label.position.y = final_y - ENTRANCE_OFFSET_PIXELS
 	label.modulate.a = 0.0
 	label.visible = true
@@ -640,8 +792,23 @@ func _reset_transcription_labels() -> void:
 func _reset_transcription_label(category: String, label: Label) -> void:
 	label.visible = false
 	label.text = ""
+	label.set_meta("component_state", "missing")
+	label.tooltip_text = ""
+	label.add_theme_color_override("font_color", COMPONENT_COLORS["explicit"])
 	label.modulate.a = 0.0
 	label.position.y = float(_transcription_rest_y.get(category, label.position.y))
+
+
+func _get_component_state_tooltip(state: String) -> String:
+	match state:
+		"corrected":
+			return "Recognized and normalized to a supported command term."
+		"ambiguous":
+			return "More than one command interpretation matched."
+		"invalid":
+			return "This command component could not be resolved."
+
+	return ""
 
 
 func _reset_feedback_labels() -> void:

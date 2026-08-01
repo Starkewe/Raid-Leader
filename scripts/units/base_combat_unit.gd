@@ -985,6 +985,26 @@ func setup_campaign_identity(member_data: Dictionary, class_ordinal: int) -> voi
 	member_id = String(member_data.get("member_id", ""))
 	display_name = CampaignState.format_member_label(member_data)
 	member_description = String(member_data.get("description", ""))
+	configure_runtime_roles(member_data.get("roles", [member_data.get("role", "dps")]))
+
+
+func configure_runtime_roles(assigned_roles: Array) -> void:
+	var combined_roles: Array[String] = []
+	var assignment_roles := ["tank", "healer", "dps"]
+
+	for role_value in unit_roles:
+		var role_name := String(role_value).to_lower().strip_edges()
+
+		if not role_name.is_empty() and not assignment_roles.has(role_name):
+			combined_roles.append(role_name)
+
+	for role_value in assigned_roles:
+		var role_name := String(role_value).to_lower().strip_edges()
+
+		if not role_name.is_empty() and not combined_roles.has(role_name):
+			combined_roles.append(role_name)
+
+	unit_roles = combined_roles
 
 
 func get_member_id() -> String:

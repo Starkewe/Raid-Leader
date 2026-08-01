@@ -235,6 +235,26 @@ func get_member(member_id: String) -> Dictionary:
 	return _project_member(member_id, Dictionary(state_value))
 
 
+func set_raider_roles(raider_id: String, roles: Array[String]) -> bool:
+	var state_value: Variant = campaign.get("raider_states", {}).get(raider_id, {})
+
+	if not state_value is Dictionary:
+		return false
+
+	var normalized_roles := _unique_string_array(roles)
+
+	if normalized_roles.is_empty():
+		return false
+
+	var state: Dictionary = Dictionary(state_value)
+	state["assigned_roles"] = normalized_roles
+	campaign["raider_states"][raider_id] = state
+	save_campaign()
+	roster_changed.emit()
+	state_changed.emit()
+	return true
+
+
 func get_selected_cast_ids() -> Array[String]:
 	return _string_array(campaign.get("campaign_cast", {}).get("selected_raider_ids", []))
 
@@ -2410,6 +2430,12 @@ func _project_member(raider_id: String, state: Dictionary) -> Dictionary:
 
 func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictionary:
 	var raider_id := String(state.get("raider_id", definition.get("raider_id", "")))
+	var assigned_roles := _unique_string_array(state.get("assigned_roles", []))
+	var default_role := String(definition.get("default_role", "dps"))
+
+	if assigned_roles.is_empty():
+		assigned_roles.append(default_role)
+
 	return {
 		# Camp V1 and combat consumers retain these aliases while stable IDs remain authoritative.
 		"member_id": raider_id,
@@ -2418,7 +2444,8 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 		"unit_class": String(
 			state.get("current_class", definition.get("default_class", "Mage"))
 		),
-		"role": String(definition.get("default_role", "dps")),
+		"role": assigned_roles[0],
+		"roles": assigned_roles,
 		"attributes": Array(definition.get("personality_tags", [])).duplicate(),
 		"personality_tags": Array(definition.get("personality_tags", [])).duplicate(),
 		"personality_description": String(definition.get("personality_description", "")),

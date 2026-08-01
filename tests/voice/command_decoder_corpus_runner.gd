@@ -4,6 +4,7 @@ const VoiceCommandParserScript := preload("res://scripts/voice/voice_command_par
 const VocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 const CommandTargetResolverScript := preload("res://scripts/commands/command_target_resolver.gd")
+const BaseCombatUnitScript := preload("res://scripts/units/base_combat_unit.gd")
 const CORPUS_PATH := "res://tests/voice/command_decoder_corpus.json"
 
 
@@ -309,11 +310,36 @@ func _validate_direct_regressions(parser: VoiceCommandParser, roster: Array) -> 
 		"Clear exact commands entered joint candidate scoring."
 	)
 
+	var normalized_rotation := parser.parse("everyone turn clockwise")
+	var rotation_presentation: Dictionary = normalized_rotation.get(
+		"component_presentation",
+		{}
+	)
+	var rotation_states: Dictionary = rotation_presentation.get("slot_states", {})
+	var rotation_values: Dictionary = rotation_presentation.get("slot_values", {})
+	_expect(
+		String(rotation_states.get("what", "")) == "corrected"
+		and String(rotation_values.get("what", "")) == "Rotate"
+		and String(rotation_states.get("when", "")) == "missing",
+		"Normalized component presentation did not distinguish corrected and missing slots."
+	)
+
+	var rejected_heal := parser.parse("priests heal")
+	var rejected_presentation: Dictionary = rejected_heal.get("component_presentation", {})
+	var rejected_states: Dictionary = rejected_presentation.get("slot_states", {})
+	_expect(
+		not bool(rejected_heal.get("ok", false))
+		and String(rejected_states.get("what", "")) == "invalid"
+		and String(rejected_states.get("when", "")) == "missing",
+		"Rejected commands did not expose stable invalid and missing component states."
+	)
+
 	var healing_cases := {
 		"priests heal rogues": "class:Rogue",
 		"priest one heal rogue three": "unit_identity:Rogue:3",
 		"healers heal group two": "group:2",
 		"priests heal the active tank": "active_tank",
+		"priests heal the tank": "active_tank",
 		"healers heal the raid": "raid"
 	}
 
@@ -435,6 +461,50 @@ func _validate_direct_regressions(parser: VoiceCommandParser, roster: Array) -> 
 		selected_units.size() == 1 and selected_units[0] == roster[0],
 		"Canonical decoder output did not map to the existing execution target."
 	)
+
+	_validate_runtime_role_assignments()
+
+
+func _validate_runtime_role_assignments() -> void:
+	var reassigned_warrior := BaseCombatUnitScript.new()
+	reassigned_warrior.unit_class = "Warrior"
+	reassigned_warrior.unit_roles = ["tank", "melee"]
+	reassigned_warrior.configure_runtime_roles(["healer"])
+	_expect(
+		reassigned_warrior.has_role("healer")
+		and not reassigned_warrior.has_role("tank")
+		and reassigned_warrior.has_role("melee"),
+		"Runtime role assignment did not replace the assignment role while preserving class capabilities."
+	)
+
+	var main_tank := BaseCombatUnitScript.new()
+	main_tank.unit_class = "Rogue"
+	main_tank.unit_roles = ["dps", "melee"]
+	main_tank.configure_runtime_roles(["tank"])
+
+	var off_tank := BaseCombatUnitScript.new()
+	off_tank.unit_class = "Mage"
+	off_tank.unit_roles = ["dps", "caster", "ranged_dps"]
+	off_tank.configure_runtime_roles(["tank"])
+
+	var resolver := CommandTargetResolverScript.new()
+	resolver.setup([reassigned_warrior, main_tank, off_tank])
+	_expect(
+		resolver.get_living_units_by_role("main tank") == [main_tank],
+		"Main Tank did not resolve to the first runtime-assigned tank."
+	)
+	_expect(
+		resolver.get_living_units_by_role("offtank") == [off_tank],
+		"Off Tank did not resolve to the second runtime-assigned tank."
+	)
+	_expect(
+		resolver.get_living_units_by_role("tanks") == [main_tank, off_tank],
+		"Tanks did not resolve all runtime-assigned tanks."
+	)
+
+	reassigned_warrior.free()
+	main_tank.free()
+	off_tank.free()
 
 
 func _load_corpus() -> Dictionary:

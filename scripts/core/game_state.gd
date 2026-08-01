@@ -262,6 +262,8 @@ func get_role_options() -> Array[Dictionary]:
 		options.append({
 			"role": String(role_name),
 			"display_name": String(role_data.get("display_name", role_name)),
+			"match_role": String(role_data.get("match_role", role_name)),
+			"selection": String(role_data.get("selection", "all")),
 			"aliases": aliases.duplicate()
 		})
 

@@ -36,7 +36,8 @@ func rebuild_vocabulary_cache() -> void:
 
 	for action_value in [
 		CommandSchemaScript.ACTION_MOVE,
-		CommandSchemaScript.ACTION_DODGE
+		CommandSchemaScript.ACTION_DODGE,
+		CommandSchemaScript.ACTION_ROTATE
 	]:
 		var action := String(action_value)
 
@@ -224,6 +225,7 @@ func build_deterministic_resolution(
 		if action in [
 			CommandSchemaScript.ACTION_MOVE,
 			CommandSchemaScript.ACTION_DODGE,
+			CommandSchemaScript.ACTION_ROTATE,
 			CommandSchemaScript.ACTION_HEAL
 		]
 		else SLOT_DEFAULTED
@@ -338,7 +340,11 @@ func _build_deterministic_ownership(
 		var where_end := tokens.size() - 1 if not tokens.is_empty() and tokens[-1] == "now" else tokens.size()
 
 		if (
-			action in [CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE]
+			action in [
+				CommandSchemaScript.ACTION_MOVE,
+				CommandSchemaScript.ACTION_DODGE,
+				CommandSchemaScript.ACTION_ROTATE
+			]
 			and action_end < where_end
 		):
 			ownership.append({
@@ -587,7 +593,11 @@ func _complete_action_alignment(
 			"alignment": "one_span_to_what_where",
 			"semantic": false
 		})
-	elif action in [CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE]:
+	elif action in [
+		CommandSchemaScript.ACTION_MOVE,
+		CommandSchemaScript.ACTION_DODGE,
+		CommandSchemaScript.ACTION_ROTATE
+	]:
 		where_candidates = _generate_movement_where_candidates(
 			trailing_tokens,
 			action_end,
@@ -680,7 +690,11 @@ func _generate_action_alignments(tokens: Array[String]) -> Array[Dictionary]:
 		var trailing := tokens.slice(int(exact.get("end", 0)))
 		var ordinary_destinations: Array[Dictionary] = []
 
-		if action in [CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE]:
+		if action in [
+			CommandSchemaScript.ACTION_MOVE,
+			CommandSchemaScript.ACTION_DODGE,
+			CommandSchemaScript.ACTION_ROTATE
+		]:
 			ordinary_destinations = _generate_movement_where_candidates(
 				trailing,
 				int(exact.get("end", 0)),

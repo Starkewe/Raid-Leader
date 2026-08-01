@@ -96,6 +96,9 @@ func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
 		"dodge":
 			return execute_panel_dodge(selected_units, command_data)
 
+		"rotate":
+			return execute_panel_move(selected_units, command_data)
+
 		"interrupt":
 			return execute_panel_interrupt(selected_units, where, boss_alive)
 
