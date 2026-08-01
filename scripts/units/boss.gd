@@ -239,22 +239,23 @@ func create_next_ability() -> BossAbility:
 	if ability_definitions.is_empty():
 		return BossAbilityFactoryScript.create_fallback_ability()
 
-	var available_definitions: Array[BossAbilityDefinition] = []
+	var ability_count := ability_definitions.size()
+	var starting_index := posmod(next_ability_index, ability_count)
 
-	for definition in ability_definitions:
+	for offset in range(ability_count):
+		var definition_index := (starting_index + offset) % ability_count
+		var definition := ability_definitions[definition_index]
+
 		if definition == null:
 			continue
 
-		if current_phase == null or current_phase.allows_ability(definition.ability_id):
-			available_definitions.append(definition)
+		if current_phase != null and not current_phase.allows_ability(definition.ability_id):
+			continue
 
-	if available_definitions.is_empty():
-		return null
+		next_ability_index = (definition_index + 1) % ability_count
+		return BossAbilityFactoryScript.create_ability_from_definition(definition)
 
-	var definition := available_definitions[next_ability_index % available_definitions.size()]
-	next_ability_index = (next_ability_index + 1) % available_definitions.size()
-
-	return BossAbilityFactoryScript.create_ability_from_definition(definition)
+	return null
 func get_combat_radius() -> float:
 	return combat_radius
 
@@ -1172,6 +1173,10 @@ func get_effective_attack_cooldown() -> float:
 	return attack_cooldown / maxf(multiplier, 0.01)
 
 
+func begin_full_basic_attack_recovery() -> void:
+	attack_timer = get_effective_attack_cooldown()
+
+
 func get_movement_stop_range_units() -> float:
 	if movement_stop_range_units < 0.0:
 		return attack_range_units
@@ -1259,8 +1264,18 @@ func update_current_phase(emit_change_event: bool = true) -> void:
 	var previous_trigger_threshold := get_current_basic_attack_trigger_threshold()
 	current_phase = next_phase
 	var updated_trigger_threshold := get_current_basic_attack_trigger_threshold()
-	next_ability_index = 0
-	next_ability = create_next_ability()
+	var has_explicit_phase_transition := (
+		health > 0 and current_phase.transition_ability != null
+	)
+
+	if has_explicit_phase_transition:
+		next_ability_index = 0
+		next_ability = create_next_ability()
+	elif (
+		next_ability == null
+		or not current_phase.allows_ability(next_ability.ability_id)
+	):
+		next_ability = create_next_ability()
 
 	if not emit_change_event:
 		return
@@ -1297,7 +1312,7 @@ func update_current_phase(emit_change_event: bool = true) -> void:
 		{"display_name": current_phase.display_name}
 	)
 
-	if health > 0 and current_phase.transition_ability != null:
+	if has_explicit_phase_transition:
 		queue_phase_transition(current_phase.transition_ability)
 
 

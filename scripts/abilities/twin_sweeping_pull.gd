@@ -179,6 +179,11 @@ func resolve(boss: Node, party_members: Array) -> void:
 			"second sweep"
 		)
 
+	if boss != null and is_instance_valid(boss) and boss.has_method(
+		"begin_full_basic_attack_recovery"
+	):
+		boss.begin_full_basic_attack_recovery()
+
 
 func on_interrupted(boss: Node, party_members: Array) -> void:
 	for unit in party_members:
