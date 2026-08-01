@@ -1,14 +1,21 @@
 extends RefCounted
 class_name CampaignCastGenerator
 
-const CAST_SIZE := 40
+const CAST_SIZE := 60
 const INITIAL_SIZE := 20
+const RESERVE_SIZE := CAST_SIZE - INITIAL_SIZE
 const INITIAL_CLASS_ORDER := ["Warrior", "Priest", "Rogue", "Mage"]
 const INITIAL_CLASS_REQUIREMENTS := {
 	"Warrior": 2,
 	"Priest": 5,
 	"Rogue": 6,
 	"Mage": 7,
+}
+const WRIT_CLASS_REQUIREMENTS := {
+	"Warrior": 15,
+	"Priest": 15,
+	"Rogue": 15,
+	"Mage": 15,
 }
 
 
@@ -39,20 +46,26 @@ static func generate(campaign_seed: int, definitions: Array[Dictionary]) -> Dict
 			remaining.erase(selected)
 			_record_diversity(selected, tag_counts, class_counts)
 
-	while future.size() < CAST_SIZE - INITIAL_SIZE:
-		var candidates := _future_candidates(remaining)
+	for unit_class in INITIAL_CLASS_ORDER:
+		var future_required := (
+			int(WRIT_CLASS_REQUIREMENTS[unit_class])
+			- int(INITIAL_CLASS_REQUIREMENTS[unit_class])
+		)
 
-		if candidates.is_empty():
-			warnings.append(
-				"Campaign cast stopped at %d of %d raiders; the master pool is too small."
-				% [initial.size() + future.size(), CAST_SIZE]
-			)
-			break
+		for _slot in range(future_required):
+			var candidates := _future_candidates(remaining, unit_class)
 
-		var selected := _weighted_pick(candidates, tag_counts, class_counts, rng)
-		future.append(selected)
-		remaining.erase(selected)
-		_record_diversity(selected, tag_counts, class_counts)
+			if candidates.is_empty():
+				warnings.append(
+					"Campaign cast is missing a future-eligible %s definition."
+					% unit_class
+				)
+				break
+
+			var selected := _weighted_pick(candidates, tag_counts, class_counts, rng)
+			future.append(selected)
+			remaining.erase(selected)
+			_record_diversity(selected, tag_counts, class_counts)
 
 	_sort_by_catalog_order(initial)
 	_sort_by_catalog_order(future)
@@ -60,7 +73,7 @@ static func generate(campaign_seed: int, definitions: Array[Dictionary]) -> Dict
 	var future_ids := _ids(future)
 	var selected_ids := initial_ids.duplicate()
 	selected_ids.append_array(future_ids)
-	_validate_result(selected_ids, initial, warnings)
+	_validate_result(selected_ids, initial, future, warnings)
 	return {
 		"selected_raider_ids": selected_ids,
 		"initial_raider_ids": initial_ids,
@@ -86,13 +99,18 @@ static func _initial_candidates(
 	return result
 
 
-static func _future_candidates(definitions: Array[Dictionary]) -> Array[Dictionary]:
+static func _future_candidates(
+	definitions: Array[Dictionary], unit_class: String
+) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 
 	for definition in definitions:
 		var recruitment: Dictionary = definition.get("recruitment", {})
 
-		if bool(recruitment.get("future_eligible", true)):
+		if (
+			String(definition.get("default_class", "")) == unit_class
+			and bool(recruitment.get("future_eligible", true))
+		):
 			result.append(definition)
 
 	return result
@@ -165,7 +183,10 @@ static func _ids(definitions: Array[Dictionary]) -> Array[String]:
 
 
 static func _validate_result(
-	selected_ids: Array[String], initial: Array[Dictionary], warnings: Array[String]
+	selected_ids: Array[String],
+	initial: Array[Dictionary],
+	future: Array[Dictionary],
+	warnings: Array[String]
 ) -> void:
 	var unique_ids: Dictionary = {}
 
@@ -184,6 +205,12 @@ static func _validate_result(
 			"Initial cast contains %d raiders instead of %d." % [initial.size(), INITIAL_SIZE]
 		)
 
+	if future.size() != RESERVE_SIZE:
+		warnings.append(
+			"Reserve cast contains %d raiders instead of %d."
+			% [future.size(), RESERVE_SIZE]
+		)
+
 	var counts: Dictionary = {}
 
 	for definition in initial:
@@ -198,5 +225,22 @@ static func _validate_result(
 					unit_class,
 					int(counts.get(unit_class, 0)),
 					int(INITIAL_CLASS_REQUIREMENTS[unit_class]),
+				]
+			)
+
+	var writ_counts := counts.duplicate()
+
+	for definition in future:
+		var unit_class := String(definition.get("default_class", ""))
+		writ_counts[unit_class] = int(writ_counts.get(unit_class, 0)) + 1
+
+	for unit_class in INITIAL_CLASS_ORDER:
+		if int(writ_counts.get(unit_class, 0)) != int(WRIT_CLASS_REQUIREMENTS[unit_class]):
+			warnings.append(
+				"Writ %s count is %d; expected %d."
+				% [
+					unit_class,
+					int(writ_counts.get(unit_class, 0)),
+					int(WRIT_CLASS_REQUIREMENTS[unit_class]),
 				]
 			)
