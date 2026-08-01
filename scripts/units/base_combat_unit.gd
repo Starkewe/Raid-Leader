@@ -507,7 +507,7 @@ func start_dodge_burst(source_command_id: int, allow_second_burst: bool) -> bool
 	if dodge_kind == DodgeTuningScript.MOVEMENT_TELEPORT:
 		begin_teleport_visual()
 		global_position = dodge_end_position
-		spawn_teleport_pulse(global_position)
+		spawn_teleport_pulse(get_visual_feet_anchor_world_position())
 	else:
 		begin_dash_trail()
 
@@ -735,7 +735,7 @@ func finish_dodge_visual() -> void:
 
 
 func begin_teleport_visual() -> void:
-	spawn_teleport_pulse(dodge_start_position)
+	spawn_teleport_pulse(get_visual_feet_anchor_world_position())
 	dodge_visual_node = get_node_or_null("Sprite2D") as CanvasItem
 
 	if dodge_visual_node != null:
@@ -759,6 +759,23 @@ func restore_dodge_visual() -> void:
 		dodge_visual_node.modulate = dodge_visual_original_modulate
 
 	dodge_visual_node = null
+
+
+func get_visual_feet_anchor_world_position() -> Vector2:
+	var sprite := get_node_or_null("Sprite2D") as Sprite2D
+
+	if sprite == null or sprite.texture == null:
+		return global_position
+
+	var sprite_height := sprite.texture.get_size().y
+	var feet_offset := sprite.offset
+
+	if sprite.centered:
+		feet_offset.y += sprite_height * 0.5
+	else:
+		feet_offset.y += sprite_height
+
+	return sprite.to_global(feet_offset)
 
 
 func spawn_teleport_pulse(world_position: Vector2) -> void:
@@ -985,6 +1002,26 @@ func setup_campaign_identity(member_data: Dictionary, class_ordinal: int) -> voi
 	member_id = String(member_data.get("member_id", ""))
 	display_name = CampaignState.format_member_label(member_data)
 	member_description = String(member_data.get("description", ""))
+	configure_runtime_roles(member_data.get("roles", [member_data.get("role", "dps")]))
+
+
+func configure_runtime_roles(assigned_roles: Array) -> void:
+	var combined_roles: Array[String] = []
+	var assignment_roles := ["tank", "healer", "dps"]
+
+	for role_value in unit_roles:
+		var role_name := String(role_value).to_lower().strip_edges()
+
+		if not role_name.is_empty() and not assignment_roles.has(role_name):
+			combined_roles.append(role_name)
+
+	for role_value in assigned_roles:
+		var role_name := String(role_value).to_lower().strip_edges()
+
+		if not role_name.is_empty() and not combined_roles.has(role_name):
+			combined_roles.append(role_name)
+
+	unit_roles = combined_roles
 
 
 func get_member_id() -> String:

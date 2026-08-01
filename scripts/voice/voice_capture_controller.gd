@@ -32,6 +32,9 @@ var _record_started_at_msec: int = 0
 var _recorded_frames: PackedVector2Array = PackedVector2Array()
 var _capture_ready: bool = false
 var _capture_rearm_pending: bool = false
+var _capture_rearm_generation: int = 0
+var _application_has_focus: bool = true
+var _last_rearm_reason: String = ""
 var _capture_pushed_frames_at_start: int = 0
 var _capture_discarded_frames_at_start: int = 0
 
@@ -71,6 +74,48 @@ func _ready() -> void:
 	print("Voice capture bus effect count: ", AudioServer.get_bus_effect_count(AudioServer.get_bus_index(capture_bus_name)))
 
 	_schedule_capture_rearm("combat scene initialized")
+
+
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_APPLICATION_FOCUS_OUT:
+			_handle_application_focus_lost()
+		NOTIFICATION_APPLICATION_FOCUS_IN:
+			_handle_application_focus_regained()
+
+
+func _handle_application_focus_lost() -> void:
+	if not _application_has_focus:
+		return
+
+	_application_has_focus = false
+	_capture_rearm_generation += 1
+	_capture_rearm_pending = false
+	_capture_ready = false
+	var interrupted_recording := _is_recording
+	_reset_recording_state()
+
+	if _mic_player != null and is_instance_valid(_mic_player) and _mic_player.playing:
+		_mic_player.stop()
+
+	if _capture_effect != null:
+		_capture_effect.clear_buffer()
+		_discard_capture_buffer()
+
+	if interrupted_recording:
+		recording_failed.emit(
+			"Recording was cancelled when the game lost focus. Try the command again."
+		)
+
+	print("Voice microphone capture suspended: application focus lost")
+
+
+func _handle_application_focus_regained() -> void:
+	if _application_has_focus:
+		return
+
+	_application_has_focus = true
+	_schedule_capture_rearm("application focus regained")
 
 
 func _process(_delta: float) -> void:
@@ -121,6 +166,10 @@ func ensure_voice_input_action() -> void:
 func start_recording() -> void:
 	if _capture_effect == null:
 		recording_failed.emit("Missing capture effect.")
+		return
+
+	if not _application_has_focus:
+		recording_failed.emit("Voice capture is waiting for the game to regain focus.")
 		return
 
 	if not _capture_ready:
@@ -289,17 +338,22 @@ func _print_capture_counters() -> void:
 
 
 func _schedule_capture_rearm(reason: String) -> void:
-	if _capture_rearm_pending:
+	if _capture_rearm_pending or not _application_has_focus:
 		return
 
 	_capture_ready = false
 	_capture_rearm_pending = true
-	call_deferred("_rearm_capture", reason)
+	_capture_rearm_generation += 1
+	_last_rearm_reason = reason
+	call_deferred("_rearm_capture", reason, _capture_rearm_generation)
 
 
-func _rearm_capture(reason: String) -> void:
+func _rearm_capture(reason: String, generation: int) -> void:
 	if not is_inside_tree() or _mic_player == null or _capture_effect == null:
 		_capture_rearm_pending = false
+		return
+
+	if generation != _capture_rearm_generation or not _application_has_focus:
 		return
 
 	_reset_recording_state()
@@ -321,7 +375,11 @@ func _rearm_capture(reason: String) -> void:
 	for _frame_index in range(delay_frames):
 		await tree.process_frame
 
-		if not is_inside_tree():
+		if (
+			not is_inside_tree()
+			or generation != _capture_rearm_generation
+			or not _application_has_focus
+		):
 			return
 
 	_capture_effect.clear_buffer()
@@ -329,7 +387,11 @@ func _rearm_capture(reason: String) -> void:
 	_mic_player.play()
 	await tree.process_frame
 
-	if not is_inside_tree():
+	if (
+		not is_inside_tree()
+		or generation != _capture_rearm_generation
+		or not _application_has_focus
+	):
 		return
 
 	_capture_effect.clear_buffer()
@@ -353,6 +415,7 @@ func _reset_recording_state() -> void:
 func _exit_tree() -> void:
 	_capture_ready = false
 	_capture_rearm_pending = false
+	_capture_rearm_generation += 1
 	_reset_recording_state()
 
 	if _mic_player != null and is_instance_valid(_mic_player) and _mic_player.playing:

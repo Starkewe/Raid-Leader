@@ -874,7 +874,11 @@ func _get_command_compatibility(candidate: Dictionary, command_context: Dictiona
 	if action.is_empty():
 		return 0.0
 
-	if action in [CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE]:
+	if action in [
+		CommandSchemaScript.ACTION_MOVE,
+		CommandSchemaScript.ACTION_DODGE,
+		CommandSchemaScript.ACTION_ROTATE
+	]:
 		return 1.0
 
 	var method_by_action := {

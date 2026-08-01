@@ -64,41 +64,191 @@ func parse(transcript: String) -> Dictionary:
 					== CommandSchemaScript.SELECTOR_EVERYONE
 				else "Heal requires an explicit target."
 			)
-			return _fail(
+			return _with_component_presentation(_fail(
 				failure_reason,
 				normalized_text,
 				transcript,
 				Dictionary(result.get("who_resolution", {}))
-			)
+			))
 
 		result["transcript"] = transcript
 		result["normalized_text"] = normalized_text
-		return result
+		return _with_component_presentation(result)
 
 	var command_data: Dictionary = result.get("command_data", {})
 
 	if String(command_data.get("what", "")) == CommandSchemaScript.ACTION_HEAL:
 		if not scope_found or healing_scope.is_empty():
-			return _fail(
+			return _with_component_presentation(_fail(
 				"Heal requires an explicit target.",
 				normalized_text,
 				transcript,
 				Dictionary(result.get("who_resolution", {}))
-			)
+			))
 
 		var target_validation := _validate_healing_scope_target(healing_scope)
 
 		if not bool(target_validation.get("ok", false)):
-			return _fail(
+			return _with_component_presentation(_fail(
 				String(target_validation.get("reason", "Invalid healing target.")),
 				normalized_text,
 				transcript,
 				Dictionary(result.get("who_resolution", {}))
-			)
+			))
 
 	result["transcript"] = transcript
 	result["normalized_text"] = normalized_text
+	return _with_component_presentation(result)
+
+
+func _with_component_presentation(result: Dictionary) -> Dictionary:
+	result["component_presentation"] = _build_component_presentation(result)
 	return result
+
+
+func _build_component_presentation(result: Dictionary) -> Dictionary:
+	var resolution: Dictionary = result.get("command_resolution", {})
+	var decoder_states: Dictionary = resolution.get("slot_states", {})
+	var ownership: Array = resolution.get("slot_ownership", [])
+	var command_data: Dictionary = result.get("command_data", {})
+	var parse_ok := bool(result.get("ok", false))
+	var reason := String(result.get("reason", "")).to_lower()
+	var slot_states: Dictionary = {}
+	var slot_values: Dictionary = {}
+	var presentation_ownership: Array[Dictionary] = []
+
+	for category in ["who", "what", "where", "when"]:
+		var decoder_state := String(decoder_states.get(
+			category,
+			"defaulted" if category == "when" else "invalid"
+		))
+		var owned_span := _get_component_owned_span(category, ownership)
+		var source_text := String(owned_span.get("text", "")).strip_edges()
+		var canonical_text := String(owned_span.get("canonical", source_text)).strip_edges()
+
+		if canonical_text.is_empty():
+			canonical_text = _get_component_fallback_value(category, result, command_data)
+
+		var presentation_state := "missing"
+
+		if decoder_state == "explicit" and parse_ok:
+			presentation_state = (
+				"corrected"
+				if (
+					not source_text.is_empty()
+					and not canonical_text.is_empty()
+					and _normalize_text(source_text) != _normalize_text(canonical_text)
+				)
+				else "explicit"
+			)
+		elif category != "when" and (decoder_state == "invalid" or not parse_ok):
+			presentation_state = (
+				"ambiguous"
+				if reason.contains("ambiguous") and category == "who"
+				else "invalid"
+			)
+
+		if presentation_state == "missing":
+			canonical_text = ""
+		elif canonical_text.is_empty():
+			canonical_text = (
+				"Ambiguous"
+				if presentation_state == "ambiguous"
+				else "Invalid"
+			)
+
+		canonical_text = _strip_class_suffix(canonical_text)
+		slot_states[category] = presentation_state
+		slot_values[category] = canonical_text
+		presentation_ownership.append({
+			"slot": category,
+			"state": presentation_state,
+			"text": source_text,
+			"canonical": canonical_text
+		})
+
+	return {
+		"slot_states": slot_states,
+		"slot_values": slot_values,
+		"slot_ownership": presentation_ownership
+	}
+
+
+func _get_component_owned_span(category: String, ownership: Array) -> Dictionary:
+	var best: Dictionary = {}
+
+	for span_value in ownership:
+		if not span_value is Dictionary:
+			continue
+
+		var span: Dictionary = span_value
+
+		if String(span.get("slot", "")).to_lower() != category:
+			continue
+
+		if String(span.get("text", "")).length() > String(best.get("text", "")).length():
+			best = span
+
+	return best
+
+
+func _get_component_fallback_value(
+	category: String,
+	result: Dictionary,
+	command_data: Dictionary
+) -> String:
+	match category:
+		"who":
+			var who_resolution: Dictionary = result.get("who_resolution", {})
+			return String(who_resolution.get(
+				"display_label",
+				who_resolution.get("who_text", "")
+			))
+		"what":
+			return String(command_data.get("what", "")).capitalize()
+		"where":
+			return _get_component_where_label(command_data)
+		"when":
+			return "Now"
+
+	return ""
+
+
+func _get_component_where_label(command_data: Dictionary) -> String:
+	match String(command_data.get("where", "")):
+		"movement_slot":
+			return "%s - %s" % [
+				String(command_data.get("movement_region", "")).capitalize(),
+				String(command_data.get("movement_range", "")).capitalize()
+			]
+		"movement_region", "movement_rotate":
+			return String(command_data.get("movement_region", "")).capitalize()
+		"movement_range":
+			return String(command_data.get("movement_range", "")).capitalize()
+		"movement_rotate_step", "movement_range_step":
+			return String(command_data.get("movement_direction", "")).capitalize()
+		"healing_scope":
+			var scope: Dictionary = command_data.get("healing_scope", {})
+			var scope_value = scope.get("value", scope.get("type", "Healing target"))
+
+			if scope_value is Node and (scope_value as Node).has_method("get_display_name"):
+				return String((scope_value as Node).get_display_name())
+
+			return str(scope_value).replace("_", " ").capitalize()
+
+	return String(command_data.get("where", "")).replace("_", " ").capitalize()
+
+
+func _strip_class_suffix(value: String) -> String:
+	var stripped := value.strip_edges()
+
+	for unit_class in ["Warrior", "Priest", "Rogue", "Mage"]:
+		var suffix := " (%s)" % unit_class
+
+		if stripped.ends_with(suffix):
+			return stripped.trim_suffix(suffix).strip_edges()
+
+	return stripped
 
 
 func _parse_command_text(
@@ -316,7 +466,10 @@ func _extract_healing_scope_suffix(text: String) -> Dictionary:
 
 	for special in [
 		{
-			"phrases": ["the active tanks", "the active tank", "active tanks", "active tank"],
+			"phrases": [
+				"the active tanks", "the active tank", "active tanks", "active tank",
+				"the tank", "tank"
+			],
 			"type": CommandSchemaScript.HEAL_SCOPE_ACTIVE_TANK
 		},
 		{
@@ -507,7 +660,7 @@ func _parse_action(text: String) -> Dictionary:
 				}
 			return _action(action, CommandSchemaScript.DESTINATION_CURABLE_ALLIES, {}, matched_alias)
 
-		CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE:
+		CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE, CommandSchemaScript.ACTION_ROTATE:
 			return _parse_movement_action(text, matched_alias, action)
 
 	return {"ok": false, "reason": "Unsupported action: " + action}
@@ -555,6 +708,13 @@ func _parse_movement_action(
 
 	var region := _parse_region(destination_text)
 	var range_name := _parse_range(destination_text)
+	var is_rotate_action := movement_action == CommandSchemaScript.ACTION_ROTATE
+
+	if is_rotate_action:
+		if not region.is_empty() and destination_text.split(" ", false).size() == 1:
+			return _action(movement_action, "movement_rotate", {"movement_region": region}, matched_alias)
+
+		return {"ok": false, "reason": "Rotate requires clockwise, counterclockwise, or a region."}
 
 	if not region.is_empty() and not range_name.is_empty():
 		if destination_text.split(" ", false).size() != 2:
@@ -564,12 +724,6 @@ func _parse_movement_action(
 			"movement_region": region,
 			"movement_range": range_name
 		}, matched_alias)
-
-	if not region.is_empty() and matched_alias in ["rotate", "turn"]:
-		if destination_text.split(" ", false).size() != 1:
-			return {"ok": false, "reason": "Rotation destination contains an unresolved span."}
-
-		return _action(movement_action, "movement_rotate", {"movement_region": region}, matched_alias)
 
 	if not region.is_empty():
 		if destination_text.split(" ", false).size() != 1:

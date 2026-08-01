@@ -6,10 +6,18 @@ const GameStateScript := preload("res://scripts/core/game_state.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 const VoiceCommandVocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
 
+const CLASS_ICONS := {
+	"Warrior": preload("res://icons/Warrior (Small).png"),
+	"Priest": preload("res://icons/Priest (Small).png"),
+	"Rogue": preload("res://icons/Rogue (Small).png"),
+	"Mage": preload("res://icons/Mage (Small).png")
+}
+
 const ACTION_ORDER: Array[String] = [
 	CommandSchemaScript.ACTION_ATTACK,
 	CommandSchemaScript.ACTION_MOVE,
 	CommandSchemaScript.ACTION_DODGE,
+	CommandSchemaScript.ACTION_ROTATE,
 	CommandSchemaScript.ACTION_INTERRUPT,
 	CommandSchemaScript.ACTION_HEAL,
 	CommandSchemaScript.ACTION_CURE,
@@ -48,7 +56,12 @@ static func get_who_entries(
 			"Role: " + String(role_data.get("display_name", "Role")),
 			{
 				"who_type": CommandSchemaScript.SELECTOR_ROLE,
-				"who_value": String(role_data.get("role", ""))
+				"who_value": String(role_data.get("role", "")),
+				"match_role": String(role_data.get(
+					"match_role",
+					role_data.get("role", "")
+				)),
+				"selection": String(role_data.get("selection", "all"))
 			},
 			"Roles"
 		))
@@ -65,6 +78,19 @@ static func get_who_entries(
 			"Groups"
 		))
 
+	var display_name_counts: Dictionary = {}
+
+	for unit_value in party_members:
+		var candidate := unit_value as Node
+
+		if candidate == null or not is_instance_valid(candidate):
+			continue
+
+		var candidate_name := get_unit_display_name(candidate)
+		display_name_counts[candidate_name] = int(display_name_counts.get(candidate_name, 0)) + 1
+
+	var duplicate_indices: Dictionary = {}
+
 	for unit_value in party_members:
 		var unit := unit_value as Node
 
@@ -72,31 +98,59 @@ static func get_who_entries(
 			continue
 
 		var unit_label := get_unit_display_name(unit)
+		var canonical_label := get_unit_canonical_name(unit)
+
+		if int(display_name_counts.get(unit_label, 0)) > 1:
+			var duplicate_index := int(duplicate_indices.get(unit_label, 0)) + 1
+			duplicate_indices[unit_label] = duplicate_index
+			unit_label += " - #" + str(duplicate_index)
+
 		entries.append(_entry(
-			"Unit: " + unit_label,
+			unit_label,
 			{
 				"who_type": CommandSchemaScript.SELECTOR_UNIT,
-				"who_value": unit_label,
+				"who_value": canonical_label,
 				"unit": unit
 			},
-			"Raiders"
+			"Raiders",
+			{
+				"icon": CLASS_ICONS.get(_get_unit_class(unit)),
+				"tooltip": _get_unit_tooltip(unit, canonical_label)
+			}
 		))
 
 	return entries
 
 
-static func get_what_entries() -> Array[Dictionary]:
+static func get_what_entries(
+	party_members: Array = [],
+	browse_context: Dictionary = {}
+) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
+	var has_browse_who := browse_context.get("who_metadata", {}) is Dictionary and not Dictionary(
+		browse_context.get("who_metadata", {})
+	).is_empty()
+	var selected_units := _get_units_for_who_metadata(
+		party_members,
+		Dictionary(browse_context.get("who_metadata", {}))
+	)
 
 	for action in ACTION_ORDER:
+		var unavailable := not has_browse_who
+		var reason := "Select a Who target first." if unavailable else ""
+
+		if not unavailable and not _any_unit_supports_action(selected_units, action):
+			unavailable = true
+			reason = "The selected raiders cannot use %s." % action.capitalize()
+
 		entries.append(_entry(
 			action.capitalize(),
 			{"what": action},
 			"Actions",
 			{
-				"requires_who": VoiceCommandVocabularyScript
-					.get_default_selector_for_action(action)
-					.is_empty()
+				"requires_who": true,
+				"unavailable": unavailable,
+				"unavailable_reason": reason
 			}
 		))
 
@@ -121,12 +175,7 @@ static func get_where_entries_for_action(
 
 		CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE:
 			entries.append(_entry(
-				"Me",
-				{"where": CommandSchemaScript.DESTINATION_PLAYER},
-				section
-			))
-			entries.append(_entry(
-				"Move In One Range",
+				"In one range",
 				{
 					"where": CommandSchemaScript.DESTINATION_MOVEMENT_RANGE_STEP,
 					"movement_direction": "in"
@@ -134,7 +183,7 @@ static func get_where_entries_for_action(
 				section
 			))
 			entries.append(_entry(
-				"Move Out One Range",
+				"Out one range",
 				{
 					"where": CommandSchemaScript.DESTINATION_MOVEMENT_RANGE_STEP,
 					"movement_direction": "out"
@@ -142,19 +191,10 @@ static func get_where_entries_for_action(
 				section
 			))
 
-			for range_value in MovementSlotResolverScript.RANGE_ORDER:
-				var range_name := String(range_value)
-				entries.append(_entry(
-					range_name.capitalize() + " Range - Current Direction",
-					{
-						"where": CommandSchemaScript.DESTINATION_MOVEMENT_RANGE,
-						"movement_range": range_name
-					},
-					section
-				))
+			entries.append_array(_get_compact_movement_rows(section))
 
-			entries.append_array(_get_movement_region_entries(section))
-			entries.append_array(_get_movement_slot_entries(section))
+		CommandSchemaScript.ACTION_ROTATE:
+			entries.append_array(_get_rotation_entries(section))
 
 		CommandSchemaScript.ACTION_INTERRUPT, CommandSchemaScript.ACTION_TAUNT:
 			entries.append(_entry(
@@ -193,7 +233,8 @@ static func get_when_entries() -> Array[Dictionary]:
 static func get_reference_sections(
 	category: String,
 	party_members: Array,
-	game_state: Node
+	game_state: Node,
+	browse_context: Dictionary = {}
 ) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 
@@ -201,9 +242,15 @@ static func get_reference_sections(
 		"who":
 			entries = get_who_entries(party_members, game_state)
 		"what":
-			entries = get_what_entries()
+			entries = get_what_entries(party_members, browse_context)
 		"where":
-			for action in ACTION_ORDER:
+			var selected_action := String(browse_context.get("what", ""))
+			var where_actions: Array[String] = []
+
+			if not selected_action.is_empty():
+				where_actions.append(selected_action)
+
+			for action in where_actions:
 				var action_entries := get_where_entries_for_action(
 					action,
 					party_members,
@@ -239,7 +286,7 @@ static func get_where_display_label(command_data: Dictionary) -> String:
 		CommandSchemaScript.DESTINATION_MOVEMENT_SLOT:
 			return (
 				String(command_data.get("movement_region", "")).capitalize()
-				+ " "
+				+ " — "
 				+ String(command_data.get("movement_range", "")).capitalize()
 			).strip_edges()
 		CommandSchemaScript.DESTINATION_MOVEMENT_ROTATE_STEP, CommandSchemaScript.DESTINATION_MOVEMENT_RANGE_STEP:
@@ -252,28 +299,31 @@ static func get_unit_display_name(unit: Node) -> String:
 	if unit == null or not is_instance_valid(unit):
 		return "Unknown"
 
+	var canonical := get_unit_canonical_name(unit)
+	var unit_class := _get_unit_class(unit)
+	var suffix := " (%s)" % unit_class
+
+	if not unit_class.is_empty() and canonical.ends_with(suffix):
+		return canonical.trim_suffix(suffix).strip_edges()
+
+	return canonical
+
+
+static func get_unit_canonical_name(unit: Node) -> String:
+	if unit == null or not is_instance_valid(unit):
+		return "Unknown"
+
 	if unit.has_method("get_display_name"):
 		return String(unit.get_display_name())
 
 	return unit.name
 
 
-static func _get_movement_region_entries(section: String) -> Array[Dictionary]:
+static func _get_rotation_entries(section: String) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 
-	for region_value in MovementSlotResolverScript.REGION_ORDER:
-		var region := String(region_value)
-		entries.append(_entry(
-			"Move " + region.capitalize() + " - Current Range",
-			{
-				"where": CommandSchemaScript.DESTINATION_MOVEMENT_REGION,
-				"movement_region": region
-			},
-			section
-		))
-
 	entries.append(_entry(
-		"Rotate Counterclockwise",
+		"Counterclockwise",
 		{
 			"where": CommandSchemaScript.DESTINATION_MOVEMENT_ROTATE_STEP,
 			"movement_direction": "counterclockwise"
@@ -281,7 +331,7 @@ static func _get_movement_region_entries(section: String) -> Array[Dictionary]:
 		section
 	))
 	entries.append(_entry(
-		"Rotate Clockwise",
+		"Clockwise",
 		{
 			"where": CommandSchemaScript.DESTINATION_MOVEMENT_ROTATE_STEP,
 			"movement_direction": "clockwise"
@@ -292,7 +342,7 @@ static func _get_movement_region_entries(section: String) -> Array[Dictionary]:
 	for region_value in MovementSlotResolverScript.REGION_ORDER:
 		var region := String(region_value)
 		entries.append(_entry(
-			"Rotate " + region.capitalize(),
+			region.capitalize(),
 			{
 				"where": CommandSchemaScript.DESTINATION_MOVEMENT_ROTATE,
 				"movement_region": region
@@ -303,16 +353,18 @@ static func _get_movement_region_entries(section: String) -> Array[Dictionary]:
 	return entries
 
 
-static func _get_movement_slot_entries(section: String) -> Array[Dictionary]:
+static func _get_compact_movement_rows(section: String) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 
 	for region_value in MovementSlotResolverScript.REGION_ORDER:
 		var region := String(region_value)
 
+		var range_entries: Array[Dictionary] = []
+
 		for range_value in MovementSlotResolverScript.RANGE_ORDER:
 			var range_name := String(range_value)
-			entries.append(_entry(
-				region.capitalize() + " - " + range_name.capitalize(),
+			range_entries.append(_entry(
+				range_name.capitalize(),
 				{
 					"where": CommandSchemaScript.DESTINATION_MOVEMENT_SLOT,
 					"movement_region": region,
@@ -320,6 +372,16 @@ static func _get_movement_slot_entries(section: String) -> Array[Dictionary]:
 				},
 				section
 			))
+
+		entries.append(_entry(
+			region.capitalize(),
+			{},
+			section,
+			{
+				"compact_range_row": true,
+				"range_entries": range_entries
+			}
+		))
 
 	return entries
 
@@ -384,17 +446,22 @@ static func _get_healing_entries(
 			continue
 
 		var unit_label := get_unit_display_name(unit)
+		var canonical_label := get_unit_canonical_name(unit)
 		entries.append(_entry(
-			"Unit: " + unit_label,
+			unit_label,
 			{
 				"where": CommandSchemaScript.DESTINATION_HEALING_SCOPE,
 				"healing_scope": {
 					"type": CommandSchemaScript.SELECTOR_UNIT,
-					"value": unit_label,
+					"value": canonical_label,
 					"unit": unit
 				}
 			},
-			section
+			section,
+			{
+				"icon": CLASS_ICONS.get(_get_unit_class(unit)),
+				"tooltip": _get_unit_tooltip(unit, canonical_label)
+			}
 		))
 
 	return entries
@@ -434,6 +501,99 @@ static func _get_role_options(game_state: Node) -> Array:
 		return []
 
 	return game_state.get_role_options()
+
+
+static func _get_unit_class(unit: Node) -> String:
+	if unit == null or not is_instance_valid(unit):
+		return ""
+
+	var class_value = unit.get("unit_class")
+	return String(class_value) if class_value != null else ""
+
+
+static func _get_unit_tooltip(unit: Node, canonical_label: String) -> String:
+	var roles: Array[String] = []
+
+	if unit != null and is_instance_valid(unit) and unit.has_method("get_roles"):
+		for role_value in unit.get_roles():
+			roles.append(String(role_value).capitalize())
+
+	var lines: Array[String] = [canonical_label, "Class: " + _get_unit_class(unit)]
+
+	if not roles.is_empty():
+		lines.append("Roles: " + ", ".join(roles))
+
+	return "\n".join(lines)
+
+
+static func _get_units_for_who_metadata(
+	party_members: Array,
+	metadata: Dictionary
+) -> Array:
+	var result: Array = []
+	var who_type := String(metadata.get("who_type", ""))
+	var who_value = metadata.get("who_value", "")
+
+	for unit_value in party_members:
+		var unit := unit_value as Node
+
+		if unit == null or not is_instance_valid(unit):
+			continue
+
+		match who_type:
+			CommandSchemaScript.SELECTOR_EVERYONE:
+				result.append(unit)
+			CommandSchemaScript.SELECTOR_CLASS:
+				if _get_unit_class(unit) == String(who_value):
+					result.append(unit)
+			CommandSchemaScript.SELECTOR_ROLE:
+				var match_role := String(metadata.get("match_role", who_value))
+
+				if unit.has_method("has_role") and bool(unit.has_role(match_role)):
+					result.append(unit)
+			CommandSchemaScript.SELECTOR_GROUP:
+				var unit_index := party_members.find(unit)
+				var first_index := (int(who_value) - 1) * 5
+
+				if unit_index >= first_index and unit_index < first_index + 5:
+					result.append(unit)
+			CommandSchemaScript.SELECTOR_UNIT:
+				if metadata.get("unit", null) == unit:
+					result.append(unit)
+
+	if who_type == CommandSchemaScript.SELECTOR_ROLE:
+		var selection := String(metadata.get("selection", "all"))
+
+		if selection == "first" and result.size() > 1:
+			return [result[0]]
+
+		if selection == "second":
+			return [result[1]] if result.size() > 1 else []
+
+	return result
+
+
+static func _any_unit_supports_action(units: Array, action: String) -> bool:
+	if units.is_empty():
+		return false
+
+	var method_by_action := {
+		CommandSchemaScript.ACTION_ATTACK: "command_attack",
+		CommandSchemaScript.ACTION_MOVE: "command_move_to_position",
+		CommandSchemaScript.ACTION_DODGE: "command_dodge_to_position",
+		CommandSchemaScript.ACTION_ROTATE: "command_move_to_position",
+		CommandSchemaScript.ACTION_INTERRUPT: "command_interrupt",
+		CommandSchemaScript.ACTION_HEAL: "command_heal_scope",
+		CommandSchemaScript.ACTION_CURE: "command_cure",
+		CommandSchemaScript.ACTION_TAUNT: "command_taunt"
+	}
+	var required_method := String(method_by_action.get(action, ""))
+
+	for unit_value in units:
+		if unit_value is Node and (unit_value as Node).has_method(required_method):
+			return true
+
+	return false
 
 
 static func _group_entries_by_section(entries: Array[Dictionary]) -> Array[Dictionary]:

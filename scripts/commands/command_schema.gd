@@ -6,6 +6,7 @@ const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_
 const ACTION_ATTACK := "attack"
 const ACTION_MOVE := "move"
 const ACTION_DODGE := "dodge"
+const ACTION_ROTATE := "rotate"
 const ACTION_INTERRUPT := "interrupt"
 const ACTION_HEAL := "heal"
 const ACTION_TAUNT := "taunt"
@@ -44,6 +45,7 @@ const ACTIONS: Array[String] = [
 	ACTION_ATTACK,
 	ACTION_MOVE,
 	ACTION_DODGE,
+	ACTION_ROTATE,
 	ACTION_INTERRUPT,
 	ACTION_HEAL,
 	ACTION_TAUNT,
@@ -107,6 +109,13 @@ static func validate(command_data: Dictionary) -> Dictionary:
 		ACTION_MOVE, ACTION_DODGE:
 			if not MOVEMENT_DESTINATIONS.has(destination):
 				return _failure("Unsupported movement destination: " + destination)
+
+		ACTION_ROTATE:
+			if destination not in [
+				DESTINATION_MOVEMENT_ROTATE,
+				DESTINATION_MOVEMENT_ROTATE_STEP
+			]:
+				return _failure("Unsupported rotation destination: " + destination)
 
 	var selector_result := _validate_selectors(command_data)
 
@@ -179,7 +188,7 @@ static func _validate_selectors(command_data: Dictionary) -> Dictionary:
 
 
 static func _validate_movement_details(command_data: Dictionary) -> Dictionary:
-	if String(command_data.get("what", "")) not in [ACTION_MOVE, ACTION_DODGE]:
+	if String(command_data.get("what", "")) not in [ACTION_MOVE, ACTION_DODGE, ACTION_ROTATE]:
 		return _success()
 
 	var destination := String(command_data.get("where", ""))

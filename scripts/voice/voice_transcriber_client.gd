@@ -56,7 +56,12 @@ func can_accept_transcription() -> bool:
 
 func get_active_model_path() -> String:
 	if use_settings_menu_model:
-		return GameState.get_selected_speech_to_text_model_path()
+		var game_state := get_node_or_null("/root/GameState")
+
+		if game_state != null and game_state.has_method(
+			"get_selected_speech_to_text_model_path"
+		):
+			return String(game_state.get_selected_speech_to_text_model_path())
 
 	return fallback_model_path
 
@@ -65,7 +70,18 @@ func get_active_cli_path() -> String:
 	if not whisper_cli_path_override.strip_edges().is_empty():
 		return whisper_cli_path_override
 
-	return GameState.get_whisper_cli_path()
+	var game_state := get_node_or_null("/root/GameState")
+
+	if game_state != null and game_state.has_method("get_whisper_cli_path"):
+		return String(game_state.get_whisper_cli_path())
+
+	match OS.get_name():
+		"Windows":
+			return "res://tools/whisper.cpp/build/bin/Release/whisper-cli.exe"
+		"macOS":
+			return "res://tools/whisper.cpp/build/bin/whisper-cli"
+		_:
+			return "res://tools/whisper.cpp/build/bin/whisper-cli"
 
 func transcribe_wav(wav_path: String) -> void:
 	if wav_path.is_empty():

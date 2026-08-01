@@ -59,7 +59,39 @@ func _init() -> void:
 		_fail("A capture meeting the minimum duration should remain valid.")
 		return
 
-	print("Voice capture padding and duration regression test passed.")
+	var focus_failures: Array[String] = []
+	controller.recording_failed.connect(func(reason: String) -> void:
+		focus_failures.append(reason)
+	)
+	controller.set("_is_recording", true)
+	controller.set("_capture_ready", true)
+	controller._handle_application_focus_lost()
+	controller._handle_application_focus_lost()
+
+	if focus_failures.size() != 1:
+		_fail("Repeated focus-loss notifications did not cancel recording idempotently.")
+		return
+
+	if bool(controller.get("_is_recording")) or bool(controller.get("_capture_ready")):
+		_fail("Voice capture remained active or ready after focus was lost.")
+		return
+
+	controller._handle_application_focus_regained()
+
+	if not bool(controller.get("_application_has_focus")) or not bool(
+		controller.get("_capture_rearm_pending")
+	):
+		_fail("Voice capture did not schedule a rearm when focus returned.")
+		return
+
+	controller._handle_application_focus_lost()
+
+	if bool(controller.get("_capture_rearm_pending")):
+		_fail("A second focus loss did not invalidate the pending capture rearm.")
+		return
+
+	controller.free()
+	print("Voice capture padding, duration, and focus regression test passed.")
 	quit(0)
 
 
