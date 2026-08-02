@@ -34,7 +34,7 @@ const FACING_TEXTURES := {
 var cast_range_units: float = 40.0
 
 var spell_damage: int = 18
-var spell_cooldown: float = 1.0
+var spell_cooldown: float = 0.0
 var spell_cast_time: float = 1.5
 @export var show_world_cast_bar: bool = false
 

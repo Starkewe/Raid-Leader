@@ -1177,6 +1177,40 @@ func begin_full_basic_attack_recovery() -> void:
 	attack_timer = get_effective_attack_cooldown()
 
 
+func estimate_scheduled_basic_attack_damage(
+	target: Node,
+	horizon_seconds: float
+) -> int:
+	if (
+		is_dead
+		or target == null
+		or target != get_current_target()
+		or horizon_seconds < 0.0
+	):
+		return 0
+
+	var time_to_next_swing := maxf(attack_timer, 0.0)
+
+	# Basic-attack timing pauses during boss casts, so include the remaining cast
+	# before projecting the next scheduled swing.
+	if is_casting:
+		time_to_next_swing += maxf(cast_timer, 0.0)
+
+	var effective_cooldown := maxf(get_effective_attack_cooldown(), 0.01)
+	var swing_count := 0
+	var scheduled_time := time_to_next_swing
+
+	while scheduled_time <= horizon_seconds + 0.0001:
+		swing_count += 1
+		scheduled_time += effective_cooldown
+
+	var damage_per_swing := maxi(
+		int(round(float(attack_damage) * get_attack_damage_multiplier())),
+		0
+	)
+	return swing_count * damage_per_swing
+
+
 func get_movement_stop_range_units() -> float:
 	if movement_stop_range_units < 0.0:
 		return attack_range_units

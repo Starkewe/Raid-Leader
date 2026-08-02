@@ -93,6 +93,10 @@ func _run() -> void:
 	boss.global_position = original_boss_position
 	boss.scale = original_boss_scale
 	await get_tree().process_frame
+	var party_members: Array = combat_manager.get("party_members")
+
+	if not await _validate_manual_reference_flow(command_bar, party_members):
+		return
 
 	command_bar.display_parsed_command(_old_result())
 	await get_tree().create_timer(0.22).timeout
@@ -118,7 +122,6 @@ func _run() -> void:
 		_fail("Completed parse callbacks did not reach the raid command bar.")
 		return
 
-	var party_members: Array = combat_manager.get("party_members")
 	var movement_was_issued := false
 
 	for member_value in party_members:
@@ -134,6 +137,105 @@ func _run() -> void:
 
 	print("Raid command bar combat integration test passed.")
 	get_tree().quit(0)
+
+
+func _validate_manual_reference_flow(
+	command_bar: RaidCommandBar,
+	party_members: Array
+) -> bool:
+	command_bar.open_reference_category("who")
+	var everyone_button := _find_reference_button(command_bar, "Everyone")
+
+	if everyone_button == null:
+		_fail("The combat command bar did not expose Everyone under Who.")
+		return false
+
+	everyone_button.pressed.emit()
+	await get_tree().create_timer(command_bar.ENTRANCE_DURATION_SECONDS + 0.06).timeout
+
+	var who_label := command_bar.get_node("TranscriptionLayer/WhoTranscription") as Label
+
+	if who_label.text != "Everyone" or String(command_bar.get("_open_category")) != "what":
+		_fail("The combat command bar did not animate Everyone and auto-open What.")
+		return false
+
+	var move_button := _find_reference_button(command_bar, "Move")
+
+	if move_button == null:
+		_fail("The Everyone selection did not expose Move in combat.")
+		return false
+
+	move_button.pressed.emit()
+	await get_tree().create_timer(command_bar.ENTRANCE_DURATION_SECONDS + 0.06).timeout
+
+	if String(command_bar.get("_open_category")) != "where":
+		_fail("The combat command bar did not auto-open Where after Move.")
+		return false
+
+	var west_close_button := _find_compact_range_button(command_bar, "West", "Close")
+
+	if west_close_button == null:
+		_fail("The Move destinations did not expose West - Close in combat.")
+		return false
+
+	west_close_button.pressed.emit()
+	await get_tree().create_timer(command_bar.ENTRANCE_DURATION_SECONDS + 0.06).timeout
+
+	var where_label := command_bar.get_node("TranscriptionLayer/WhereTranscription") as Label
+
+	if command_bar.is_open() or where_label.text != "West - Close":
+		_fail("The completed manual selection did not persist and close its browser.")
+		return false
+
+	for member_value in party_members:
+		var member := member_value as Node
+
+		if member != null and bool(member.get("has_manual_move_order")):
+			_fail("Browsing a manual command unexpectedly issued a combat order.")
+			return false
+
+	command_bar.notify_transcription_started()
+	await get_tree().create_timer(command_bar.FADE_DURATION_SECONDS + 0.06).timeout
+	return true
+
+
+func _find_reference_button(command_bar: RaidCommandBar, button_text: String) -> Button:
+	var entries := command_bar.get("_reference_entries") as VBoxContainer
+
+	for child in entries.find_children("*", "Button", true, false):
+		var button := child as Button
+
+		if button != null and button.text == button_text:
+			return button
+
+	return null
+
+
+func _find_compact_range_button(
+	command_bar: RaidCommandBar,
+	direction_text: String,
+	range_text: String
+) -> Button:
+	var entries := command_bar.get("_reference_entries") as VBoxContainer
+
+	for child in entries.get_children():
+		var row := child as HBoxContainer
+
+		if row == null or row.get_child_count() < 2:
+			continue
+
+		var direction := row.get_child(0) as Label
+
+		if direction == null or direction.text != direction_text + " -":
+			continue
+
+		for row_child in row.get_children():
+			var button := row_child as Button
+
+			if button != null and button.text == range_text:
+				return button
+
+	return null
 
 
 func _old_result() -> Dictionary:

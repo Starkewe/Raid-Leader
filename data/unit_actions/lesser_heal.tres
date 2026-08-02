@@ -4,9 +4,9 @@
 
 [resource]
 script = ExtResource("1_definition")
-action_id = "heal"
-display_name = "Heal"
+action_id = "lesser_heal"
+display_name = "Lesser Heal"
 range_units = 40.0
-amount = 18
+amount = 10
 cooldown = 0.0
-cast_time = 2.0
+cast_time = 1.5

@@ -549,6 +549,30 @@ func update_cast_bar() -> void:
 		and bool(unit.is_casting_ability())
 	)
 	cast_bar.visible = casting
+	var cast_details: Dictionary = {}
+
+	if casting and unit.has_method("get_active_cast_details"):
+		var details_value = unit.get_active_cast_details()
+
+		if details_value is Dictionary:
+			cast_details = Dictionary(details_value)
+
+	for detail_key in ["ability_id", "display_name", "amount", "cast_time"]:
+		if cast_details.has(detail_key):
+			cast_bar.set_meta(detail_key, cast_details[detail_key])
+		elif cast_bar.has_meta(detail_key):
+			cast_bar.remove_meta(detail_key)
+
+	cast_bar.tooltip_text = (
+		"%s — %d healing, %.1fs [%s]" % [
+			String(cast_details.get("display_name", "")),
+			int(cast_details.get("amount", 0)),
+			float(cast_details.get("cast_time", 0.0)),
+			String(cast_details.get("ability_id", ""))
+		]
+		if bool(cast_details.get("healing_spell", false))
+		else ""
+	)
 
 	if casting and unit.has_method("get_cast_progress_percent"):
 		cast_bar.value = float(unit.get_cast_progress_percent())

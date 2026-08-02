@@ -102,7 +102,7 @@ func _run() -> void:
 		_fail("The transcription fade duration is not exactly 0.25 seconds.")
 		return
 
-	if not _validate_reference_behavior(bar):
+	if not await _validate_reference_behavior(bar):
 		return
 
 	if not _validate_transcription_selection(bar):
@@ -260,35 +260,6 @@ func _validate_reference_behavior(bar: RaidCommandBar) -> bool:
 		_fail("What browsing was not locked until a Who target was selected.")
 		return false
 
-	var who_button := _find_reference_button(bar, "Everyone")
-
-	if who_button == null:
-		_fail("The Who reference did not contain Everyone.")
-		return false
-
-	who_button.pressed.emit()
-	bar.open_reference_category("what")
-
-	if String(bar.get("_open_category")) != "what":
-		_fail("What browsing did not unlock after selecting Who.")
-		return false
-
-	var move_button := _find_reference_button(bar, "Move")
-
-	if move_button == null:
-		_fail("The What reference did not contain Move.")
-		return false
-
-	move_button.pressed.emit()
-	bar.open_reference_category("where")
-
-	if String(bar.get("_open_category")) != "where":
-		_fail("Where browsing did not unlock after selecting What.")
-		return false
-
-	if not _validate_compact_movement_rows(bar):
-		return false
-
 	bar.open_reference_category("when")
 
 	if not when_overlay.visible or when_overlay.texture != bar.MUTED_OVERLAY:
@@ -312,11 +283,178 @@ func _validate_reference_behavior(bar: RaidCommandBar) -> bool:
 		_fail("Clicking outside the bar and reference panel did not close it.")
 		return false
 
-	bar.open_reference_category("what")
+	bar.open_reference_category("who")
 	bar.close_for_escape()
 
 	if bar.is_open():
 		_fail("Escape-modal close did not close the reference panel.")
+		return false
+
+	bar.open_reference_category("who")
+
+	var who_button := _find_reference_button(bar, "Everyone")
+
+	if who_button == null:
+		_fail("The Who reference did not contain Everyone.")
+		return false
+
+	var who_label := bar.get_node("TranscriptionLayer/WhoTranscription") as Label
+	var what_label := bar.get_node("TranscriptionLayer/WhatTranscription") as Label
+	var where_label := bar.get_node("TranscriptionLayer/WhereTranscription") as Label
+	var rest_positions: Dictionary = bar.get("_transcription_rest_y")
+	var who_rest_y := float(rest_positions.get("who", who_label.position.y))
+	who_button.pressed.emit()
+
+	if (
+		who_label.text != "Everyone"
+		or not who_label.visible
+		or not is_equal_approx(
+			who_label.position.y,
+			who_rest_y - bar.ENTRANCE_OFFSET_PIXELS
+		)
+	):
+		_fail("The selected Who word did not begin sliding into its command slot.")
+		return false
+
+	await create_timer(bar.ENTRANCE_DURATION_SECONDS + 0.06).timeout
+
+	if (
+		String(bar.get("_open_category")) != "what"
+		or who_label.text != "Everyone"
+		or not who_label.visible
+		or who_label.modulate.a < 0.99
+		or not is_equal_approx(who_label.position.y, who_rest_y)
+	):
+		_fail("Who selection did not persist and auto-advance to What.")
+		return false
+
+	var move_button := _find_reference_button(bar, "Move")
+
+	if move_button == null:
+		_fail("The What reference did not contain Move.")
+		return false
+
+	move_button.pressed.emit()
+
+	if what_label.text != "Move" or not what_label.visible:
+		_fail("The selected What word did not begin sliding into its command slot.")
+		return false
+
+	await create_timer(bar.ENTRANCE_DURATION_SECONDS + 0.06).timeout
+
+	if (
+		String(bar.get("_open_category")) != "where"
+		or what_label.text != "Move"
+		or not what_label.visible
+		or what_label.modulate.a < 0.99
+		or who_label.text != "Everyone"
+	):
+		_fail("What selection did not persist and auto-advance to Where.")
+		return false
+
+	if not _validate_compact_movement_rows(bar):
+		return false
+
+	var west_close_button := _find_compact_range_button(bar, "West", "Close")
+
+	if west_close_button == null:
+		_fail("The West compact row did not expose its Close selection.")
+		return false
+
+	west_close_button.pressed.emit()
+	await create_timer(bar.ENTRANCE_DURATION_SECONDS + 0.06).timeout
+
+	if (
+		bar.is_open()
+		or where_label.text != "West - Close"
+		or not where_label.visible
+		or not who_label.visible
+		or not what_label.visible
+	):
+		_fail("Where selection did not persist and close the completed browser.")
+		return false
+
+	await create_timer(
+		bar.HOLD_DURATION_SECONDS + bar.FADE_DURATION_SECONDS + 0.06
+	).timeout
+
+	if not who_label.visible or not what_label.visible or not where_label.visible:
+		_fail("Manual selections incorrectly used the temporary voice fade lifecycle.")
+		return false
+
+	bar.open_reference_category("who")
+	bar.close_for_escape()
+
+	if not who_label.visible or not what_label.visible or not where_label.visible:
+		_fail("Closing the browser cleared the persistent manual composition.")
+		return false
+
+	bar.open_reference_category("what")
+	var dodge_button := _find_reference_button(bar, "Dodge")
+
+	if dodge_button == null:
+		_fail("The selected Who target did not expose Dodge as a What option.")
+		return false
+
+	dodge_button.pressed.emit()
+
+	if where_label.visible or not where_label.text.is_empty():
+		_fail("Changing What did not immediately clear the stale Where selection.")
+		return false
+
+	await create_timer(bar.ENTRANCE_DURATION_SECONDS + 0.06).timeout
+
+	if String(bar.get("_open_category")) != "where" or what_label.text != "Dodge":
+		_fail("Changing What did not auto-advance to its replacement Where catalog.")
+		return false
+
+	bar.open_reference_category("who")
+	var mage_button := _find_reference_button(bar, "Class: Mage")
+
+	if mage_button == null:
+		_fail("The Who reference did not contain the Mage class target.")
+		return false
+
+	mage_button.pressed.emit()
+
+	if what_label.visible or where_label.visible:
+		_fail("Changing Who did not clear the downstream What and Where selections.")
+		return false
+
+	await create_timer(bar.ENTRANCE_DURATION_SECONDS + 0.06).timeout
+
+	if String(bar.get("_open_category")) != "what" or who_label.text != "Class: Mage":
+		_fail("Changing Who did not persist the replacement and reopen What.")
+		return false
+
+	move_button = _find_reference_button(bar, "Move")
+
+	if move_button == null:
+		_fail("The replacement Who selection did not expose Move.")
+		return false
+
+	move_button.pressed.emit()
+	bar.close_reference_panel()
+	await create_timer(bar.ENTRANCE_DURATION_SECONDS + 0.06).timeout
+
+	if bar.is_open():
+		_fail("A stale selection callback reopened the browser after it was closed.")
+		return false
+
+	bar.notify_transcription_started()
+	await create_timer(bar.FADE_DURATION_SECONDS + 0.06).timeout
+
+	var browse_context: Dictionary = bar.get("_browse_context")
+
+	if (
+		bar.is_open()
+		or who_label.visible
+		or not who_label.text.is_empty()
+		or not Dictionary(browse_context.get("who_metadata", {})).is_empty()
+		or not String(browse_context.get("what", "")).is_empty()
+		or not Dictionary(browse_context.get("where_metadata", {})).is_empty()
+	):
+		_fail("Starting transcription did not clear the manual composition.")
 		return false
 
 	if bar.has_signal("command_submitted"):
@@ -334,6 +472,33 @@ func _find_reference_button(bar: RaidCommandBar, button_text: String) -> Button:
 
 		if button != null and button.text == button_text:
 			return button
+
+	return null
+
+
+func _find_compact_range_button(
+	bar: RaidCommandBar,
+	direction_text: String,
+	range_text: String
+) -> Button:
+	var entries := bar.get("_reference_entries") as VBoxContainer
+
+	for child in entries.get_children():
+		var row := child as HBoxContainer
+
+		if row == null or row.get_child_count() < 2:
+			continue
+
+		var direction := row.get_child(0) as Label
+
+		if direction == null or direction.text != direction_text + " -":
+			continue
+
+		for row_child in row.get_children():
+			var button := row_child as Button
+
+			if button != null and button.text == range_text:
+				return button
 
 	return null
 

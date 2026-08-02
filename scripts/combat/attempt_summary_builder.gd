@@ -23,6 +23,7 @@ static func build(
 	var last_damage_by_target: Dictionary = {}
 	var successful_interrupts: Array[Dictionary] = []
 	var exceptional_heals: Array[Dictionary] = []
+	var healing_casts: Array[Dictionary] = []
 	var mechanic_outcomes: Array[Dictionary] = []
 	var grouped_mechanic_failures: Dictionary = {}
 
@@ -83,8 +84,27 @@ static func build(
 				}
 			)
 
-		if event_type in ["cast_started", "cast_resolved"] and not ability_id.is_empty():
+		if (
+			event_type in ["cast_started", "cast_resolved"]
+			and not ability_id.is_empty()
+			and not bool(metadata.get("healing_spell", false))
+		):
 			_append_unique(ability_ids, ability_id)
+
+		if event_type == "cast_started" and bool(metadata.get("healing_spell", false)):
+			healing_casts.append(
+				{
+					"healer_id": source_id,
+					"target_id": target_id,
+					"ability_id": ability_id,
+					"display_name": String(
+						metadata.get("display_name", metadata.get("cast_name", ability_id))
+					),
+					"amount": int(metadata.get("healing_amount", amount)),
+					"cast_time": float(metadata.get("cast_time", 0.0)),
+					"time": float(event.get("encounter_time_seconds", 0.0)),
+				}
+			)
 
 		if event_type == "phase_changed":
 			_append_unique(phase_ids, ability_id)
@@ -157,6 +177,10 @@ static func build(
 				"cast_interrupted",
 				"boss_defeated"
 			]
+			and not (
+				event_type == "cast_started"
+				and bool(metadata.get("healing_spell", false))
+			)
 		):
 			timeline.append(_timeline_entry(event))
 
@@ -197,6 +221,7 @@ static func build(
 		"healing_by_source": healing_by_source,
 		"successful_interrupts": successful_interrupts,
 		"exceptional_heals": exceptional_heals,
+		"healing_casts": healing_casts,
 		"mechanic_outcomes": mechanic_outcomes,
 		"timeline": timeline,
 		"event_count": events.size()
@@ -210,8 +235,10 @@ static func _timeline_entry(event: Dictionary) -> Dictionary:
 		"time": snappedf(float(event.get("encounter_time_seconds", 0.0)), 0.1),
 		"type": String(event.get("type", "")),
 		"ability_id": String(event.get("ability_id", "")),
+		"amount": int(event.get("amount", 0)),
 		"target_name": String(target.get("name", "")),
-		"display_name": String(metadata.get("display_name", ""))
+		"display_name": String(metadata.get("display_name", "")),
+		"cast_time": float(metadata.get("cast_time", 0.0))
 	}
 
 

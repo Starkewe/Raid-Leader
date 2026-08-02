@@ -80,6 +80,82 @@ func get_active_tanks() -> Array:
 	return active_tanks
 
 
+func is_active_tank(target: Node) -> bool:
+	return target != null and get_active_tanks().has(target)
+
+
+func get_projected_tank_damage(
+	target: Node,
+	horizon_seconds: float,
+	fallback_damage_per_second: float
+) -> int:
+	var horizon := maxf(horizon_seconds, 0.0)
+	var fallback_damage := maxi(
+		int(round(maxf(fallback_damage_per_second, 0.0) * horizon)),
+		0
+	)
+	var projected_damage := 0
+	var found_targeting_source := false
+
+	for enemy in _get_current_enemy_threat_sources():
+		if (
+			not is_valid_node(enemy)
+			or not enemy.has_method("get_current_target")
+			or enemy.get_current_target() != target
+		):
+			continue
+
+		found_targeting_source = true
+
+		if enemy.has_method("estimate_scheduled_basic_attack_damage"):
+			projected_damage += maxi(
+				int(enemy.estimate_scheduled_basic_attack_damage(target, horizon)),
+				0
+			)
+		else:
+			projected_damage += fallback_damage
+
+	if not found_targeting_source:
+		return fallback_damage
+
+	return projected_damage
+
+
+func get_raid_pressure_multiplier() -> float:
+	var pressure_multiplier := 0.0
+	var found_source := false
+
+	for enemy in _get_current_enemy_threat_sources():
+		if not is_valid_node(enemy):
+			continue
+
+		found_source = true
+
+		var damage_multiplier := (
+			float(enemy.get_ability_damage_multiplier())
+			if enemy.has_method("get_ability_damage_multiplier")
+			else 1.0
+		)
+		var speed_multiplier := (
+			float(enemy.get_ability_speed_multiplier())
+			if enemy.has_method("get_ability_speed_multiplier")
+			else 1.0
+		)
+		var cooldown_multiplier := (
+			float(enemy.get_ability_cooldown_multiplier())
+			if enemy.has_method("get_ability_cooldown_multiplier")
+			else 1.0
+		)
+		var source_pressure := (
+			maxf(damage_multiplier, 0.0)
+			* maxf(speed_multiplier, 0.01)
+			/ maxf(cooldown_multiplier, 0.01)
+		)
+		pressure_multiplier = maxf(pressure_multiplier, source_pressure)
+
+	return pressure_multiplier if found_source else 1.0
+
+
 func _get_current_enemy_threat_sources() -> Array:
 	var current_sources := enemy_threat_sources.duplicate()
 
