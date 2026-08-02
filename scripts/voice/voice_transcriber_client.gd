@@ -16,15 +16,46 @@ signal transcription_failed(reason: String)
 var _is_transcribing: bool = false
 var _pending_transcriptions: Array[Dictionary] = []
 var _active_wav_path: String = ""
-var _active_queued_at_msec: int = 0
+var _gameplay_clock_seconds: float = 0.0
+var _active_queued_at_gameplay_seconds: float = 0.0
 var _active_process_started_at_msec: int = 0
 var _active_process_id: int = 0
 var _active_output_txt_path: String = ""
+var _active_paused_processing_seconds: float = 0.0
+var _held_completion: Dictionary = {}
+var _held_delivery_remaining_seconds: float = 0.0
 
 
-func _process(_delta: float) -> void:
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+
+func _process(delta: float) -> void:
+	var frame_seconds := maxf(delta, 0.0)
+	var tree_is_paused := _is_scene_tree_paused()
+
+	if not tree_is_paused:
+		_gameplay_clock_seconds += frame_seconds
+
+	if not _held_completion.is_empty():
+		if tree_is_paused:
+			return
+
+		_held_delivery_remaining_seconds = maxf(
+			_held_delivery_remaining_seconds - frame_seconds,
+			0.0
+		)
+
+		if _held_delivery_remaining_seconds <= 0.0:
+			_deliver_held_completion()
+
+		return
+
 	if _active_process_id <= 0:
 		return
+
+	if tree_is_paused:
+		_active_paused_processing_seconds += frame_seconds
 
 	if OS.is_process_running(_active_process_id):
 		var process_age := float(
@@ -33,7 +64,12 @@ func _process(_delta: float) -> void:
 
 		if transcription_process_timeout_seconds > 0.0 and process_age > transcription_process_timeout_seconds:
 			OS.kill(_active_process_id)
-			_finish_transcription(-1, "", "Whisper process timed out.")
+			_complete_or_hold_transcription(
+				-1,
+				"",
+				"Whisper process timed out.",
+				tree_is_paused
+			)
 
 		return
 
@@ -43,7 +79,12 @@ func _process(_delta: float) -> void:
 		transcript = _read_text_file(_active_output_txt_path)
 
 	var result_code := 0 if not transcript.strip_edges().is_empty() else 1
-	_finish_transcription(result_code, transcript, "Whisper did not create a transcript file.")
+	_complete_or_hold_transcription(
+		result_code,
+		transcript,
+		"Whisper did not create a transcript file.",
+		tree_is_paused
+	)
 
 
 func is_busy() -> bool:
@@ -112,7 +153,7 @@ func transcribe_wav(wav_path: String) -> void:
 
 	_pending_transcriptions.append({
 		"wav_path": queued_wav_path,
-		"queued_at_msec": Time.get_ticks_msec()
+		"queued_at_gameplay_seconds": _gameplay_clock_seconds
 	})
 
 	print("Queued voice transcription:", queued_wav_path, "Queue size:", _pending_transcriptions.size())
@@ -129,7 +170,9 @@ func _start_next_transcription_if_needed() -> void:
 
 	var next_request: Dictionary = _pending_transcriptions.pop_front()
 	var next_wav_path := String(next_request.get("wav_path", ""))
-	var queued_at_msec := int(next_request.get("queued_at_msec", 0))
+	var queued_at_gameplay_seconds := float(
+		next_request.get("queued_at_gameplay_seconds", _gameplay_clock_seconds)
+	)
 
 	if not FileAccess.file_exists(next_wav_path):
 		transcription_failed.emit("Queued WAV file does not exist: %s" % next_wav_path)
@@ -160,9 +203,12 @@ func _start_next_transcription_if_needed() -> void:
 
 	_is_transcribing = true
 	_active_wav_path = next_wav_path
-	_active_queued_at_msec = queued_at_msec
+	_active_queued_at_gameplay_seconds = queued_at_gameplay_seconds
 	_active_process_started_at_msec = Time.get_ticks_msec()
 	_active_process_id = process_id
+	_active_paused_processing_seconds = 0.0
+	_held_completion.clear()
+	_held_delivery_remaining_seconds = 0.0
 func _copy_wav_to_queue_file(wav_path: String) -> String:
 	var global_source_path := _globalize_if_needed(wav_path)
 
@@ -231,12 +277,18 @@ func _start_whisper_process(
 
 func _finish_transcription(exit_code: int, transcript: String, raw_output: String) -> void:
 	var finished_wav_path := _active_wav_path
-	var active_age_seconds := float(Time.get_ticks_msec() - _active_queued_at_msec) / 1000.0
+	var active_age_seconds := maxf(
+		_gameplay_clock_seconds - _active_queued_at_gameplay_seconds,
+		0.0
+	)
 
 	_active_wav_path = ""
-	_active_queued_at_msec = 0
+	_active_queued_at_gameplay_seconds = 0.0
 	_active_process_started_at_msec = 0
 	_active_process_id = 0
+	_active_paused_processing_seconds = 0.0
+	_held_completion.clear()
+	_held_delivery_remaining_seconds = 0.0
 	_is_transcribing = false
 
 	_delete_file_if_exists(finished_wav_path)
@@ -264,6 +316,41 @@ func _finish_transcription(exit_code: int, transcript: String, raw_output: Strin
 	transcript_received.emit(text)
 
 	_start_next_transcription_if_needed()
+
+
+func _complete_or_hold_transcription(
+	exit_code: int,
+	transcript: String,
+	raw_output: String,
+	tree_is_paused: bool
+) -> void:
+	var delivery_delay := _active_paused_processing_seconds if exit_code == 0 else 0.0
+
+	if tree_is_paused or delivery_delay > 0.0:
+		_active_process_id = 0
+		_held_completion = {
+			"exit_code": exit_code,
+			"transcript": transcript,
+			"raw_output": raw_output
+		}
+		_held_delivery_remaining_seconds = delivery_delay
+		return
+
+	_finish_transcription(exit_code, transcript, raw_output)
+
+
+func _deliver_held_completion() -> void:
+	if _held_completion.is_empty():
+		return
+
+	var completion := _held_completion.duplicate()
+	_held_completion.clear()
+	_held_delivery_remaining_seconds = 0.0
+	_finish_transcription(
+		int(completion.get("exit_code", 1)),
+		String(completion.get("transcript", "")),
+		String(completion.get("raw_output", ""))
+	)
 
 func _read_text_file(path: String) -> String:
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -297,11 +384,16 @@ func _prune_stale_transcriptions() -> void:
 	if transcription_ttl_seconds <= 0.0:
 		return
 
-	var now_msec := Time.get_ticks_msec()
 	var fresh_requests: Array[Dictionary] = []
 
 	for request in _pending_transcriptions:
-		var age_seconds := float(now_msec - int(request.get("queued_at_msec", 0))) / 1000.0
+		var queued_at_gameplay_seconds := float(
+			request.get("queued_at_gameplay_seconds", _gameplay_clock_seconds)
+		)
+		var age_seconds := maxf(
+			_gameplay_clock_seconds - queued_at_gameplay_seconds,
+			0.0
+		)
 
 		if age_seconds > transcription_ttl_seconds:
 			_delete_file_if_exists(String(request.get("wav_path", "")))
@@ -311,11 +403,19 @@ func _prune_stale_transcriptions() -> void:
 
 	_pending_transcriptions = fresh_requests
 
+
+func _is_scene_tree_paused() -> bool:
+	var tree := get_tree()
+	return tree != null and tree.paused
+
 func _exit_tree() -> void:
 	if _active_process_id > 0 and OS.is_process_running(_active_process_id):
 		OS.kill(_active_process_id)
 
 	_active_process_id = 0
+	_held_completion.clear()
+	_held_delivery_remaining_seconds = 0.0
+	_active_paused_processing_seconds = 0.0
 
 	_delete_file_if_exists(_active_wav_path)
 	_delete_file_if_exists(_active_output_txt_path)
