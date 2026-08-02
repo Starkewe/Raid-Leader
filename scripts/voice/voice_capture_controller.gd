@@ -34,6 +34,7 @@ var _capture_ready: bool = false
 var _capture_rearm_pending: bool = false
 var _capture_rearm_generation: int = 0
 var _application_has_focus: bool = true
+var _tree_was_paused: bool = false
 var _last_rearm_reason: String = ""
 var _capture_pushed_frames_at_start: int = 0
 var _capture_discarded_frames_at_start: int = 0
@@ -45,6 +46,7 @@ var _capture_discarded_frames_at_start: int = 0
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	ensure_voice_input_action()
+	_tree_was_paused = _is_scene_tree_paused()
 
 	if _mic_player == null:
 		recording_failed.emit("VoiceCaptureController is missing a valid AudioStreamPlayer.")
@@ -73,7 +75,8 @@ func _ready() -> void:
 	print("Voice capture bus index: ", AudioServer.get_bus_index(capture_bus_name))
 	print("Voice capture bus effect count: ", AudioServer.get_bus_effect_count(AudioServer.get_bus_index(capture_bus_name)))
 
-	_schedule_capture_rearm("combat scene initialized")
+	if not _tree_was_paused:
+		_schedule_capture_rearm("combat scene initialized")
 
 
 func _notification(what: int) -> void:
@@ -119,6 +122,11 @@ func _handle_application_focus_regained() -> void:
 
 
 func _process(_delta: float) -> void:
+	_update_tree_pause_state()
+
+	if _tree_was_paused:
+		return
+
 	if _capture_effect == null:
 		return
 
@@ -142,14 +150,24 @@ func _process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if get_tree() == null or get_tree().paused:
+	var tree := get_tree()
+
+	if tree == null:
+		return
+
+	if event.is_action_released(push_to_talk_action):
+		if tree.paused:
+			_cancel_active_recording_for_pause()
+			return
+
+		stop_recording_and_transcribe()
+		return
+
+	if tree.paused:
 		return
 
 	if event.is_action_pressed(push_to_talk_action):
 		start_recording()
-
-	if event.is_action_released(push_to_talk_action):
-		stop_recording_and_transcribe()
 
 
 func ensure_voice_input_action() -> void:
@@ -164,6 +182,10 @@ func ensure_voice_input_action() -> void:
 
 
 func start_recording() -> void:
+	if _is_scene_tree_paused():
+		recording_failed.emit("Voice input is unavailable while the raid menu is open.")
+		return
+
 	if _capture_effect == null:
 		recording_failed.emit("Missing capture effect.")
 		return
@@ -338,7 +360,11 @@ func _print_capture_counters() -> void:
 
 
 func _schedule_capture_rearm(reason: String) -> void:
-	if _capture_rearm_pending or not _application_has_focus:
+	if (
+		_capture_rearm_pending
+		or not _application_has_focus
+		or _is_scene_tree_paused()
+	):
 		return
 
 	_capture_ready = false
@@ -379,6 +405,7 @@ func _rearm_capture(reason: String, generation: int) -> void:
 			not is_inside_tree()
 			or generation != _capture_rearm_generation
 			or not _application_has_focus
+			or _is_scene_tree_paused()
 		):
 			return
 
@@ -391,6 +418,7 @@ func _rearm_capture(reason: String, generation: int) -> void:
 		not is_inside_tree()
 		or generation != _capture_rearm_generation
 		or not _application_has_focus
+		or _is_scene_tree_paused()
 	):
 		return
 
@@ -410,6 +438,57 @@ func _reset_recording_state() -> void:
 	_stop_requested = false
 	_record_started_at_msec = 0
 	_recorded_frames.clear()
+
+
+func _update_tree_pause_state() -> void:
+	var tree_is_paused := _is_scene_tree_paused()
+
+	if tree_is_paused == _tree_was_paused:
+		return
+
+	_tree_was_paused = tree_is_paused
+
+	if tree_is_paused:
+		_handle_tree_pause_started()
+	else:
+		_handle_tree_pause_ended()
+
+
+func _handle_tree_pause_started() -> void:
+	_capture_rearm_generation += 1
+	_capture_rearm_pending = false
+	_capture_ready = false
+
+	# A release that happened before Escape commits the recording. If V is still
+	# held, opening the menu cancels the unfinished input instead.
+	if _is_recording and _stop_requested:
+		_finish_recording_and_transcribe()
+	else:
+		_cancel_active_recording_for_pause()
+
+	if _mic_player != null and is_instance_valid(_mic_player) and _mic_player.playing:
+		_mic_player.stop()
+
+	if _capture_effect != null:
+		_capture_effect.clear_buffer()
+		_discard_capture_buffer()
+
+
+func _handle_tree_pause_ended() -> void:
+	_schedule_capture_rearm("raid menu closed")
+
+
+func _cancel_active_recording_for_pause() -> void:
+	if not _is_recording:
+		return
+
+	_reset_recording_state()
+	recording_failed.emit("Voice input was cancelled when the raid menu opened.")
+
+
+func _is_scene_tree_paused() -> bool:
+	var tree := get_tree()
+	return tree != null and tree.paused
 
 
 func _exit_tree() -> void:
