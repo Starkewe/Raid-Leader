@@ -370,7 +370,13 @@ static func _get_compact_movement_rows(section: String) -> Array[Dictionary]:
 					"movement_region": region,
 					"movement_range": range_name
 				},
-				section
+				section,
+				{
+					"selection_label": "%s - %s" % [
+						region.capitalize(),
+						range_name.capitalize()
+					]
+				}
 			))
 
 		entries.append(_entry(

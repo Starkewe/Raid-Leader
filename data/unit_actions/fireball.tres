@@ -8,5 +8,5 @@ action_id = "fireball"
 display_name = "Fireball"
 range_units = 40.0
 amount = 18
-cooldown = 1.0
+cooldown = 0.0
 cast_time = 1.5

@@ -34,16 +34,27 @@ const FACING_TEXTURE_PATHS := {
 const HealingTargetSelectorScript := preload(
 	"res://scripts/combat/healing_target_selector.gd"
 )
+const HealingSpellSelectorScript := preload(
+	"res://scripts/combat/healing_spell_selector.gd"
+)
+const DEFAULT_HEALING_POLICY := preload(
+	"res://data/healing/healing_decision_policy.tres"
+)
+const LESSER_HEAL_ABILITY_ID := "lesser_heal"
+const HEAL_ABILITY_ID := "heal"
+const GREATER_HEAL_ABILITY_ID := "greater_heal"
+const CURE_ABILITY_ID := "cure"
 
 var cast_range_units: float = 40.0
 
-var heal_amount: int = 15
-var heal_cooldown: float = 1.0
-var heal_cast_time: float = 1.5
+var heal_amount: int = 18
+var heal_cooldown: float = 0.0
+var heal_cast_time: float = 2.0
 var cure_range_units: float = 40.0
 var cure_cooldown: float = 0.5
 var cure_cast_time: float = 1.0
 @export var show_world_cast_bar: bool = false
+@export var healing_policy: HealingDecisionPolicy = DEFAULT_HEALING_POLICY
 
 @onready var combat_sprite: Sprite2D = get_node_or_null("Sprite2D") as Sprite2D
 @onready var cast_bar = get_node_or_null("CastBar")
@@ -53,7 +64,10 @@ var cure_target: Node2D = null
 var combat_facing_target: Node2D = null
 var healing_scope: Dictionary = {}
 var healing_target_selector = null
+var healing_spell_selector = null
 var heal_target_is_fallback: bool = false
+var configured_healing_actions: Dictionary = {}
+var active_heal_action: UnitActionDefinition = null
 
 var cooldown_timer: float = 0.0
 var cure_cooldown_timer: float = 0.0
@@ -63,9 +77,9 @@ var active_cast_kind: String = ""
 var pending_heal_id: String = ""
 var pending_heal_target: Node = null
 var heal_cast_sequence: int = 0
-var heal_ability_id: String = "heal"
+var heal_ability_id: String = HEAL_ABILITY_ID
 var heal_display_name: String = "Heal"
-var cure_ability_id: String = "cure"
+var cure_ability_id: String = CURE_ABILITY_ID
 var cure_display_name: String = "Cure"
 var facing_textures: Dictionary = {}
 var current_facing_direction: int = FacingDirection.SOUTH
@@ -79,15 +93,23 @@ func configure_from_definition(definition: UnitDefinition) -> void:
 	if definition == null:
 		return
 
-	var action := definition.get_action(heal_ability_id)
-	var cure_action := definition.get_action(cure_ability_id)
+	configured_healing_actions.clear()
+
+	for action_id in [
+		LESSER_HEAL_ABILITY_ID,
+		HEAL_ABILITY_ID,
+		GREATER_HEAL_ABILITY_ID
+	]:
+		var configured_action := definition.get_action(action_id)
+
+		if configured_action != null:
+			configured_healing_actions[action_id] = configured_action
+
+	var action := definition.get_action(HEAL_ABILITY_ID)
+	var cure_action := definition.get_action(CURE_ABILITY_ID)
 
 	if action != null:
-		heal_display_name = action.display_name
-		cast_range_units = action.range_units
-		heal_amount = action.amount
-		heal_cooldown = action.cooldown
-		heal_cast_time = action.cast_time
+		_apply_heal_action(action)
 
 	if cure_action != null:
 		cure_display_name = cure_action.display_name
@@ -96,8 +118,61 @@ func configure_from_definition(definition: UnitDefinition) -> void:
 		cure_cast_time = cure_action.cast_time
 
 
+func _ensure_healing_spell_selector() -> void:
+	if healing_spell_selector == null:
+		healing_spell_selector = HealingSpellSelectorScript.new()
+
+	healing_spell_selector.setup(healing_policy)
+
+	if active_heal_action == null:
+		var normal_heal := _get_configured_healing_action(HEAL_ABILITY_ID)
+
+		if normal_heal == null:
+			normal_heal = healing_spell_selector.get_action(HEAL_ABILITY_ID)
+
+		_apply_heal_action(normal_heal)
+
+
+func _get_configured_healing_action(action_id: String) -> UnitActionDefinition:
+	var configured_action = configured_healing_actions.get(action_id, null)
+	return (
+		configured_action as UnitActionDefinition
+		if configured_action is UnitActionDefinition
+		else null
+	)
+
+
+func _select_heal_action(target: Node) -> UnitActionDefinition:
+	_ensure_healing_spell_selector()
+	var policy_action: UnitActionDefinition = healing_spell_selector.select_spell(
+		target,
+		self,
+		healing_target_selector
+	)
+
+	if policy_action == null:
+		return null
+
+	var configured_action := _get_configured_healing_action(policy_action.action_id)
+	return configured_action if configured_action != null else policy_action
+
+
+func _apply_heal_action(action: UnitActionDefinition) -> void:
+	if action == null:
+		return
+
+	active_heal_action = action
+	heal_ability_id = action.action_id
+	heal_display_name = action.display_name
+	cast_range_units = action.range_units
+	heal_amount = action.amount
+	heal_cooldown = action.cooldown
+	heal_cast_time = action.cast_time
+
+
 func _ready():
 	super._ready()
+	_ensure_healing_spell_selector()
 	_load_facing_textures()
 	_set_facing_direction(FacingDirection.SOUTH)
 	update_cast_bar()
@@ -460,10 +535,18 @@ func try_start_cast():
 		heal_target_is_fallback = false
 		return
 
+	var selected_action := _select_heal_action(heal_target)
+
+	if selected_action == null:
+		return
+
+	_apply_heal_action(selected_action)
+
 	is_casting = true
 	active_cast_kind = "heal"
 	cast_timer = heal_cast_time
 	register_pending_heal_prediction()
+	_emit_heal_cast_event("cast_started", heal_target)
 
 	update_cast_bar()
 
@@ -510,7 +593,16 @@ func finish_cast():
 		active_cast_kind = ""
 		return
 
-	completed_target.receive_heal(heal_amount, self, heal_ability_id)
+	_emit_heal_cast_event("cast_resolved", completed_target)
+	if _method_supports_argument_count(completed_target, "receive_heal", 4):
+		completed_target.receive_heal(
+			heal_amount,
+			self,
+			heal_ability_id,
+			_get_heal_cast_metadata(completed_target)
+		)
+	else:
+		completed_target.receive_heal(heal_amount, self, heal_ability_id)
 	heal_target = null
 	heal_target_is_fallback = false
 	active_cast_kind = ""
@@ -554,13 +646,23 @@ func cancel_current_cast():
 		clear_pending_heal_prediction()
 		return
 
+	var cancelled_kind := active_cast_kind
+	var cancelled_target := pending_heal_target
 	is_casting = false
 	cast_timer = 0.0
 	clear_pending_heal_prediction()
 
 	update_cast_bar()
 
-	var cancelled_name := cure_display_name if active_cast_kind == "cure" else heal_display_name
+	var cancelled_name := cure_display_name if cancelled_kind == "cure" else heal_display_name
+
+	if cancelled_kind == "heal":
+		_emit_heal_cast_event(
+			"cast_cancelled",
+			cancelled_target,
+			{"reason": "cancelled"}
+		)
+
 	active_cast_kind = ""
 	print(get_display_name(), "cancels ", cancelled_name)
 
@@ -614,8 +716,23 @@ func register_pending_heal_prediction() -> void:
 		pending_heal_target.register_pending_heal(
 			pending_heal_id,
 			self,
-			heal_amount
+			heal_amount,
+			cast_timer,
+			heal_ability_id,
+			heal_display_name,
+			heal_cast_time
 		)
+
+
+func get_pending_heal_landing_time_seconds(reservation_id: String) -> float:
+	if (
+		reservation_id != pending_heal_id
+		or active_cast_kind != "heal"
+		or not is_casting
+	):
+		return -1.0
+
+	return maxf(cast_timer, 0.0)
 
 
 func clear_pending_heal_prediction() -> void:
@@ -631,9 +748,88 @@ func clear_pending_heal_prediction() -> void:
 	pending_heal_target = null
 
 
+func _get_heal_cast_metadata(target: Node) -> Dictionary:
+	return {
+		"healing_spell": true,
+		"display_name": heal_display_name,
+		"cast_name": heal_display_name,
+		"amount": heal_amount,
+		"healing_amount": heal_amount,
+		"cast_time": heal_cast_time,
+		"heal_target": target
+	}
+
+
+func _emit_heal_cast_event(
+	event_type: String,
+	target: Node,
+	extra_metadata: Dictionary = {}
+) -> void:
+	var metadata := _get_heal_cast_metadata(target)
+
+	for key in extra_metadata:
+		metadata[key] = extra_metadata[key]
+
+	if (
+		target != null
+		and is_instance_valid(target)
+		and target.has_method("emit_combat_event")
+	):
+		target.emit_combat_event(
+			event_type,
+			self,
+			heal_ability_id,
+			heal_amount,
+			metadata
+		)
+		return
+
+	emit_combat_event(
+		event_type,
+		self,
+		heal_ability_id,
+		heal_amount,
+		metadata
+	)
+
+
+func _method_supports_argument_count(
+	target: Object,
+	method_name: String,
+	argument_count: int
+) -> bool:
+	for method_data in target.get_method_list():
+		if String(method_data.get("name", "")) != method_name:
+			continue
+
+		var arguments: Array = method_data.get("args", [])
+		return arguments.size() >= argument_count
+
+	return false
+
+
 func update_cast_bar():
 	if cast_bar == null:
 		return
+
+	var cast_details := get_active_cast_details()
+
+	for detail_key in ["ability_id", "display_name", "amount", "cast_time"]:
+		if cast_details.has(detail_key):
+			cast_bar.set_meta(detail_key, cast_details[detail_key])
+		elif cast_bar.has_meta(detail_key):
+			cast_bar.remove_meta(detail_key)
+
+	cast_bar.tooltip_text = (
+		"%s — %d healing, %.1fs [%s]" % [
+			String(cast_details.get("display_name", "")),
+			int(cast_details.get("amount", 0)),
+			float(cast_details.get("cast_time", 0.0)),
+			String(cast_details.get("ability_id", ""))
+		]
+		if not cast_details.is_empty()
+		else ""
+	)
 
 	if not show_world_cast_bar:
 		cast_bar.visible = false
@@ -653,6 +849,27 @@ func update_cast_bar():
 
 func is_casting_ability() -> bool:
 	return is_casting
+
+
+func get_active_cast_details() -> Dictionary:
+	if not is_casting:
+		return {}
+
+	if active_cast_kind == "cure":
+		return {
+			"ability_id": cure_ability_id,
+			"display_name": cure_display_name,
+			"amount": 0,
+			"cast_time": cure_cast_time
+		}
+
+	return {
+		"ability_id": heal_ability_id,
+		"display_name": heal_display_name,
+		"amount": heal_amount,
+		"cast_time": heal_cast_time,
+		"healing_spell": true
+	}
 
 
 func get_cast_progress_percent() -> float:

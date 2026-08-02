@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="HealingDecisionPolicy" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/healing_decision_policy.gd" id="1_policy"]
+[ext_resource type="Resource" path="res://data/unit_actions/lesser_heal.tres" id="2_lesser"]
+[ext_resource type="Resource" path="res://data/unit_actions/heal.tres" id="3_heal"]
+[ext_resource type="Resource" path="res://data/unit_actions/greater_heal.tres" id="4_greater"]
+[ext_resource type="Script" path="res://scripts/data/unit_action_definition.gd" id="5_action_type"]
+
+[resource]
+script = ExtResource("1_policy")
+decision_horizon_seconds = 2.0
+required_deficit_coverage = 0.7
+tank_emergency_health_percent = 0.45
+raid_emergency_health_percent = 0.3
+fallback_tank_damage_per_second = 10.0
+baseline_raid_damage_per_second = 2.0
+healing_tiers = Array[ExtResource("5_action_type")]([ExtResource("2_lesser"), ExtResource("3_heal"), ExtResource("4_greater")])

@@ -1093,15 +1093,31 @@ func get_max_health() -> int:
 func register_pending_heal(
 	pending_id: String,
 	source: Node,
-	amount: int
+	amount: int,
+	landing_time_seconds: float = -1.0,
+	ability_id: String = "",
+	display_name: String = "",
+	cast_time: float = 0.0
 ) -> void:
 	if pending_id.is_empty() or amount <= 0 or is_dead:
 		return
 
-	pending_heals[pending_id] = {
+	var pending_data := {
 		"source": source,
-		"amount": amount
+		"amount": amount,
+		"ability_id": ability_id,
+		"display_name": display_name,
+		"cast_time": maxf(cast_time, 0.0),
+		"landing_time_seconds": landing_time_seconds
 	}
+
+	if landing_time_seconds >= 0.0:
+		pending_data["lands_at_ticks_msec"] = (
+			Time.get_ticks_msec()
+			+ ceili(landing_time_seconds * 1000.0)
+		)
+
+	pending_heals[pending_id] = pending_data
 
 
 func remove_pending_heal(pending_id: String) -> void:
@@ -1115,7 +1131,10 @@ func clear_pending_heals() -> void:
 	pending_heals.clear()
 
 
-func get_incoming_healing_total(excluded_source: Node = null) -> int:
+func get_incoming_healing_total(
+	excluded_source: Node = null,
+	landing_time_horizon_seconds: float = -1.0
+) -> int:
 	var invalid_pending_ids: Array[String] = []
 	var total := 0
 
@@ -1135,12 +1154,51 @@ func get_incoming_healing_total(excluded_source: Node = null) -> int:
 		if source == excluded_source:
 			continue
 
+		if landing_time_horizon_seconds >= 0.0:
+			var landing_time := _get_pending_heal_landing_time_seconds(
+				pending_id,
+				pending_data,
+				source
+			)
+
+			if (
+				landing_time >= 0.0
+				and landing_time > landing_time_horizon_seconds + 0.0001
+			):
+				continue
+
 		total += maxi(int(pending_data.get("amount", 0)), 0)
 
 	for pending_id in invalid_pending_ids:
 		pending_heals.erase(pending_id)
 
 	return mini(total, maxi(max_health - health, 0))
+
+
+func get_pending_heal_reservations() -> Dictionary:
+	return pending_heals.duplicate(true)
+
+
+func _get_pending_heal_landing_time_seconds(
+	pending_id: String,
+	pending_data: Dictionary,
+	source: Node
+) -> float:
+	if source.has_method("get_pending_heal_landing_time_seconds"):
+		var source_landing_time := float(
+			source.get_pending_heal_landing_time_seconds(pending_id)
+		)
+
+		if source_landing_time >= 0.0:
+			return source_landing_time
+
+	if pending_data.has("lands_at_ticks_msec"):
+		return (
+			float(int(pending_data["lands_at_ticks_msec"]) - Time.get_ticks_msec())
+			/ 1000.0
+		)
+
+	return float(pending_data.get("landing_time_seconds", -1.0))
 
 
 func grant_damage_absorb(

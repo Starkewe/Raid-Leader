@@ -14,7 +14,6 @@ func _run() -> void:
 	root.add_child(second_healer)
 
 	target.take_damage(60)
-	second_healer.heal_amount = 50
 	first_healer.command_heal(target)
 	second_healer.command_heal(target)
 	first_healer.try_start_cast()
@@ -26,7 +25,7 @@ func _run() -> void:
 
 	first_healer.cancel_current_cast()
 
-	if target.get_incoming_healing_total() != 50:
+	if target.get_incoming_healing_total() != 30:
 		_fail("Cancelling one cast did not remove only its pending heal.")
 		return
 

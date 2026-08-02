@@ -53,6 +53,7 @@ var _clear_tween: Tween = null
 var _feedback_tween: Tween = null
 var _transcription_generation: int = 0
 var _feedback_generation: int = 0
+var _browse_selection_active: bool = false
 var _reference_context: Dictionary = {
 	"has_explicit_who": false,
 	"what": ""
@@ -89,6 +90,8 @@ func setup_units(new_party_members: Array) -> void:
 
 
 func notify_transcription_started() -> void:
+	close_reference_panel()
+	_reset_browse_composition()
 	clear_transcription(false)
 
 
@@ -464,6 +467,11 @@ func _on_reference_entry_selected(
 	button: Button
 ) -> void:
 	var metadata: Dictionary = Dictionary(entry.get("metadata", {})).duplicate(true)
+	var selection_label := String(
+		entry.get("selection_label", entry.get("label", ""))
+	).strip_edges()
+
+	_begin_browse_selection(category)
 
 	match category:
 		"who":
@@ -477,6 +485,95 @@ func _on_reference_entry_selected(
 			_browse_context["where_metadata"] = metadata
 
 	_animate_reference_word(button)
+	_animate_browse_selection_label(
+		category,
+		selection_label,
+		_transcription_generation
+	)
+	_update_all_category_overlays()
+
+
+func _begin_browse_selection(category: String) -> void:
+	_transcription_generation += 1
+	_cancel_transcription_animation()
+
+	if not _browse_selection_active:
+		_reset_transcription_labels()
+		_browse_selection_active = true
+
+	match category:
+		"who":
+			_reset_transcription_category("what")
+			_reset_transcription_category("where")
+		"what":
+			_reset_transcription_category("where")
+
+
+func _animate_browse_selection_label(
+	category: String,
+	value: String,
+	generation: int
+) -> void:
+	var label := _transcription_labels.get(category) as Label
+
+	if label == null or value.is_empty():
+		_finish_browse_selection(category, generation)
+		return
+
+	var final_y := float(_transcription_rest_y.get(category, label.position.y))
+	label.text = value
+	label.set_meta("component_state", "explicit")
+	label.tooltip_text = ""
+	label.add_theme_color_override("font_color", COMPONENT_COLORS["explicit"])
+	label.position.y = final_y - ENTRANCE_OFFSET_PIXELS
+	label.modulate.a = 0.0
+	label.visible = true
+
+	var tween := create_tween()
+	_transcription_tweens[category] = tween
+	tween.set_parallel(true)
+	tween.tween_property(
+		label,
+		"position:y",
+		final_y,
+		ENTRANCE_DURATION_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(
+		label,
+		"modulate:a",
+		1.0,
+		ENTRANCE_DURATION_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.chain().tween_callback(
+		_finish_browse_selection.bind(category, generation)
+	)
+
+
+func _finish_browse_selection(category: String, generation: int) -> void:
+	if generation != _transcription_generation:
+		return
+
+	_transcription_tweens.erase(category)
+
+	if not is_open() or _open_category != category:
+		return
+
+	match category:
+		"who":
+			open_reference_category("what")
+		"what":
+			open_reference_category("where")
+		"where":
+			close_reference_panel()
+
+
+func _reset_browse_composition() -> void:
+	_browse_selection_active = false
+	_browse_context = {
+		"who_metadata": {},
+		"what": "",
+		"where_metadata": {}
+	}
 	_update_all_category_overlays()
 
 
@@ -783,10 +880,14 @@ func _cancel_feedback_animation() -> void:
 
 func _reset_transcription_labels() -> void:
 	for category in CATEGORY_ORDER:
-		var label := _transcription_labels.get(category) as Label
+		_reset_transcription_category(category)
 
-		if label != null:
-			_reset_transcription_label(category, label)
+
+func _reset_transcription_category(category: String) -> void:
+	var label := _transcription_labels.get(category) as Label
+
+	if label != null:
+		_reset_transcription_label(category, label)
 
 
 func _reset_transcription_label(category: String, label: Label) -> void:
