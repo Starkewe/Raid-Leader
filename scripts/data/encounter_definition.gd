@@ -53,7 +53,13 @@ class_name EncounterDefinition
 @export_group("Loadout")
 @export var abilities: Array[BossAbilityDefinition] = []
 @export var phases: Array[BossPhaseDefinition] = []
-## Negative values retain the existing behavior of using the first ability's cooldown.
+## Minimum breathing room after a boss ability resolves before another can begin.
+@export_range(0.0, 60.0, 0.1) var ability_base_gap: float = 4.0
+## Bounded per-attempt variance applied to individual ability cooldowns.
+@export_range(0.0, 1.0, 0.01) var ability_cooldown_variance: float = 0.05
+## Zero chooses a fresh seed for each attempt; non-zero values make timing reproducible.
+@export var ability_random_seed: int = 0
+## Negative values use the encounter's base ability gap for the first cast.
 @export var initial_ability_delay: float = -1.0
 
 @export_group("Development Display")

@@ -40,6 +40,55 @@ class DummyUnit:
 		return alive
 
 
+class DummyWarriorUnit:
+	extends DummyUnit
+
+	func _init(new_class: String, new_number: int, new_roles: Array[String]) -> void:
+		super(new_class, new_number, new_roles)
+
+	func command_taunt(_target = null) -> void:
+		pass
+
+	func command_attack(_target = null) -> void:
+		pass
+
+
+class DummyPriestUnit:
+	extends DummyUnit
+
+	func _init(new_class: String, new_number: int, new_roles: Array[String]) -> void:
+		super(new_class, new_number, new_roles)
+
+	func command_heal(_target = null) -> void:
+		pass
+
+	func command_cure(_target = null) -> void:
+		pass
+
+
+class DummyRogueUnit:
+	extends DummyUnit
+
+	func _init(new_class: String, new_number: int, new_roles: Array[String]) -> void:
+		super(new_class, new_number, new_roles)
+
+	func command_attack(_target = null) -> void:
+		pass
+
+	func command_interrupt(_target = null) -> void:
+		pass
+
+
+class DummyMageUnit:
+	extends DummyUnit
+
+	func _init(new_class: String, new_number: int, new_roles: Array[String]) -> void:
+		super(new_class, new_number, new_roles)
+
+	func command_attack(_target = null) -> void:
+		pass
+
+
 var failures: Array[String] = []
 var owned_units: Array[Node] = []
 
@@ -398,10 +447,53 @@ func _validate_direct_regressions(parser: VoiceCommandParser, roster: Array) -> 
 	)
 
 	for action_value in VocabularyScript.ACTION_ALIASES.values():
-		_expect(
-			not Array(action_value).has("movies"),
-			"Movies was added as a one-off action alias."
-		)
+		for contextual_word in ["movies", "talk", "time", "tough"]:
+			_expect(
+				not Array(action_value).has(contextual_word),
+				"%s was added as a general action alias." % contextual_word.capitalize()
+			)
+
+	var recovered_taunt := parser.parse("warrior to talk")
+	var recovered_resolution: Dictionary = recovered_taunt.get("command_resolution", {})
+	var recovered_presentation: Dictionary = recovered_taunt.get(
+		"component_presentation",
+		{}
+	)
+	_expect(
+		bool(recovered_taunt.get("ok", false))
+		and String(
+			Dictionary(recovered_presentation.get("slot_states", {})).get("what", "")
+		) == "corrected"
+		and String(
+			Dictionary(recovered_presentation.get("slot_values", {})).get("what", "")
+		) == "Taunt",
+		"Low-confidence taunt recovery was not presented as a corrected What value."
+	)
+	_expect(
+		bool(recovered_resolution.get("low_confidence_action", false))
+		and float(recovered_resolution.get("raw_action_similarity", 0.0))
+		< 0.48
+		and float(recovered_resolution.get("capability_specificity", 0.0)) > 0.0
+		and float(recovered_resolution.get("capability_specificity_bonus", 0.0)) > 0.0,
+		"Generalized taunt recovery did not expose low-confidence capability scoring."
+	)
+
+	var decoder = parser.joint_decoder
+	_expect(
+		decoder._has_ambiguous_low_confidence_winner([
+			{
+				"canonical_command": "Warrior 1 → Taunt → Boss → Now",
+				"final_score": 0.500,
+				"low_confidence_action": true
+			},
+			{
+				"canonical_command": "Warrior 1 → Attack → Boss → Now",
+				"final_score": 0.495,
+				"low_confidence_action": true
+			}
+		]),
+		"Low-confidence candidates without a distinct-command margin were not ambiguous."
+	)
 
 	var movies := parser.parse("movies")
 	var movies_resolution: Dictionary = movies.get("command_resolution", {})
@@ -448,6 +540,10 @@ func _validate_direct_regressions(parser: VoiceCommandParser, roster: Array) -> 
 	_expect(
 		resolver.get_cache_generation() > original_generation,
 		"Roster setup did not rebuild state-dependent target candidates."
+	)
+	_expect(
+		not bool(parser.parse("warrior too attack").get("ok", false)),
+		"A number homophone fell back to the Warrior class when Warrior 2 was unavailable."
 	)
 	parser.setup_roster_context(roster)
 
@@ -537,7 +633,20 @@ func _add_class_units(
 	unit_roles: Array[String]
 ) -> void:
 	for unit_number in range(1, count + 1):
-		var unit := DummyUnit.new(unit_class, unit_number, unit_roles)
+		var unit: Node
+
+		match unit_class:
+			"Warrior":
+				unit = DummyWarriorUnit.new(unit_class, unit_number, unit_roles)
+			"Priest":
+				unit = DummyPriestUnit.new(unit_class, unit_number, unit_roles)
+			"Rogue":
+				unit = DummyRogueUnit.new(unit_class, unit_number, unit_roles)
+			"Mage":
+				unit = DummyMageUnit.new(unit_class, unit_number, unit_roles)
+			_:
+				unit = DummyUnit.new(unit_class, unit_number, unit_roles)
+
 		get_tree().root.add_child(unit)
 		owned_units.append(unit)
 		roster.append(unit)

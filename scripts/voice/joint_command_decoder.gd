@@ -128,12 +128,46 @@ func decode(
 
 	_sort_candidates(complete_candidates)
 	var selected: Dictionary = complete_candidates[0]
-	var runner_up_score := (
-		float(complete_candidates[1].get("final_score", 0.0))
-		if complete_candidates.size() > 1
-		else 0.0
+	var runner_up_score := _get_distinct_runner_up_score(
+		complete_candidates,
+		String(selected.get("canonical_command", ""))
 	)
 	var winner_score := float(selected.get("final_score", 0.0))
+	var distinct_command_margin := winner_score - runner_up_score
+
+	if (
+		_has_ambiguous_low_confidence_winner(complete_candidates)
+	):
+		_increment_reason(exclusion_reasons, "low_confidence_action_ambiguous")
+		var ambiguous_failure := _failure(
+			raw_transcript,
+			normalized_transcript,
+			tokens,
+			"Low-confidence action interpretation is ambiguous.",
+			deterministic_failure,
+			total_started,
+			{
+				"candidate_generation_usec": generation_duration,
+				"joint_scoring_usec": scoring_duration
+			},
+			exclusion_reasons
+		)
+		var ambiguous_resolution: Dictionary = ambiguous_failure.get(
+			"command_resolution",
+			{}
+		)
+		ambiguous_resolution["candidate_scores"] = complete_candidates.duplicate(true)
+		ambiguous_resolution["alternative_spans"] = _collect_alternative_spans(
+			action_alignments
+		)
+		ambiguous_resolution["winner_score"] = winner_score
+		ambiguous_resolution["runner_up_score"] = runner_up_score
+		ambiguous_resolution["winner_margin"] = distinct_command_margin
+		ambiguous_resolution["low_confidence_action"] = true
+		ambiguous_resolution["debug_text"] = format_diagnostics(ambiguous_resolution)
+		ambiguous_failure["command_resolution"] = ambiguous_resolution
+		return ambiguous_failure
+
 	var command_data: Dictionary = Dictionary(selected.get("command_data", {})).duplicate(true)
 	var selected_who_resolution: Dictionary = Dictionary(
 		selected.get("who_resolution", {})
@@ -179,8 +213,27 @@ func decode(
 		"winning_score": winner_score,
 		"winner_score": winner_score,
 		"runner_up_score": runner_up_score,
-		"winner_margin": winner_score - runner_up_score,
+		"winner_margin": distinct_command_margin,
 		"default_target_reason": String(selected.get("default_target_reason", "")),
+		"low_confidence_action": bool(selected.get("low_confidence_action", false)),
+		"raw_action_similarity": float(
+			Dictionary(selected.get("score_components", {})).get(
+				"raw_action_similarity",
+				0.0
+			)
+		),
+		"capability_specificity": float(
+			Dictionary(selected.get("score_components", {})).get(
+				"capability_specificity",
+				0.0
+			)
+		),
+		"capability_specificity_bonus": float(
+			Dictionary(selected.get("score_components", {})).get(
+				"capability_specificity_bonus",
+				0.0
+			)
+		),
 		"validation_result": Dictionary(selected.get("validation_result", {})).duplicate(true),
 		"timings": timings,
 		"duration_ms": float(timings.get("total_ms", 0.0)),
@@ -503,6 +556,16 @@ func format_diagnostics(resolution: Dictionary) -> String:
 			]
 		)
 
+		if bool(candidate.get("low_confidence_action", false)):
+			lines.append(
+				"    low-confidence action: raw=%.3f | specificity=%.3f | bonus=%.3f"
+				% [
+					float(components.get("raw_action_similarity", 0.0)),
+					float(components.get("capability_specificity", 0.0)),
+					float(components.get("capability_specificity_bonus", 0.0))
+				]
+			)
+
 	var excluded: Dictionary = resolution.get("excluded_candidates", {})
 
 	if not excluded.is_empty():
@@ -730,8 +793,16 @@ func _generate_action_alignments(tokens: Array[String]) -> Array[Dictionary]:
 				if not exact and _span_contains_number(tokens, start, span_end):
 					continue
 
-				if not exact and similarity < TuningScript.MIN_ACTION_SIMILARITY:
+				if (
+					not exact
+					and similarity < TuningScript.MIN_LOW_CONFIDENCE_ACTION_SIMILARITY
+				):
 					continue
+
+				var low_confidence_action := (
+					not exact
+					and similarity < TuningScript.MIN_ACTION_SIMILARITY
+				)
 
 				var key := "%s:%d:%d" % [
 					String(cached_entry.get("action", "")),
@@ -747,7 +818,14 @@ func _generate_action_alignments(tokens: Array[String]) -> Array[Dictionary]:
 					"score": similarity,
 					"exact": exact,
 					"merged": false,
-					"alignment": "one_to_one" if span_length == 1 else "many_to_one"
+					"low_confidence_action": low_confidence_action,
+					"alignment": (
+						"low_confidence_action"
+						if low_confidence_action
+						else (
+							"one_to_one" if span_length == 1 else "many_to_one"
+						)
+					)
 				}
 				_keep_best_by_key(alignments, seen, key, alignment, "score")
 
@@ -1207,6 +1285,37 @@ func _build_complete_candidate(
 	if selector.is_empty():
 		return {"ok": false, "exclusion_reason": "empty_who_selector"}
 
+	if bool(action_alignment.get("low_confidence_action", false)):
+		if String(who_candidate.get("state", SLOT_INVALID)) != SLOT_EXPLICIT:
+			return {"ok": false, "exclusion_reason": "low_confidence_action_requires_explicit_who"}
+
+		if (
+			String(selector.get("type", "")) != CommandSchemaScript.SELECTOR_UNIT_IDENTITY
+			or int(selector.get("number", 0)) <= 0
+		):
+			return {
+				"ok": false,
+				"exclusion_reason": "low_confidence_action_requires_numbered_unit"
+			}
+
+		if not _low_confidence_action_who_is_grounded(who_candidate, selector):
+			return {
+				"ok": false,
+				"exclusion_reason": "low_confidence_action_who_not_grounded"
+			}
+
+		if (
+			who_resolver == null
+			or not who_resolver.selector_supports_action(
+				selector,
+				String(action_alignment.get("action", ""))
+			)
+		):
+			return {
+				"ok": false,
+				"exclusion_reason": "low_confidence_action_target_lacks_capability"
+			}
+
 	if who_resolver != null:
 		var selector_validation: Dictionary = who_resolver.validate_deterministic_selectors(
 			[selector]
@@ -1229,7 +1338,6 @@ func _build_complete_candidate(
 		"where": String(where_data.get("where", "")),
 		"when": "now"
 	}
-
 	for key in where_data.keys():
 		command_data[key] = where_data[key]
 
@@ -1260,6 +1368,18 @@ func _build_complete_candidate(
 	var destination_score := float(where_candidate.get("score", 0.0))
 	var who_score := float(who_candidate.get("score", 0.0))
 	var costs := float(who_candidate.get("filler_cost", 0.0))
+	var low_confidence_action := bool(
+		action_alignment.get("low_confidence_action", false)
+	)
+	var capability_specificity := 0.0
+
+	if low_confidence_action and who_resolver != null:
+		capability_specificity = who_resolver.get_action_capability_specificity(action)
+
+	var capability_specificity_bonus := (
+		capability_specificity
+		* TuningScript.MAX_ACTION_CAPABILITY_SPECIFICITY_BONUS
+	)
 
 	if who_state == SLOT_DEFAULTED:
 		costs += TuningScript.IMPLICIT_DEFAULT_COST
@@ -1292,6 +1412,9 @@ func _build_complete_candidate(
 		"span_contiguity": alignment_score,
 		"validity": 1.0,
 		"exact_bonus": exact_bonus,
+		"raw_action_similarity": action_score,
+		"capability_specificity": capability_specificity,
+		"capability_specificity_bonus": capability_specificity_bonus,
 		"costs": costs
 	}
 	var final_score := (
@@ -1302,6 +1425,7 @@ func _build_complete_candidate(
 		+ alignment_score * TuningScript.WEIGHT_ALIGNMENT
 		+ TuningScript.WEIGHT_VALIDITY
 		+ exact_bonus
+		+ capability_specificity_bonus
 		- costs
 	)
 	var ownership: Array[Dictionary] = []
@@ -1382,8 +1506,54 @@ func _build_complete_candidate(
 		"default_target_reason": String(who_candidate.get("default_reason", "")),
 		"who_resolution": Dictionary(who_candidate.get("who_resolution", {})).duplicate(true),
 		"validation_result": validation_result,
-		"validation_usec": validation_usec
+		"validation_usec": validation_usec,
+		"low_confidence_action": low_confidence_action
 	}
+
+
+func _low_confidence_action_who_is_grounded(
+	who_candidate: Dictionary,
+	selector: Dictionary
+) -> bool:
+	var resolution: Dictionary = who_candidate.get("who_resolution", {})
+	var selector_number := int(selector.get("number", 0))
+
+	if (
+		selector_number <= 0
+		or int(resolution.get("recognized_number", 0)) != selector_number
+		or String(resolution.get("inferred_structure", "")) != "numbered_individual"
+		or String(resolution.get("identity_text", "")).is_empty()
+	):
+		return false
+
+	var selected_id := _canonical_id_for_selector(selector)
+	var selected_identity_score := -1.0
+	var best_identity_score := -1.0
+	var runner_up_identity_score := -1.0
+
+	for score_value in resolution.get("candidate_scores", []):
+		if not score_value is Dictionary:
+			continue
+
+		var score: Dictionary = score_value
+		var identity_score := float(score.get("identity_score", 0.0))
+
+		if String(score.get("canonical_id", "")) == selected_id:
+			selected_identity_score = identity_score
+		else:
+			runner_up_identity_score = maxf(runner_up_identity_score, identity_score)
+
+		best_identity_score = maxf(best_identity_score, identity_score)
+
+	return (
+		selected_identity_score >= TuningScript.MIN_LOW_CONFIDENCE_WHO_IDENTITY_SCORE
+		and selected_identity_score >= best_identity_score - 0.0001
+		and (
+			runner_up_identity_score < 0.0
+			or selected_identity_score - runner_up_identity_score
+			>= TuningScript.MIN_LOW_CONFIDENCE_WHO_IDENTITY_MARGIN
+		)
+	)
 
 
 func _default_who_candidate(default_data: Dictionary, filler_count: int) -> Dictionary:
@@ -1689,6 +1859,39 @@ func _sort_candidates(candidates: Array[Dictionary]) -> void:
 	)
 
 
+func _get_distinct_runner_up_score(
+	candidates: Array[Dictionary],
+	selected_canonical_command: String
+) -> float:
+	for candidate in candidates:
+		if String(candidate.get("canonical_command", "")) == selected_canonical_command:
+			continue
+
+		return float(candidate.get("final_score", 0.0))
+
+	return 0.0
+
+
+func _has_ambiguous_low_confidence_winner(candidates: Array[Dictionary]) -> bool:
+	if candidates.is_empty():
+		return false
+
+	var selected: Dictionary = candidates[0]
+
+	if not bool(selected.get("low_confidence_action", false)):
+		return false
+
+	var winner_score := float(selected.get("final_score", 0.0))
+	var runner_up_score := _get_distinct_runner_up_score(
+		candidates,
+		String(selected.get("canonical_command", ""))
+	)
+	return (
+		winner_score - runner_up_score
+		< TuningScript.MIN_LOW_CONFIDENCE_DISTINCT_COMMAND_MARGIN
+	)
+
+
 func _prune_candidates(
 	candidates: Array[Dictionary],
 	limit: int,
@@ -1720,7 +1923,10 @@ func _collect_alternative_spans(alignments: Array[Dictionary]) -> Array[Dictiona
 					else ""
 				)
 			),
-			"score": float(alignment.get("score", 0.0))
+			"score": float(alignment.get("score", 0.0)),
+			"low_confidence_action": bool(
+				alignment.get("low_confidence_action", false)
+			)
 		})
 
 	return spans

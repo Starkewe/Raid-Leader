@@ -31,7 +31,10 @@ var random_pull_regions: Array[String] = [
 var rng := RandomNumberGenerator.new()
 var pull_region_override: String = ""
 
-var pull_start_positions: Dictionary = {}
+# Keep the unit reference as a value rather than a Dictionary key. Godot can
+# stringify Object keys when a Dictionary crosses a Variant boundary, which
+# makes the key impossible to recover as a Node during forced-pull cleanup.
+var pull_start_positions: Array[Dictionary] = []
 var pull_destination: Vector2 = Vector2.ZERO
 
 var selected_pull_region: String = MovementSlotResolverScript.REGION_NORTH
@@ -261,7 +264,10 @@ func start_forced_pull(boss: Node, party_members: Array) -> void:
 		var unit = living_units[unit_index]
 		var destination: Vector2 = destinations[unit_index]
 
-		pull_start_positions[unit] = destination
+		pull_start_positions.append({
+			"unit": unit,
+			"destination": destination,
+		})
 
 		if unit.has_method("start_forced_movement"):
 			unit.start_forced_movement(destination, pull_duration)
@@ -292,8 +298,16 @@ func finish_forced_pull() -> void:
 
 	pull_completed = true
 
-	for unit_key in pull_start_positions.keys():
-		var unit := unit_key as Node
+	for pull_entry_value in pull_start_positions:
+		if not pull_entry_value is Dictionary:
+			continue
+
+		var pull_entry: Dictionary = pull_entry_value
+		var unit_value = pull_entry.get("unit")
+		if not unit_value is Node:
+			continue
+
+		var unit: Node = unit_value
 
 		if not is_valid_living_unit(unit):
 			continue
@@ -302,7 +316,10 @@ func finish_forced_pull() -> void:
 			continue
 
 		var unit_2d := unit as Node2D
-		var destination: Vector2 = pull_start_positions[unit_key]
+		var destination_value = pull_entry.get("destination")
+		var destination: Vector2 = unit_2d.global_position
+		if destination_value is Vector2:
+			destination = destination_value
 
 		if unit.has_method("finish_forced_movement"):
 			unit.finish_forced_movement()

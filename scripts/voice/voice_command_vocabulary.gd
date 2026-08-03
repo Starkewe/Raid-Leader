@@ -32,6 +32,10 @@ const NUMBER_WORDS := {
 	"fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
 	"nineteen": 19, "twenty": 20
 }
+const TARGET_NUMBER_HOMOPHONES := {
+	"to": 2,
+	"too": 2
+}
 const ROMAN_NUMERALS := {
 	"i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5,
 	"vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10,
@@ -143,6 +147,10 @@ static func get_target_number_aliases(value: int) -> Array[String]:
 		if int(NUMBER_WORDS[word_value]) == value:
 			aliases.append(String(word_value))
 
+	for homophone_value in TARGET_NUMBER_HOMOPHONES.keys():
+		if int(TARGET_NUMBER_HOMOPHONES[homophone_value]) == value:
+			aliases.append(String(homophone_value))
+
 	for roman_value in ROMAN_NUMERALS.keys():
 		if int(ROMAN_NUMERALS[roman_value]) == value:
 			aliases.append(String(roman_value))
@@ -158,6 +166,9 @@ static func target_number_from_token(token: String, include_roman: bool = true) 
 
 	if NUMBER_WORDS.has(normalized):
 		return int(NUMBER_WORDS[normalized])
+
+	if TARGET_NUMBER_HOMOPHONES.has(normalized):
+		return int(TARGET_NUMBER_HOMOPHONES[normalized])
 
 	if include_roman and ROMAN_NUMERALS.has(normalized):
 		return int(ROMAN_NUMERALS[normalized])

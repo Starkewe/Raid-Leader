@@ -12,7 +12,6 @@ signal transcription_failed(reason: String)
 @export var max_queued_transcriptions: int = 3
 @export var transcription_ttl_seconds: float = 8.0
 @export var transcription_process_timeout_seconds: float = 15.0
-
 var _is_transcribing: bool = false
 var _pending_transcriptions: Array[Dictionary] = []
 var _active_wav_path: String = ""
@@ -262,17 +261,30 @@ func _start_whisper_process(
 	if FileAccess.file_exists(global_output_txt):
 		DirAccess.remove_absolute(global_output_txt)
 
+	var args := _build_whisper_process_arguments(
+		global_wav_path,
+		global_model_path,
+		global_output_prefix
+	)
+	print("Running Whisper model: ", active_model_path)
+	return OS.create_process(global_cli_path, args, false)
+
+
+func _build_whisper_process_arguments(
+	wav_path: String,
+	model_path: String,
+	output_prefix: String
+) -> PackedStringArray:
 	var args := PackedStringArray([
-		"-m", global_model_path,
-		"-f", global_wav_path,
+		"-m", model_path,
+		"-f", wav_path,
 		"-l", "en",
 		"-nt",
 		"-np",
 		"-otxt",
-		"-of", global_output_prefix
+		"-of", output_prefix
 	])
-	print("Running Whisper model: ", active_model_path)
-	return OS.create_process(global_cli_path, args, false)
+	return args
 
 
 func _finish_transcription(exit_code: int, transcript: String, raw_output: String) -> void:

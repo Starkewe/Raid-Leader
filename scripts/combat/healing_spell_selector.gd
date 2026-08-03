@@ -1,6 +1,8 @@
 extends RefCounted
 class_name HealingSpellSelector
 
+const INTERRUPTION_CAST_SAFETY_SECONDS: float = 0.1
+
 var policy: HealingDecisionPolicy = null
 
 
@@ -17,6 +19,26 @@ func select_spell(
 
 	if tiers.is_empty():
 		return null
+
+	var interruption_window := _get_upcoming_cast_interruption_seconds(
+		healing_target_selector
+	)
+
+	if interruption_window >= 0.0:
+		var maximum_safe_cast_time := maxf(
+			interruption_window - INTERRUPTION_CAST_SAFETY_SECONDS,
+			0.0
+		)
+		var fitting_tiers: Array[UnitActionDefinition] = []
+
+		for tier in tiers:
+			if tier.cast_time <= maximum_safe_cast_time:
+				fitting_tiers.append(tier)
+
+		if fitting_tiers.is_empty():
+			return _get_fastest_healing_tier(tiers)
+
+		tiers = fitting_tiers
 
 	if not _has_health_data(target):
 		return tiers.back()
@@ -62,6 +84,30 @@ func select_spell(
 			return tier
 
 	return tiers.back()
+
+
+func _get_upcoming_cast_interruption_seconds(healing_target_selector) -> float:
+	if (
+		healing_target_selector == null
+		or not healing_target_selector.has_method(
+			"get_upcoming_cast_interruption_seconds"
+		)
+	):
+		return -1.0
+
+	return float(healing_target_selector.get_upcoming_cast_interruption_seconds())
+
+
+func _get_fastest_healing_tier(
+	tiers: Array[UnitActionDefinition]
+) -> UnitActionDefinition:
+	var fastest: UnitActionDefinition = null
+
+	for tier in tiers:
+		if fastest == null or tier.cast_time < fastest.cast_time:
+			fastest = tier
+
+	return fastest
 
 
 func get_healing_tiers() -> Array[UnitActionDefinition]:

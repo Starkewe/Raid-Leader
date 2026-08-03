@@ -2,6 +2,9 @@ extends CharacterBody2D
 class_name BaseCombatUnit
 
 const CombatMeasurementsScript := preload("res://scripts/combat/combat_measurements.gd")
+const CombatAutoPositionerScript := preload(
+	"res://scripts/combat/combat_auto_positioner.gd"
+)
 const DodgeTuningScript := preload("res://scripts/combat/dodge_tuning.gd")
 const ForcedMovementControllerScript := preload("res://scripts/combat/forced_movement_controller.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
@@ -14,6 +17,7 @@ const ACTION_NONE := ""
 const ACTION_ATTACK := "attack"
 const ACTION_MOVE := "move"
 const TAUNT_COOLDOWN_DURATION := 5.0
+const AUTOMATIC_HAZARD_DODGE_SOURCE_ID := -2
 
 var max_health: int = 100
 var speed: float = 140.0
@@ -46,13 +50,17 @@ var active_action_kind: String = ACTION_NONE
 var action_command_id: int = 0
 var forced_movement_action_kind: String = ACTION_NONE
 var forced_movement_action_command_id: int = -1
-var commanded_hold_active: bool = false
 var command_destination_boss: Node = null
 var command_destination_region: String = ""
 var command_destination_range: String = ""
 var command_destination_key: String = ""
 var command_destination_flag_position: Vector2 = Vector2.ZERO
 var command_path_active: bool = false
+var positioning_checkpoint_boss: Node = null
+var positioning_checkpoint_token: int = 0
+var positioning_checkpoint_ability_id: String = ""
+var positioning_checkpoint_ability_name: String = ""
+var positioning_checkpoint_destination: Vector2 = Vector2.ZERO
 
 var dodge_profile: Dictionary = {}
 var dodge_base_class: String = ""
@@ -73,9 +81,11 @@ var dodge_pending_second_burst: bool = false
 var dodge_trail: Line2D = null
 var dodge_visual_node: CanvasItem = null
 var dodge_visual_original_modulate: Color = Color.WHITE
+var automatic_hazard_escape_active: bool = false
 
 var forced_movement_controller: ForcedMovementController = ForcedMovementControllerScript.new()
 var status_effect_controller: StatusEffectController = StatusEffectControllerScript.new()
+var combat_auto_positioner: CombatAutoPositioner = CombatAutoPositionerScript.new()
 
 func _ready():
 	forced_movement_controller.setup(self)
@@ -202,6 +212,12 @@ func die():
 	stop_action()
 	clear_commanded_hold()
 	cancel_active_dodge()
+	cancel_automatic_positioning()
+
+	var combat_sprite := get_node_or_null("Sprite2D") as CanvasItem
+
+	if combat_sprite != null:
+		combat_sprite.visible = false
 
 	print(get_display_name(), "defeated!")
 
@@ -219,11 +235,17 @@ func reset_unit(new_position: Vector2):
 	global_position = new_position
 	visible = true
 
+	var combat_sprite := get_node_or_null("Sprite2D") as CanvasItem
+
+	if combat_sprite != null:
+		combat_sprite.visible = true
+
 	cancel_forced_movement()
 	clear_all_status_effects()
 	stop_action()
 	clear_commanded_hold()
 	reset_dodge_state()
+	cancel_automatic_positioning()
 	on_reset_unit()
 	update_health_bar()
 
@@ -242,6 +264,8 @@ func stop_action():
 
 	active_action_kind = ACTION_NONE
 	clear_manual_move_order()
+	clear_positioning_checkpoint_commitment()
+	clear_command_destination_context()
 	stop_movement()
 
 
@@ -252,8 +276,6 @@ func stop_movement():
 func begin_attack_action() -> void:
 	action_command_id += 1
 	active_action_kind = ACTION_ATTACK
-	clear_manual_move_order()
-	clear_commanded_hold()
 
 
 func is_attack_action_active() -> bool:
@@ -324,10 +346,8 @@ func replace_manual_move_order(
 	destinations: Array[Vector2],
 	command_context: Dictionary
 ) -> void:
-	action_command_id += 1
-
-	if is_forced_moving() or not is_attack_action_active():
-		active_action_kind = ACTION_MOVE
+	cancel_automatic_positioning()
+	clear_positioning_checkpoint_commitment()
 
 	movement_command_id += 1
 	has_manual_move_order = not destinations.is_empty()
@@ -339,8 +359,8 @@ func replace_manual_move_order(
 	manual_move_destination = (
 		manual_move_waypoints[0] if not manual_move_waypoints.is_empty() else Vector2.ZERO
 	)
-	commanded_hold_active = has_manual_move_order
 	set_command_destination_context(command_context)
+	set_positioning_checkpoint_context(command_context, destinations)
 	on_manual_move_started()
 
 func on_manual_move_started():
@@ -348,6 +368,7 @@ func on_manual_move_started():
 
 
 func update_manual_move_order(delta: float) -> bool:
+	refresh_positioning_checkpoint_commitment()
 	update_command_destination_arrival()
 
 	if dodge_active:
@@ -359,6 +380,10 @@ func update_manual_move_order(delta: float) -> bool:
 			return true
 
 	if not has_manual_move_order:
+		if should_return_to_positioning_checkpoint():
+			move_toward_position(positioning_checkpoint_destination)
+			return true
+
 		return false
 
 	if manual_move_waypoints.is_empty():
@@ -380,6 +405,10 @@ func update_manual_move_order(delta: float) -> bool:
 
 		if manual_move_waypoints.is_empty():
 			clear_manual_move_order()
+
+			if not is_positioning_checkpoint_bound():
+				clear_command_destination_context()
+
 			stop_movement()
 			return false
 
@@ -405,11 +434,7 @@ func move_toward_node(target_node: Node2D, move_speed: float = -1.0):
 		stop_movement()
 		return
 
-	if (
-		commanded_hold_active
-		and not has_manual_move_order
-		and not is_attack_action_active()
-	):
+	if is_positioning_checkpoint_bound() and not has_manual_move_order:
 		stop_movement()
 		return
 
@@ -428,6 +453,202 @@ func move_away_from_node(target_node: Node2D, move_speed: float = -1.0):
 
 	var direction := target_node.global_position.direction_to(global_position)
 	velocity = direction * active_speed
+
+
+func can_use_automatic_positioning() -> bool:
+	return (
+		not is_dead
+		and not is_forced_moving()
+		and not has_manual_move_order
+		and not is_positioning_checkpoint_bound()
+	)
+
+
+func move_toward_support_target(
+	boss_node: Node,
+	target_node: Node2D,
+	action_range_units: float = 0.0
+) -> bool:
+	if not is_valid_node(target_node) or not can_use_automatic_positioning():
+		stop_movement()
+		return false
+
+	var movement_step := combat_auto_positioner.get_support_movement_step(
+		self,
+		boss_node,
+		target_node,
+		mini_region_footprint_radius
+		+ MovementSlotResolverScript.MINI_REGION_ENTRY_MARGIN_PIXELS,
+		CombatMeasurementsScript.range_units_to_pixels(action_range_units)
+	)
+
+	if not bool(movement_step.get("handled", false)):
+		stop_movement()
+		return false
+
+	if bool(movement_step.get("wait_safe", false)):
+		stop_movement()
+		return true
+
+	var destination_value: Variant = movement_step.get(
+		"destination",
+		target_node.global_position
+	)
+	var destination: Vector2 = target_node.global_position
+
+	if destination_value is Vector2:
+		destination = destination_value
+
+	move_toward_position(destination)
+	return true
+
+
+func move_toward_action_target(
+	boss_node: Node,
+	target_node: Node2D,
+	action_range_units: float
+) -> bool:
+	if not is_valid_node(target_node) or not can_use_automatic_positioning():
+		stop_movement()
+		return false
+
+	var movement_step := combat_auto_positioner.get_action_movement_step(
+		self,
+		boss_node,
+		target_node,
+		CombatMeasurementsScript.range_units_to_pixels(action_range_units),
+		mini_region_footprint_radius
+		+ MovementSlotResolverScript.MINI_REGION_ENTRY_MARGIN_PIXELS
+	)
+
+	if not bool(movement_step.get("handled", false)):
+		stop_movement()
+		return false
+
+	if bool(movement_step.get("wait_safe", false)):
+		stop_movement()
+		return true
+
+	var destination_value: Variant = movement_step.get(
+		"destination",
+		global_position
+	)
+
+	if not destination_value is Vector2:
+		stop_movement()
+		return true
+
+	move_toward_position(destination_value)
+	return true
+
+
+func move_toward_safe_position(
+	boss_node: Node,
+	destination: Vector2
+) -> bool:
+	if not can_use_automatic_positioning():
+		stop_movement()
+		return false
+
+	var movement_step := combat_auto_positioner.get_position_movement_step(
+		self,
+		boss_node,
+		destination,
+		mini_region_footprint_radius
+		+ MovementSlotResolverScript.MINI_REGION_ENTRY_MARGIN_PIXELS
+	)
+
+	if not bool(movement_step.get("handled", false)):
+		stop_movement()
+		return false
+
+	if bool(movement_step.get("wait_safe", false)):
+		stop_movement()
+		return true
+
+	var destination_value: Variant = movement_step.get("destination", destination)
+
+	if not destination_value is Vector2:
+		stop_movement()
+		return true
+
+	move_toward_position(destination_value)
+	return true
+
+
+func handle_automatic_ground_hazard_escape(
+	boss_node: Node,
+	delta: float
+) -> bool:
+	if not can_use_automatic_positioning():
+		return false
+
+	if is_automatic_hazard_dodge_active():
+		update_active_dodge(delta)
+		stop_movement()
+		return true
+
+	var escape_step := combat_auto_positioner.get_ground_hazard_escape_step(
+		self,
+		boss_node,
+		mini_region_footprint_radius
+		+ MovementSlotResolverScript.MINI_REGION_ENTRY_MARGIN_PIXELS
+	)
+	var hazard_active := bool(escape_step.get("hazard_active", false))
+	var handled := bool(escape_step.get("handled", false))
+
+	if not hazard_active and not handled:
+		automatic_hazard_escape_active = false
+		return false
+
+	var starting_escape := not automatic_hazard_escape_active
+	automatic_hazard_escape_active = true
+
+	if not handled:
+		stop_movement()
+		return true
+
+	var destination_value: Variant = escape_step.get("destination", global_position)
+
+	if not destination_value is Vector2:
+		stop_movement()
+		return true
+
+	var destination: Vector2 = destination_value
+	var is_full_charge_rogue := (
+		starting_escape
+		and dodge_base_class.to_lower() == "rogue"
+		and dodge_charge_capacity > 0
+		and dodge_available_charges == dodge_charge_capacity
+	)
+
+	if (
+		is_full_charge_rogue
+		and start_dodge_burst_to_position(
+			destination,
+			AUTOMATIC_HAZARD_DODGE_SOURCE_ID,
+			false
+		)
+	):
+		return true
+
+	move_toward_position(destination)
+	return true
+
+
+func is_automatic_hazard_dodge_active() -> bool:
+	return (
+		dodge_active
+		and dodge_source_command_id == AUTOMATIC_HAZARD_DODGE_SOURCE_ID
+	)
+
+
+func cancel_automatic_positioning() -> void:
+	combat_auto_positioner.cancel_all()
+	automatic_hazard_escape_active = false
+
+	if is_automatic_hazard_dodge_active():
+		cancel_active_dodge()
 
 
 func initialize_dodge_profile() -> void:
@@ -481,6 +702,21 @@ func start_dodge_burst(source_command_id: int, allow_second_burst: bool) -> bool
 		return false
 
 	var current_destination := manual_move_waypoints[0]
+	return start_dodge_burst_to_position(
+		current_destination,
+		source_command_id,
+		allow_second_burst
+	)
+
+
+func start_dodge_burst_to_position(
+	current_destination: Vector2,
+	source_command_id: int,
+	allow_second_burst: bool
+) -> bool:
+	if dodge_available_charges <= 0:
+		return false
+
 	var remaining_distance := global_position.distance_to(current_destination)
 
 	if remaining_distance <= 0.01:
@@ -839,6 +1075,91 @@ func set_command_destination_context(command_context: Dictionary) -> void:
 	update_command_destination_arrival()
 
 
+func set_positioning_checkpoint_context(
+	command_context: Dictionary,
+	destinations: Array[Vector2]
+) -> void:
+	if destinations.is_empty():
+		return
+
+	var checkpoint_boss := command_context.get(
+		"positioning_checkpoint_boss",
+		null
+	) as Node
+	var checkpoint_token := int(command_context.get(
+		"positioning_checkpoint_token",
+		0
+	))
+
+	if (
+		checkpoint_boss == null
+		or not is_instance_valid(checkpoint_boss)
+		or checkpoint_token <= 0
+		or not checkpoint_boss.has_method("is_positioning_checkpoint_active")
+		or not bool(checkpoint_boss.is_positioning_checkpoint_active(
+			checkpoint_token
+		))
+	):
+		return
+
+	positioning_checkpoint_boss = checkpoint_boss
+	positioning_checkpoint_token = checkpoint_token
+	positioning_checkpoint_ability_id = String(command_context.get(
+		"positioning_checkpoint_ability_id",
+		""
+	))
+	positioning_checkpoint_ability_name = String(command_context.get(
+		"positioning_checkpoint_ability_name",
+		"Mechanic"
+	))
+	positioning_checkpoint_destination = destinations[destinations.size() - 1]
+
+
+func refresh_positioning_checkpoint_commitment() -> void:
+	if positioning_checkpoint_token <= 0:
+		return
+
+	if (
+		positioning_checkpoint_boss != null
+		and is_instance_valid(positioning_checkpoint_boss)
+		and positioning_checkpoint_boss.has_method(
+			"is_positioning_checkpoint_active"
+		)
+		and bool(positioning_checkpoint_boss.is_positioning_checkpoint_active(
+			positioning_checkpoint_token
+		))
+	):
+		return
+
+	clear_positioning_checkpoint_commitment()
+
+	if not has_manual_move_order:
+		clear_command_destination_context()
+
+
+func is_positioning_checkpoint_bound() -> bool:
+	refresh_positioning_checkpoint_commitment()
+	return positioning_checkpoint_token > 0
+
+
+func should_return_to_positioning_checkpoint() -> bool:
+	if not is_positioning_checkpoint_bound():
+		return false
+
+	return (
+		global_position.distance_to(positioning_checkpoint_destination)
+		> manual_move_stop_distance
+	)
+
+
+func clear_positioning_checkpoint_commitment() -> void:
+	positioning_checkpoint_boss = null
+	positioning_checkpoint_token = 0
+	positioning_checkpoint_ability_id = ""
+	positioning_checkpoint_ability_name = ""
+	positioning_checkpoint_destination = Vector2.ZERO
+
+
 func update_command_destination_arrival() -> void:
 	if not command_path_active or command_destination_boss == null:
 		return
@@ -871,14 +1192,20 @@ func clear_command_path_visual() -> void:
 	command_path_active = false
 
 
-func clear_commanded_hold() -> void:
-	commanded_hold_active = false
+func clear_command_destination_context() -> void:
 	command_destination_boss = null
 	command_destination_region = ""
 	command_destination_range = ""
 	command_destination_key = ""
 	command_destination_flag_position = Vector2.ZERO
 	clear_command_path_visual()
+
+
+## Compatibility entry point for callers that previously cleared the implicit
+## permanent hold. It now clears only an authored checkpoint commitment.
+func clear_commanded_hold() -> void:
+	clear_positioning_checkpoint_commitment()
+	clear_command_destination_context()
 
 
 func has_active_command_path() -> bool:
@@ -1251,6 +1578,9 @@ func get_shared_status_text() -> String:
 	if is_forced_moving():
 		return "Forced Movement"
 
+	if is_positioning_checkpoint_bound():
+		return "Positioning for " + positioning_checkpoint_ability_name
+
 	var active_status_text := status_effect_controller.get_display_text()
 
 	if not active_status_text.is_empty():
@@ -1334,6 +1664,7 @@ func is_forced_moving() -> bool:
 
 
 func on_forced_movement_started() -> void:
+	cancel_automatic_positioning()
 	on_manual_move_started()
 
 
@@ -1345,7 +1676,6 @@ func complete_forced_movement() -> void:
 
 	if should_restore_attack:
 		active_action_kind = ACTION_ATTACK
-		clear_commanded_hold()
 
 	clear_forced_movement_action()
 	on_forced_movement_finished()

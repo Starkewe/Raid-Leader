@@ -186,6 +186,66 @@ func record_selector(selector: Dictionary) -> void:
 		_record_target_key(String(candidate.get("key", "")))
 
 
+func selector_supports_action(selector: Dictionary, action: String) -> bool:
+	var candidate := _find_candidate_for_selector(selector)
+	var required_method := _get_required_command_method(action)
+
+	if candidate.is_empty() or required_method.is_empty():
+		return false
+
+	var considered_count := 0
+
+	for unit_value in candidate.get("target_units", []):
+		if not unit_value is Node or not _unit_is_commandable(unit_value):
+			continue
+
+		considered_count += 1
+		var unit: Node = unit_value
+
+		if not unit.has_method(required_method):
+			return false
+
+	return considered_count > 0
+
+
+func get_action_capability_specificity(action: String) -> float:
+	if action in [
+		CommandSchemaScript.ACTION_MOVE,
+		CommandSchemaScript.ACTION_DODGE,
+		CommandSchemaScript.ACTION_ROTATE
+	]:
+		return 0.0
+
+	var required_method := _get_required_command_method(action)
+
+	if required_method.is_empty():
+		return 0.0
+
+	var roster_count := 0
+	var capable_count := 0
+
+	## Use the configured roster rather than only living units. Interpretation
+	## must not change as raiders die during an encounter.
+	for unit_value in party_members:
+		if not unit_value is Node or not is_instance_valid(unit_value):
+			continue
+
+		roster_count += 1
+		var unit: Node = unit_value
+
+		if unit.has_method(required_method):
+			capable_count += 1
+
+	if roster_count <= 0:
+		return 0.0
+
+	return clampf(
+		1.0 - float(capable_count) / float(roster_count),
+		0.0,
+		1.0
+	)
+
+
 func build_deterministic_result(
 	raw_transcript: String,
 	normalized_transcript: String,
@@ -881,14 +941,7 @@ func _get_command_compatibility(candidate: Dictionary, command_context: Dictiona
 	]:
 		return 1.0
 
-	var method_by_action := {
-		CommandSchemaScript.ACTION_ATTACK: "command_attack",
-		CommandSchemaScript.ACTION_INTERRUPT: "command_interrupt",
-		CommandSchemaScript.ACTION_HEAL: "command_heal",
-		CommandSchemaScript.ACTION_TAUNT: "command_taunt",
-		CommandSchemaScript.ACTION_CURE: "command_cure"
-	}
-	var required_method := String(method_by_action.get(action, ""))
+	var required_method := _get_required_command_method(action)
 
 	if required_method.is_empty():
 		return 0.0
@@ -910,6 +963,17 @@ func _get_command_compatibility(candidate: Dictionary, command_context: Dictiona
 		return 0.0
 
 	return float(compatible_count) / float(considered_count)
+
+
+func _get_required_command_method(action: String) -> String:
+	var method_by_action := {
+		CommandSchemaScript.ACTION_ATTACK: "command_attack",
+		CommandSchemaScript.ACTION_INTERRUPT: "command_interrupt",
+		CommandSchemaScript.ACTION_HEAL: "command_heal",
+		CommandSchemaScript.ACTION_TAUNT: "command_taunt",
+		CommandSchemaScript.ACTION_CURE: "command_cure"
+	}
+	return String(method_by_action.get(action, ""))
 
 
 func _candidate_is_commandable(candidate: Dictionary) -> bool:

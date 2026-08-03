@@ -97,6 +97,10 @@ func _physics_process(delta):
 		_finish_movement_step(step_start_position)
 		return
 
+	if handle_automatic_ground_hazard_escape(combat_facing_target, delta):
+		_finish_movement_step(step_start_position)
+		return
+
 	if not has_valid_attack_target():
 		stop_attack_only()
 		_finish_movement_step(step_start_position)
@@ -215,7 +219,7 @@ func command_attack(new_target: Node2D):
 		return
 
 	if not can_damage_target(new_target):
-		stop_action()
+		stop_attack_only()
 		return
 
 	begin_attack_action()
@@ -258,7 +262,11 @@ func handle_attack_movement():
 	var distance_units: float = get_range_units_to_node(attack_target_node)
 
 	if distance_units > stop_distance_units:
-		move_toward_node(attack_target_node)
+		move_toward_action_target(
+			combat_facing_target,
+			attack_target_node,
+			stop_distance_units
+		)
 		return
 
 	stop_movement()

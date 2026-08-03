@@ -94,13 +94,17 @@ func _physics_process(delta):
 		_finish_movement_step(step_start_position)
 		return
 
+	if handle_automatic_ground_hazard_escape(combat_facing_target, delta):
+		_finish_movement_step(step_start_position)
+		return
+
 	if is_casting:
 		handle_active_cast(delta)
 		_finish_movement_step(step_start_position)
 		return
 
 	if not has_valid_cast_target():
-		stop_action()
+		stop_attack_only()
 		_finish_movement_step(step_start_position)
 		return
 
@@ -235,7 +239,7 @@ func command_attack(new_target: Node2D):
 		return
 
 	if not can_damage_target(new_target):
-		stop_action()
+		stop_attack_only()
 		return
 
 	begin_attack_action()
@@ -270,7 +274,11 @@ func handle_cast_positioning() -> void:
 	var distance_units: float = get_range_units_to_node(target)
 
 	if distance_units > cast_range_units:
-		move_toward_node(target)
+		move_toward_action_target(
+			combat_facing_target,
+			target,
+			cast_range_units
+		)
 		return
 
 	stop_movement()
@@ -280,6 +288,15 @@ func handle_cast_positioning() -> void:
 func on_forced_movement_finished() -> void:
 	if has_valid_cast_target():
 		handle_cast_positioning()
+
+
+func stop_attack_only() -> void:
+	target = null
+	clear_attack_action()
+	cancel_current_cast()
+
+	if not has_manual_move_order and not is_positioning_checkpoint_bound():
+		stop_movement()
 
 
 func try_start_cast():

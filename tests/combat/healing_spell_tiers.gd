@@ -15,6 +15,7 @@ class DummyPressureSelector:
 	var active_tank: bool = false
 	var tank_damage: int = 0
 	var raid_pressure_multiplier: float = 1.0
+	var cast_interruption_seconds: float = -1.0
 
 	func is_active_tank(_target: Node) -> bool:
 		return active_tank
@@ -28,6 +29,9 @@ class DummyPressureSelector:
 
 	func get_raid_pressure_multiplier() -> float:
 		return raid_pressure_multiplier
+
+	func get_upcoming_cast_interruption_seconds() -> float:
+		return cast_interruption_seconds
 
 
 class DummyLandingSource:
@@ -53,6 +57,7 @@ func _ready() -> void:
 func _run() -> void:
 	_test_resources_and_policy()
 	_test_tier_selection()
+	_test_cast_interruption_prediction()
 	_test_incoming_heal_horizon_and_targeting()
 	_test_boss_swing_estimation()
 	_test_priest_cast_state_events_and_cadence()
@@ -135,8 +140,17 @@ func _test_tier_selection() -> void:
 	target.health = 80
 	_expect_action(selector, target, pressure, "greater_heal", "phase raid pressure")
 
-	var incoming_source := _new_landing_source()
 	pressure.raid_pressure_multiplier = 1.0
+	target.health = 60
+	pressure.cast_interruption_seconds = 2.2
+	_expect_action(selector, target, pressure, "heal", "upcoming cast interruption")
+	pressure.cast_interruption_seconds = 1.55
+	_expect_action(selector, target, pressure, "lesser_heal", "no safe cast window")
+	pressure.cast_interruption_seconds = 3.2
+	_expect_action(selector, target, pressure, "greater_heal", "safe greater heal window")
+	pressure.cast_interruption_seconds = -1.0
+
+	var incoming_source := _new_landing_source()
 	target.health = 65
 	incoming_source.landing_times["soon"] = 1.0
 	target.register_pending_heal("soon", incoming_source, 18, 1.0, "heal", "Heal", 2.0)
@@ -148,6 +162,67 @@ func _test_tier_selection() -> void:
 	)
 	_expect_action(selector, target, pressure, "greater_heal", "late incoming healing")
 	target.remove_pending_heal("late")
+
+
+func _test_cast_interruption_prediction() -> void:
+	var boss = BossScript.new()
+	get_tree().root.add_child(boss)
+	owned_nodes.append(boss)
+	var target_selector = HealingTargetSelectorScript.new()
+	target_selector.setup([], [boss])
+	var disruption_ability := BossAbility.new()
+
+	for ability_id in ["earthshaker_stomp", "boulder_toss", "barbed_recall"]:
+		disruption_ability.ability_id = ability_id
+		boss.current_ability = disruption_ability
+		boss.is_casting = true
+		boss.cast_timer = 0.75
+		_expect(
+			is_equal_approx(
+				target_selector.get_upcoming_cast_interruption_seconds(),
+				0.75
+			),
+			"Active %s did not expose its remaining interruption window." % ability_id
+		)
+
+	boss.is_casting = false
+	boss.current_ability = null
+	var phase := BossPhaseDefinition.new()
+	phase.ability_speed_multiplier = 2.0
+	boss.current_phase = phase
+	disruption_ability.ability_id = "earthshaker_stomp"
+	disruption_ability.cast_time = 2.0
+	boss.next_ability = disruption_ability
+	boss.special_timer = 0.5
+	_expect(
+		is_equal_approx(target_selector.get_upcoming_cast_interruption_seconds(), 1.5),
+		"Queued cast-end displacement did not apply delay, cast time, and cast speed."
+	)
+
+	disruption_ability.ability_id = "twin_sweeping_pull"
+	_expect(
+		is_equal_approx(target_selector.get_upcoming_cast_interruption_seconds(), 0.5),
+		"Queued cast-start displacement did not use the ability start time."
+	)
+
+	var ordinary_ability := BossAbility.new()
+	ordinary_ability.ability_id = "ordinary_ability"
+	ordinary_ability.cooldown = 1.0
+	boss.current_ability = ordinary_ability
+	boss.is_casting = true
+	boss.cast_timer = 0.25
+	_expect(
+		is_equal_approx(target_selector.get_upcoming_cast_interruption_seconds(), 0.75),
+		"A queued interruption behind an active cast omitted cast or recovery timing."
+	)
+
+	boss.is_casting = false
+	boss.current_ability = null
+	disruption_ability.ability_id = "unrelated_ability"
+	_expect(
+		target_selector.get_upcoming_cast_interruption_seconds() < 0.0,
+		"An unrelated boss ability constrained healing casts."
+	)
 
 
 func _test_incoming_heal_horizon_and_targeting() -> void:
