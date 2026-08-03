@@ -48,7 +48,11 @@ func resolve(boss: Node, party_members: Array) -> void:
 			(unit as Node2D).global_position
 		)
 
-		if unit == current_target:
+		var is_movement_exempt: bool = unit == current_target
+		if not is_movement_exempt and unit.has_method("has_role"):
+			is_movement_exempt = bool(unit.has_role("tank"))
+
+		if is_movement_exempt:
 			var exempt_key := String(mini_region.get("key", ""))
 			stationary_occupancy[exempt_key] = int(
 				stationary_occupancy.get(exempt_key, 0)
@@ -107,8 +111,8 @@ func resolve(boss: Node, party_members: Array) -> void:
 		ability_name + " hit " + str(living_units.size())
 		+ " unit(s) and pushed eligible non-far units one ring outward; current target "
 		+ (
-			"was exempt from movement."
+			"and tanks were exempt from movement."
 			if current_target != null
-			else "was unavailable."
+			else "was unavailable; tanks were exempt from movement."
 		)
 	)

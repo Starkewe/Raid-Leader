@@ -15,6 +15,8 @@
 [ext_resource type="Script" uid="uid://ds152rvxhwyh0" path="res://scripts/abilities/boulder_toss.gd" id="13_boulder_runtime"]
 [ext_resource type="Script" uid="uid://cusrrmqltv338" path="res://scripts/data/empowered_slam_definition.gd" id="14_slam_definition"]
 [ext_resource type="Script" uid="uid://cwogrjcck07ip" path="res://scripts/abilities/empowered_slam.gd" id="15_slam_runtime"]
+[ext_resource type="Script" uid="uid://mkdfy3soox02" path="res://scripts/abilities/phase_transition.gd" id="16_transition_runtime"]
+[ext_resource type="Script" path="res://scripts/data/positioning_checkpoint_definition.gd" id="17_checkpoint_type"]
 
 [sub_resource type="Resource" id="Ability_TwinSweepingPull"]
 script = ExtResource("6_twin_definition")
@@ -58,7 +60,7 @@ display_name = "Earthshaker Stomp"
 windup_text = "The Ogre raises one massive foot."
 impact_text = "The arena bucks outward!"
 cast_time = 1.75
-cooldown = 4.0
+cooldown = 8.0
 damage = 8
 interruptible = false
 requires_active_target = false
@@ -79,9 +81,9 @@ requires_active_target = false
 script = ExtResource("4_status_type")
 effect_id = "slam_vulnerability"
 display_name = "Slam Vulnerability"
-duration = 10.0
+duration = 15.0
 max_stacks = 100
-incoming_damage_percent_per_stack = 0.1
+incoming_damage_percent_per_stack = 0.05
 
 [sub_resource type="Resource" id="Status_CrackedGround"]
 script = ExtResource("4_status_type")
@@ -96,16 +98,26 @@ movement_speed_multiplier_per_stack = 0.8
 script = ExtResource("5_hazard_type")
 hazard_id = "cracked_ground"
 display_name = "Cracked Ground"
+reaction_owner = "raider_personal"
+automatic_response = "avoid_area"
 duration = 0.0
 damage_per_tick = 4
 status_effect = SubResource("Status_CrackedGround")
 fill_color = Color(0.34, 0.1, 0.025, 0.44)
 edge_color = Color(1, 0.3, 0.055, 0.92)
 
+[sub_resource type="Resource" id="Checkpoint_EmpoweredSlam"]
+script = ExtResource("17_checkpoint_type")
+planning_window_opens = "basic_attack_trigger_ready"
+positions_lock = "on_cast_start"
+commitment_releases = "after_positions_lock"
+
 [sub_resource type="Resource" id="Ability_EmpoweredSlam"]
 script = ExtResource("14_slam_definition")
 affected_ranges = Array[String](["close", "mid", "far"])
 fissure_definition = SubResource("Hazard_CrackedGround")
+slam_vulnerability = SubResource("Status_SlamVulnerability")
+positioning_checkpoint = SubResource("Checkpoint_EmpoweredSlam")
 runtime_script = ExtResource("15_slam_runtime")
 ability_id = "empowered_slam"
 display_name = "Empowered Slam"
@@ -113,8 +125,30 @@ windup_text = "The Ogre's club gathers the weight of the earth."
 impact_text = "The struck lane splits open!"
 cast_time = 2.5
 cooldown = 6.0
-damage = 18
+damage = 40
 interruptible = false
+
+[sub_resource type="Resource" id="Transition_PhaseTwo"]
+script = ExtResource("2_ability_type")
+runtime_script = ExtResource("16_transition_runtime")
+ability_id = "earthgnasher_phase_2_transition"
+display_name = "Earthgnasher Phase 2 Transition"
+windup_text = "You will not break my ground!"
+cast_time = 5.0
+cooldown = 0.0
+interruptible = false
+requires_active_target = false
+
+[sub_resource type="Resource" id="Transition_Frenzy"]
+script = ExtResource("2_ability_type")
+runtime_script = ExtResource("16_transition_runtime")
+ability_id = "earthgnasher_frenzy_transition"
+display_name = "Earthgnasher Frenzy Transition"
+windup_text = "Enough! I will tear you apart with my bare hands!"
+cast_time = 8.0
+cooldown = 0.0
+interruptible = false
+requires_active_target = false
 
 [sub_resource type="Resource" id="Phase_One"]
 script = ExtResource("3_phase_type")
@@ -130,6 +164,8 @@ ability_cooldown_multiplier = 0.9
 attack_damage_multiplier = 1.1
 ability_damage_multiplier = 1.1
 ability_target_count_bonus = 1
+transition_ability = SubResource("Transition_PhaseTwo")
+defer_phase_effects_until_transition = true
 
 [sub_resource type="Resource" id="Phase_Frenzy"]
 script = ExtResource("3_phase_type")
@@ -143,7 +179,12 @@ attack_damage_multiplier = 1.25
 ability_damage_multiplier = 1.25
 ability_target_count_bonus = 2
 basic_attack_trigger_threshold_override = 5
-enabled_ability_ids = Array[String](["earthshaker_stomp", "boulder_toss"])
+enabled_ability_ids = Array[String](["earthshaker_stomp"])
+basic_attack_weapon_mode = "fists"
+basic_attack_weapon_damage_multiplier = 0.5
+basic_attack_weapon_speed_multiplier = 2.0
+transition_ability = SubResource("Transition_Frenzy")
+defer_phase_effects_until_transition = true
 
 [resource]
 script = ExtResource("1_encounter")
@@ -153,8 +194,7 @@ description = "The first complete V1 encounter: tank-swap Slams, Twin Sweeping P
 boss_display_name = "The Earthgnasher"
 max_health = 25000
 movement_mode = "anchored"
-attack_damage = 25
-attack_cooldown = 2.5
+attack_cooldown = 2.0
 basic_attack_id = "ogre_slam"
 basic_attack_display_name = "Slam"
 basic_attack_status_effect = SubResource("Status_SlamVulnerability")
@@ -165,4 +205,6 @@ basic_attack_trigger_threshold = 10
 basic_attack_trigger_when_target_outside_required_range = true
 abilities = Array[ExtResource("2_ability_type")]([SubResource("Ability_TwinSweepingPull"), SubResource("Ability_GrabbingRoar"), SubResource("Ability_EarthshakerStomp"), SubResource("Ability_BoulderToss")])
 phases = Array[ExtResource("3_phase_type")]([SubResource("Phase_One"), SubResource("Phase_Two"), SubResource("Phase_Frenzy")])
+ability_base_gap = 4.0
+ability_cooldown_variance = 0.05
 initial_ability_delay = 6.0

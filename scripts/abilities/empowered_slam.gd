@@ -9,6 +9,7 @@ const FISSURE_LINE_STATE_KEY := "empowered_slam_fissure_lines_by_region"
 var affected_ranges: Array[String] = ["close"]
 var fissure_ranges: Array[String] = ["close", "mid", "far"]
 var fissure_definition: HazardDefinition = null
+var slam_vulnerability: StatusEffectDefinition = null
 var maximum_fissure_lines_per_region: int = 3
 
 var locked_region: String = "south"
@@ -23,6 +24,7 @@ func configure(definition: BossAbilityDefinition) -> void:
 		affected_ranges = slam_definition.affected_ranges.duplicate()
 		fissure_ranges = slam_definition.fissure_ranges.duplicate()
 		fissure_definition = slam_definition.fissure_definition
+		slam_vulnerability = slam_definition.slam_vulnerability
 		maximum_fissure_lines_per_region = maxi(
 			slam_definition.maximum_fissure_lines_per_region,
 			0
@@ -96,6 +98,9 @@ func resolve(boss: Node, party_members: Array) -> void:
 				{"region": locked_region, "range": unit_range}
 			)
 
+		if slam_vulnerability != null and unit.has_method("apply_status_effect"):
+			unit.apply_status_effect(slam_vulnerability, boss)
+
 		if unit.has_method("get_display_name"):
 			hit_labels.append(String(unit.get_display_name()))
 		else:
@@ -145,13 +150,19 @@ func _spawn_fissure_line(boss: Node, party_members: Array) -> int:
 		hazard.name = "CrackedGround_" + locked_region.capitalize() + "_" + range_name.capitalize()
 		hazard.z_index = 20
 		parent.add_child(hazard)
-		hazard.global_position = (
+		var hazard_center := (
 			locked_origin
 			+ direction * (
 				boss_radius + MovementSlotResolverScript.get_range_offset(range_name)
 			)
 		)
+		hazard.global_position = hazard_center
 		hazard.configure(fissure_definition, boss, party_members)
+		hazard.configure_polygon_coverage(
+			_get_mini_region_polygon(boss, range_name, boss_radius),
+			locked_region,
+			range_name
+		)
 
 		if boss.has_method("register_encounter_object"):
 			boss.register_encounter_object(hazard)
@@ -164,3 +175,30 @@ func _spawn_fissure_line(boss: Node, party_members: Array) -> int:
 		boss.set_mechanic_state(FISSURE_LINE_STATE_KEY, line_counts)
 
 	return spawned_count
+
+
+func _get_mini_region_polygon(
+	boss: Node,
+	range_name: String,
+	boss_radius: float
+) -> PackedVector2Array:
+	var local_polygon := MovementSlotResolverScript.get_mini_region_polygon(
+		boss_radius,
+		locked_region,
+		range_name,
+		_get_max_effect_range_units(boss)
+	)
+	var world_polygon := PackedVector2Array()
+
+	for point in local_polygon:
+		world_polygon.append(locked_origin + point)
+
+	return world_polygon
+
+
+func _get_max_effect_range_units(boss: Node) -> float:
+	if boss == null or not is_instance_valid(boss):
+		return 50.0
+
+	var value: Variant = boss.get("impact_effect_max_range_units")
+	return 50.0 if value == null else maxf(float(value), 0.0)

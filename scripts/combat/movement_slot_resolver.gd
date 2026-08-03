@@ -75,6 +75,7 @@ const MID_SLOT_RANGE_UNITS: float = 20.0
 const FAR_SLOT_RANGE_UNITS: float = 40.0
 const MINI_REGION_HALF_ANGLE: float = PI / 8.0
 const MINI_REGION_ENTRY_MARGIN_PIXELS: float = 1.0
+const MINI_REGION_GEOMETRY_EPSILON_PIXELS: float = 0.01
 # Keeps the widest 60-pixel raider silhouettes readable with slight overlap.
 const RAIDER_FORMATION_SPACING_PIXELS: float = 48.0
 
@@ -124,6 +125,62 @@ static func get_adjacent_range(current_range: String, range_direction: String) -
 
 static func get_mini_region_key(region: String, range_name: String) -> String:
 	return region + ":" + range_name
+
+
+static func get_mini_region_polygon(
+	boss_radius: float,
+	region: String,
+	range_name: String,
+	max_range_units: float = 50.0
+) -> PackedVector2Array:
+	var band_apothems := get_mini_region_apothem_bounds(
+		boss_radius,
+		range_name,
+		max_range_units
+	)
+	var inner_circumradius := band_apothems.x / cos(MINI_REGION_HALF_ANGLE)
+	var outer_circumradius := band_apothems.y / cos(MINI_REGION_HALF_ANGLE)
+	var center_angle := get_region_direction(region).angle()
+	var left_direction := Vector2.RIGHT.rotated(
+		center_angle - MINI_REGION_HALF_ANGLE
+	)
+	var right_direction := Vector2.RIGHT.rotated(
+		center_angle + MINI_REGION_HALF_ANGLE
+	)
+
+	return PackedVector2Array([
+		left_direction * inner_circumradius,
+		left_direction * outer_circumradius,
+		right_direction * outer_circumradius,
+		right_direction * inner_circumradius
+	])
+
+
+static func get_mini_region_apothem_bounds(
+	boss_radius: float,
+	range_name: String,
+	max_range_units: float = 50.0
+) -> Vector2:
+	var resolved_boss_radius := maxf(boss_radius, 0.0)
+	var close_mid_boundary := resolved_boss_radius + CombatMeasurementsScript.range_units_to_pixels(
+		(CLOSE_SLOT_RANGE_UNITS + MID_SLOT_RANGE_UNITS) * 0.5
+	)
+	var mid_far_boundary := resolved_boss_radius + CombatMeasurementsScript.range_units_to_pixels(
+		(MID_SLOT_RANGE_UNITS + FAR_SLOT_RANGE_UNITS) * 0.5
+	)
+	var maximum_apothem := resolved_boss_radius + CombatMeasurementsScript.range_units_to_pixels(
+		maxf(max_range_units, (MID_SLOT_RANGE_UNITS + FAR_SLOT_RANGE_UNITS) * 0.5)
+	)
+
+	match range_name:
+		RANGE_CLOSE:
+			return Vector2(resolved_boss_radius, close_mid_boundary)
+		RANGE_MID:
+			return Vector2(close_mid_boundary, mid_far_boundary)
+		RANGE_FAR:
+			return Vector2(mid_far_boundary, maximum_apothem)
+		_:
+			return Vector2(resolved_boss_radius, close_mid_boundary)
 
 
 static func get_mini_region_from_position(
@@ -244,6 +301,7 @@ static func get_closest_point_in_mini_region(
 	var region_direction := get_region_direction(region)
 	var relative_angle := 0.0
 	var safe_inset := maxf(safety_inset_pixels, MINI_REGION_ENTRY_MARGIN_PIXELS)
+	var projection_inset := safe_inset + MINI_REGION_GEOMETRY_EPSILON_PIXELS
 
 	if is_position_safely_inside_mini_region(
 		boss_node,
@@ -257,7 +315,7 @@ static func get_closest_point_in_mini_region(
 	var radial_bounds := get_mini_region_radial_bounds(
 		boss_node,
 		range_name,
-		safe_inset
+		projection_inset
 	)
 	var minimum_apothem := float(radial_bounds.get("minimum", 0.0))
 	var maximum_apothem := float(radial_bounds.get("maximum", -1.0))
@@ -270,47 +328,40 @@ static func get_closest_point_in_mini_region(
 			PI
 		)
 
-	var angle_inset := asin(clampf(
-		safe_inset / maxf(reference_radius, safe_inset),
-		0.0,
-		1.0
-	))
-	var maximum_entry_angle := maxf(MINI_REGION_HALF_ANGLE - angle_inset, 0.0)
-	var entry_direction := region_direction.rotated(
-		clampf(relative_angle, -maximum_entry_angle, maximum_entry_angle)
-	)
-	var apothem_scale := maxf(entry_direction.dot(region_direction), 0.001)
-	var minimum_radius := minimum_apothem / apothem_scale
-	var maximum_radius := (
-		maximum_apothem / apothem_scale
-		if maximum_apothem >= 0.0
-		else -1.0
-	)
-	var entry_radius := maxf(source_offset.dot(entry_direction), minimum_radius)
+	var entry_direction := region_direction
+	var entry_radius := reference_radius
 
-	if maximum_radius >= 0.0:
-		entry_radius = minf(entry_radius, maximum_radius)
+	# The angular footprint inset depends on the resolved radius, while the
+	# resolved radius also depends on the inset angle. Iterate the projection so
+	# corner entries converge inside both constraints instead of stopping after
+	# an occasionally unsafe second approximation.
+	for _iteration in range(8):
+		var angle_inset := asin(clampf(
+			projection_inset / maxf(entry_radius, projection_inset),
+			0.0,
+			1.0
+		))
+		var maximum_entry_angle := maxf(
+			MINI_REGION_HALF_ANGLE - angle_inset,
+			0.0
+		)
+		entry_direction = region_direction.rotated(
+			clampf(relative_angle, -maximum_entry_angle, maximum_entry_angle)
+		)
+		var apothem_scale := maxf(
+			entry_direction.dot(region_direction),
+			0.001
+		)
+		var minimum_radius := minimum_apothem / apothem_scale
+		var maximum_radius := (
+			maximum_apothem / apothem_scale
+			if maximum_apothem >= 0.0
+			else -1.0
+		)
+		entry_radius = maxf(source_offset.dot(entry_direction), minimum_radius)
 
-	angle_inset = asin(clampf(
-		safe_inset / maxf(entry_radius, safe_inset),
-		0.0,
-		1.0
-	))
-	maximum_entry_angle = maxf(MINI_REGION_HALF_ANGLE - angle_inset, 0.0)
-	entry_direction = region_direction.rotated(
-		clampf(relative_angle, -maximum_entry_angle, maximum_entry_angle)
-	)
-	apothem_scale = maxf(entry_direction.dot(region_direction), 0.001)
-	minimum_radius = minimum_apothem / apothem_scale
-	maximum_radius = (
-		maximum_apothem / apothem_scale
-		if maximum_apothem >= 0.0
-		else -1.0
-	)
-	entry_radius = maxf(source_offset.dot(entry_direction), minimum_radius)
-
-	if maximum_radius >= 0.0:
-		entry_radius = minf(entry_radius, maximum_radius)
+		if maximum_radius >= 0.0:
+			entry_radius = minf(entry_radius, maximum_radius)
 
 	return boss_2d.global_position + entry_direction * entry_radius
 

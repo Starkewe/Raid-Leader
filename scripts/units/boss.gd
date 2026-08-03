@@ -6,6 +6,9 @@ const BossTargetControllerScript := preload("res://scripts/combat/boss_target_co
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 const CleaveImpactEffectScript := preload("res://scripts/effects/cleave_impact_effect.gd")
 const BossDebugVisualsScript := preload("res://scripts/effects/boss_debug_visuals.gd")
+const HealingCoverageCoordinatorScript := preload(
+	"res://scripts/combat/healing_coverage_coordinator.gd"
+)
 
 signal defeated
 signal combat_event(event: Dictionary)
@@ -47,6 +50,9 @@ var basic_attack_trigger_threshold: int = 0
 var basic_attack_trigger_when_target_outside_required_range: bool = false
 var basic_attack_required_range: String = "close"
 var initial_ability_delay: float = -1.0
+var ability_base_gap: float = 4.0
+var ability_cooldown_variance: float = 0.05
+var ability_random_seed: int = 0
 
 @onready var health_bar = get_node_or_null("HealthBar")
 @onready var cast_bar = get_node_or_null("CastBar")
@@ -68,6 +74,10 @@ var next_ability: BossAbility = null
 
 var attack_timer: float = 0.0
 var special_timer: float = 0.0
+var ability_cooldown_remaining: Dictionary = {}
+var ability_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var ability_rng_initialized: bool = false
+var last_ability_id: String = ""
 var cast_timer: float = 0.0
 var current_cast_elapsed: float = 0.0
 var current_cast_speed_multiplier: float = 1.0
@@ -81,9 +91,18 @@ var basic_attack_sequence_count: int = 0
 var basic_attack_trigger_count: int = 0
 var pending_basic_raidwide_timer: float = -1.0
 var pending_phase_transition_definition: BossAbilityDefinition = null
+## The phase whose effects will be applied when the deferred transition resolves.
+var pending_phase: BossPhaseDefinition = null
+## Compatibility alias for callers that prefer the resource-oriented name.
+var pending_phase_definition: BossPhaseDefinition = null
 var phase_transition_pending: bool = false
 var current_ability_is_phase_transition: bool = false
 var current_ability_is_basic_attack_trigger: bool = false
+var active_positioning_checkpoint: Dictionary = {}
+var next_positioning_checkpoint_token: int = 1
+var healing_coverage_coordinator: HealingCoverageCoordinator = (
+	HealingCoverageCoordinatorScript.new()
+)
 
 func _ready():
 	encounter_origin_position = global_position
@@ -92,6 +111,7 @@ func _ready():
 
 	health = max_health
 	update_current_phase(false)
+	_initialize_ability_randomizer()
 	attack_timer = get_effective_attack_cooldown()
 
 	if next_ability == null:
@@ -161,6 +181,13 @@ func apply_selected_boss_profile() -> void:
 	)
 	basic_attack_required_range = encounter_definition.basic_attack_required_range
 	initial_ability_delay = encounter_definition.initial_ability_delay
+	ability_base_gap = maxf(encounter_definition.ability_base_gap, 0.0)
+	ability_cooldown_variance = clampf(
+		encounter_definition.ability_cooldown_variance,
+		0.0,
+		1.0
+	)
+	ability_random_seed = encounter_definition.ability_random_seed
 	debug_logging_enabled = encounter_definition.debug_logging_enabled
 
 	show_debug_region_guides = encounter_definition.show_debug_region_guides and OS.is_debug_build()
@@ -172,6 +199,9 @@ func apply_selected_boss_profile() -> void:
 	phase_definitions.sort_custom(func(a: BossPhaseDefinition, b: BossPhaseDefinition):
 		return a.starts_at_health_percent > b.starts_at_health_percent
 	)
+	ability_cooldown_remaining.clear()
+	last_ability_id = ""
+	ability_rng_initialized = false
 	next_ability_index = 0
 func _physics_process(delta):
 	if is_dead:
@@ -186,7 +216,15 @@ func _physics_process(delta):
 		velocity = Vector2.ZERO
 		return
 
+	_advance_ability_cooldowns(delta)
 	update_pending_basic_raidwide(delta)
+
+	if phase_transition_pending and not is_casting:
+		velocity = Vector2.ZERO
+		start_special_cast()
+		move_and_slide()
+		enforce_movement_mode()
+		return
 
 	if is_casting:
 		if current_ability != null and current_ability.requires_active_target and not has_valid_target():
@@ -239,23 +277,116 @@ func create_next_ability() -> BossAbility:
 	if ability_definitions.is_empty():
 		return BossAbilityFactoryScript.create_fallback_ability()
 
-	var ability_count := ability_definitions.size()
-	var starting_index := posmod(next_ability_index, ability_count)
+	var allowed_definitions: Array[BossAbilityDefinition] = []
 
-	for offset in range(ability_count):
-		var definition_index := (starting_index + offset) % ability_count
-		var definition := ability_definitions[definition_index]
-
+	for definition in ability_definitions:
 		if definition == null:
 			continue
 
 		if current_phase != null and not current_phase.allows_ability(definition.ability_id):
 			continue
 
-		next_ability_index = (definition_index + 1) % ability_count
-		return BossAbilityFactoryScript.create_ability_from_definition(definition)
+		allowed_definitions.append(definition)
 
-	return null
+	if allowed_definitions.is_empty():
+		return null
+
+	var ready_definitions: Array[BossAbilityDefinition] = []
+
+	for definition in allowed_definitions:
+		if get_ability_cooldown_remaining(definition.ability_id) <= 0.0001:
+			ready_definitions.append(definition)
+
+	var selected_definition: BossAbilityDefinition = null
+
+	if not ready_definitions.is_empty():
+		selected_definition = _choose_ability_definition(ready_definitions)
+	else:
+		selected_definition = _choose_soonest_ability_definition(allowed_definitions)
+
+	if selected_definition == null:
+		return null
+
+	_update_next_ability_index(selected_definition)
+	return BossAbilityFactoryScript.create_ability_from_definition(selected_definition)
+
+
+func _choose_ability_definition(
+	candidates: Array[BossAbilityDefinition]
+) -> BossAbilityDefinition:
+	if candidates.is_empty():
+		return null
+
+	var selectable: Array[BossAbilityDefinition] = candidates.duplicate()
+
+	if selectable.size() > 1 and not last_ability_id.is_empty():
+		var without_last: Array[BossAbilityDefinition] = []
+
+		for definition in selectable:
+			if definition.ability_id != last_ability_id:
+				without_last.append(definition)
+
+		if not without_last.is_empty():
+			selectable = without_last
+
+	_initialize_ability_randomizer()
+	return selectable[ability_rng.randi_range(0, selectable.size() - 1)]
+
+
+func _choose_soonest_ability_definition(
+	candidates: Array[BossAbilityDefinition]
+) -> BossAbilityDefinition:
+	var soonest_remaining := INF
+	var soonest: Array[BossAbilityDefinition] = []
+
+	for definition in candidates:
+		var remaining := get_ability_cooldown_remaining(definition.ability_id)
+
+		if remaining < soonest_remaining - 0.0001:
+			soonest_remaining = remaining
+			soonest.clear()
+			soonest.append(definition)
+		elif is_equal_approx(remaining, soonest_remaining):
+			soonest.append(definition)
+
+	return _choose_ability_definition(soonest)
+
+
+func _update_next_ability_index(definition: BossAbilityDefinition) -> void:
+	var definition_index := ability_definitions.find(definition)
+
+	if definition_index >= 0:
+		next_ability_index = (definition_index + 1) % ability_definitions.size()
+
+
+func _advance_ability_cooldowns(delta: float) -> void:
+	if ability_cooldown_remaining.is_empty():
+		return
+
+	for ability_id in ability_cooldown_remaining.keys().duplicate():
+		var remaining := maxf(
+			float(ability_cooldown_remaining.get(ability_id, 0.0)) - delta,
+			0.0
+		)
+
+		if remaining <= 0.0:
+			ability_cooldown_remaining.erase(ability_id)
+		else:
+			ability_cooldown_remaining[ability_id] = remaining
+
+
+func _initialize_ability_randomizer() -> void:
+	if ability_rng_initialized:
+		return
+
+	if ability_random_seed != 0:
+		ability_rng.seed = ability_random_seed
+	else:
+		ability_rng.randomize()
+
+	ability_rng_initialized = true
+	debug_log("Ability scheduler seed: " + str(ability_rng.seed))
+
 func get_combat_radius() -> float:
 	return combat_radius
 
@@ -330,6 +461,8 @@ func set_encounter_active(active: bool) -> void:
 	encounter_active = active and not is_dead
 
 	if not encounter_active:
+		clear_positioning_checkpoint("encounter_stopped")
+		healing_coverage_coordinator.clear()
 		if target_controller != null:
 			target_controller.reset_threat()
 
@@ -347,6 +480,7 @@ func set_encounter_active(active: bool) -> void:
 		current_cast_elapsed = 0.0
 		current_cast_speed_multiplier = 1.0
 		pending_phase_transition_definition = null
+		_clear_pending_phase()
 		phase_transition_pending = false
 		current_ability_is_phase_transition = false
 		current_ability_is_basic_attack_trigger = false
@@ -364,7 +498,12 @@ func chase_target():
 	velocity = direction * speed
 
 func auto_attack():
-	if attack_timer > 0:
+	if (
+		attack_timer > 0
+		or is_casting
+		or phase_transition_pending
+		or current_ability_is_phase_transition
+	):
 		return
 
 	var target := get_current_target()
@@ -585,7 +724,12 @@ func is_target_in_required_basic_attack_range(target: Node2D) -> bool:
 
 
 func start_basic_attack_triggered_cast(trigger_reason: String) -> bool:
-	if is_casting or basic_attack_triggered_ability_definition == null:
+	if (
+		is_casting
+		or phase_transition_pending
+		or current_ability_is_phase_transition
+		or basic_attack_triggered_ability_definition == null
+	):
 		return false
 
 	var ability_to_cast := BossAbilityFactoryScript.create_ability_from_definition(
@@ -615,7 +759,14 @@ func start_basic_attack_triggered_cast(trigger_reason: String) -> bool:
 	cast_timer = current_ability.cast_time / current_cast_speed_multiplier
 	current_cast_elapsed = 0.0
 
+	_try_open_positioning_checkpoint(
+		basic_attack_triggered_ability_definition,
+		"cast_queued"
+	)
 	current_ability.on_cast_start(self, party_members)
+	_handle_positioning_checkpoint_cast_start(
+		basic_attack_triggered_ability_definition
+	)
 	emit_combat_event("cast_started", self, current_ability.ability_id, 0, {
 		"cast_name": current_ability.get_cast_name(),
 		"cast_time": cast_timer,
@@ -658,12 +809,121 @@ func advance_basic_attack_trigger_sequence() -> void:
 		+ str(basic_attack_trigger_count) + "/" + str(threshold) + "."
 	)
 
+	if threshold > 0 and basic_attack_trigger_count >= threshold:
+		_try_open_positioning_checkpoint(
+			basic_attack_triggered_ability_definition,
+			"basic_attack_trigger_ready"
+		)
+
 
 func reset_basic_attack_trigger_sequence(should_log: bool = true) -> void:
 	basic_attack_trigger_count = 0
+	clear_positioning_checkpoint("basic_attack_trigger_reset")
 
 	if should_log and basic_attack_triggered_ability_definition != null:
 		debug_log("Reset the basic-attack triggered-ability counter.")
+
+
+func get_active_positioning_checkpoint() -> Dictionary:
+	return active_positioning_checkpoint.duplicate(true)
+
+
+func get_healing_coverage_anchor(healer: Node2D) -> Dictionary:
+	return healing_coverage_coordinator.get_anchor_for_healer(self, healer)
+
+
+func is_positioning_checkpoint_active(token: int) -> bool:
+	return (
+		token > 0
+		and not active_positioning_checkpoint.is_empty()
+		and int(active_positioning_checkpoint.get("token", 0)) == token
+	)
+
+
+func clear_positioning_checkpoint(reason: String = "released") -> void:
+	if active_positioning_checkpoint.is_empty():
+		return
+
+	debug_log(
+		"Positioning checkpoint for "
+		+ String(active_positioning_checkpoint.get("ability_name", "mechanic"))
+		+ " cleared (" + reason + ")."
+	)
+	active_positioning_checkpoint.clear()
+
+
+func _try_open_positioning_checkpoint(
+	ability_definition: BossAbilityDefinition,
+	event_name: String
+) -> void:
+	if ability_definition == null or ability_definition.positioning_checkpoint == null:
+		return
+
+	var checkpoint := ability_definition.positioning_checkpoint
+
+	if checkpoint.planning_window_opens != event_name:
+		return
+
+	if (
+		not active_positioning_checkpoint.is_empty()
+		and String(active_positioning_checkpoint.get("ability_id", ""))
+		== ability_definition.ability_id
+	):
+		return
+
+	active_positioning_checkpoint = {
+		"token": next_positioning_checkpoint_token,
+		"ability_id": ability_definition.ability_id,
+		"ability_name": ability_definition.display_name,
+		"locked": false
+	}
+	next_positioning_checkpoint_token += 1
+	debug_log(
+		"Positioning checkpoint opened for "
+		+ ability_definition.display_name + "."
+	)
+
+
+func _handle_positioning_checkpoint_cast_start(
+	ability_definition: BossAbilityDefinition
+) -> void:
+	if not _active_checkpoint_matches(ability_definition):
+		return
+
+	var checkpoint := ability_definition.positioning_checkpoint
+
+	if checkpoint.positions_lock == "on_cast_start":
+		active_positioning_checkpoint["locked"] = true
+
+		if checkpoint.commitment_releases == "after_positions_lock":
+			clear_positioning_checkpoint("positions_locked")
+
+
+func _handle_positioning_checkpoint_resolve(
+	ability_definition: BossAbilityDefinition
+) -> void:
+	if not _active_checkpoint_matches(ability_definition):
+		return
+
+	var checkpoint := ability_definition.positioning_checkpoint
+
+	if checkpoint.positions_lock == "on_cast_resolve":
+		active_positioning_checkpoint["locked"] = true
+
+	if checkpoint.commitment_releases == "on_cast_resolve":
+		clear_positioning_checkpoint("cast_resolved")
+
+
+func _active_checkpoint_matches(
+	ability_definition: BossAbilityDefinition
+) -> bool:
+	return (
+		ability_definition != null
+		and ability_definition.positioning_checkpoint != null
+		and not active_positioning_checkpoint.is_empty()
+		and String(active_positioning_checkpoint.get("ability_id", ""))
+		== ability_definition.ability_id
+	)
 
 
 func advance_basic_attack_sequence() -> void:
@@ -735,6 +995,10 @@ func start_special_cast():
 	if is_casting:
 		return
 
+	if phase_transition_pending and pending_phase_transition_definition == null:
+		# A queued intermission must never fall through to a normal ability.
+		return
+
 	var ability_to_cast: BossAbility = null
 	var starts_phase_transition := pending_phase_transition_definition != null
 
@@ -743,22 +1007,44 @@ func start_special_cast():
 			pending_phase_transition_definition
 		)
 	else:
-		if next_ability == null:
+		if (
+			next_ability == null
+			or (
+				current_phase != null
+				and not current_phase.allows_ability(next_ability.ability_id)
+			)
+			or get_ability_cooldown_remaining(next_ability.ability_id) > 0.0001
+		):
 			next_ability = create_next_ability()
 
 		ability_to_cast = next_ability
 
 	if ability_to_cast == null:
 		pending_phase_transition_definition = null
+		_clear_pending_phase()
 		phase_transition_pending = false
-		special_timer = 1.0
+		special_timer = get_effective_ability_base_gap()
+		return
+
+	if (
+		not starts_phase_transition
+		and get_ability_cooldown_remaining(ability_to_cast.ability_id) > 0.0001
+	):
+		special_timer = maxf(
+			get_effective_ability_base_gap(),
+			get_ability_cooldown_remaining(ability_to_cast.ability_id)
+		)
 		return
 
 	if not ability_to_cast.can_cast(self, party_members):
 		if starts_phase_transition:
 			pending_phase_transition_definition = null
+			_clear_pending_phase()
 			phase_transition_pending = false
-		special_timer = get_next_ability_cooldown()
+			special_timer = 1.0
+		else:
+			next_ability = create_next_ability()
+			special_timer = get_effective_ability_base_gap()
 		return
 
 	current_ability = ability_to_cast
@@ -766,10 +1052,9 @@ func start_special_cast():
 	current_ability_is_basic_attack_trigger = false
 
 	if starts_phase_transition:
-		pending_phase_transition_definition = null
-		phase_transition_pending = false
 		reset_basic_attack_sequence(false)
 	else:
+		last_ability_id = current_ability.ability_id
 		next_ability = create_next_ability()
 
 	is_casting = true
@@ -777,7 +1062,14 @@ func start_special_cast():
 	cast_timer = current_ability.cast_time / current_cast_speed_multiplier
 	current_cast_elapsed = 0.0
 
+	_try_open_positioning_checkpoint(
+		current_ability.configured_definition,
+		"cast_queued"
+	)
 	current_ability.on_cast_start(self, party_members)
+	_handle_positioning_checkpoint_cast_start(
+		current_ability.configured_definition
+	)
 	emit_combat_event("cast_started", self, current_ability.ability_id, 0, {
 		"cast_name": current_ability.get_cast_name(),
 		"cast_time": cast_timer,
@@ -812,15 +1104,20 @@ func finish_special_cast():
 	is_casting = false
 	var finished_phase_transition := current_ability_is_phase_transition
 	var finished_basic_attack_trigger := current_ability_is_basic_attack_trigger
+	var deferred_phase := _get_pending_phase()
+	var resolved_ability := current_ability
 
 	if current_ability != null:
-		if finished_phase_transition:
-			special_timer = maxf(current_ability.cooldown, 0.0)
-		elif not finished_basic_attack_trigger:
-			special_timer = get_ability_recovery_time(current_ability)
+		if not finished_phase_transition and not finished_basic_attack_trigger:
+			_start_ability_cooldown(current_ability)
+			next_ability = create_next_ability()
+			special_timer = get_next_ability_wait_time()
 
 		print("Boss finishes", current_ability.get_cast_name())
 		current_ability.resolve(self, party_members)
+		_handle_positioning_checkpoint_resolve(
+			current_ability.configured_definition
+		)
 		emit_combat_event("cast_resolved", self, current_ability.ability_id, 0)
 	else:
 		special_timer = get_next_ability_cooldown()
@@ -830,9 +1127,32 @@ func finish_special_cast():
 	current_ability_is_basic_attack_trigger = false
 
 	if finished_phase_transition:
+		pending_phase_transition_definition = null
+		_clear_pending_phase()
+		phase_transition_pending = false
+
+		if deferred_phase != null and deferred_phase != current_phase:
+			_apply_phase_definition(deferred_phase, true, false)
+
+		# A later threshold may have been crossed while the transition was casting.
+		# Re-evaluate only after the just-completed phase has become active.
+		update_current_phase()
+
+		# Preserve the existing transition behavior: the next normal ability is
+		# selected after the transition, using the newly active phase.
+		next_ability = create_next_ability()
+
 		attack_timer = get_effective_attack_cooldown()
 		reset_basic_attack_sequence(false)
 		debug_log("Phase transition complete; normal attack rhythm resumed.")
+
+		if phase_transition_pending:
+			special_timer = 0.0
+		else:
+			special_timer = maxf(
+				0.0 if resolved_ability == null else resolved_ability.cooldown,
+				get_effective_ability_base_gap()
+			)
 	current_cast_elapsed = 0.0
 	current_cast_speed_multiplier = 1.0
 	update_cast_bar()
@@ -841,6 +1161,7 @@ func cancel_current_cast_due_to_missing_target() -> void:
 		return
 
 	is_casting = false
+	clear_positioning_checkpoint("cast_cancelled")
 	cast_timer = 0.0
 	current_cast_elapsed = 0.0
 
@@ -850,7 +1171,9 @@ func cancel_current_cast_due_to_missing_target() -> void:
 		current_ability.on_interrupted(self, party_members)
 
 		if not cancelled_basic_attack_trigger:
-			special_timer = get_ability_recovery_time(current_ability)
+			_start_ability_cooldown(current_ability)
+			next_ability = create_next_ability()
+			special_timer = get_next_ability_wait_time()
 
 		emit_combat_event("cast_cancelled", self, current_ability.ability_id, 0, {
 			"reason": "missing_target"
@@ -875,6 +1198,7 @@ func interrupt_cast(source: Node = null, interrupt_ability_id: String = "interru
 			return false
 
 		is_casting = false
+		clear_positioning_checkpoint("cast_interrupted")
 		cast_timer = 0.0
 		current_cast_elapsed = 0.0
 
@@ -883,7 +1207,9 @@ func interrupt_cast(source: Node = null, interrupt_ability_id: String = "interru
 			current_ability.on_interrupted(self, party_members)
 
 			if not interrupted_basic_attack_trigger:
-				special_timer = get_ability_recovery_time(current_ability)
+				_start_ability_cooldown(current_ability)
+				next_ability = create_next_ability()
+				special_timer = get_next_ability_wait_time()
 
 			emit_combat_event("cast_interrupted", source, current_ability.ability_id, 0, {
 				"interrupt_ability_id": interrupt_ability_id
@@ -908,7 +1234,7 @@ func take_damage(
 	ability_id: String = "",
 	metadata: Dictionary = {}
 ) -> void:
-	if is_dead or phase_transition_pending or current_ability_is_phase_transition:
+	if is_dead:
 		return
 
 	var previous_health := health
@@ -933,6 +1259,8 @@ func die():
 		return
 
 	is_dead = true
+	clear_positioning_checkpoint("boss_defeated")
+	healing_coverage_coordinator.clear()
 	encounter_active = false
 	health = 0
 	update_health_bar()
@@ -952,6 +1280,10 @@ func die():
 	current_ability_is_basic_attack_trigger = false
 	phase_transition_pending = false
 	pending_phase_transition_definition = null
+	_clear_pending_phase()
+	ability_cooldown_remaining.clear()
+	last_ability_id = ""
+	ability_rng_initialized = false
 	reset_basic_attack_sequence(false)
 	reset_basic_attack_trigger_sequence(false)
 	update_cast_bar()
@@ -992,6 +1324,8 @@ func update_cast_bar():
 		cast_bar.visible = false
 		cast_bar.value = 0
 func reset_boss(new_position: Vector2):
+	clear_positioning_checkpoint("boss_reset")
+	healing_coverage_coordinator.clear()
 	clear_encounter_objects()
 	mechanic_state.clear()
 	is_dead = false
@@ -999,6 +1333,9 @@ func reset_boss(new_position: Vector2):
 	health = max_health
 	reset_threat()
 	next_ability_index = 0
+	ability_cooldown_remaining.clear()
+	last_ability_id = ""
+	ability_rng_initialized = false
 	next_ability = null
 	current_phase = null
 	update_current_phase(false)
@@ -1009,6 +1346,7 @@ func reset_boss(new_position: Vector2):
 	current_ability_is_basic_attack_trigger = false
 	phase_transition_pending = false
 	pending_phase_transition_definition = null
+	_clear_pending_phase()
 	reset_basic_attack_sequence(false)
 	reset_basic_attack_trigger_sequence(false)
 
@@ -1058,6 +1396,15 @@ func get_status_text() -> String:
 	if is_casting and current_ability != null:
 		return current_ability.get_status_text()
 
+	if phase_transition_pending and pending_phase_transition_definition != null:
+		if not pending_phase_transition_definition.windup_text.is_empty():
+			return pending_phase_transition_definition.windup_text
+
+		if not pending_phase_transition_definition.impact_text.is_empty():
+			return pending_phase_transition_definition.impact_text
+
+		return "Casting " + pending_phase_transition_definition.display_name
+
 	if is_casting:
 		return "Casting"
 
@@ -1103,12 +1450,64 @@ func get_cast_name() -> String:
 	if is_casting and current_ability != null:
 		return current_ability.get_cast_name()
 
+	if phase_transition_pending and pending_phase_transition_definition != null:
+		return pending_phase_transition_definition.display_name
+
 	return ""
 func get_next_ability_cooldown() -> float:
-	if next_ability != null:
-		return get_ability_recovery_time(next_ability)
+	return get_next_ability_wait_time()
 
-	return 6.0
+
+func get_ability_cooldown_remaining(ability_id: String) -> float:
+	if ability_id.is_empty():
+		return 0.0
+
+	return maxf(float(ability_cooldown_remaining.get(ability_id, 0.0)), 0.0)
+
+
+func _start_ability_cooldown(ability: BossAbility) -> void:
+	if ability == null or ability.ability_id.is_empty():
+		return
+
+	ability_cooldown_remaining[ability.ability_id] = (
+		get_randomized_ability_recovery_time(ability)
+	)
+
+
+func get_randomized_ability_recovery_time(ability: BossAbility) -> float:
+	var nominal_recovery := get_ability_recovery_time(ability)
+
+	if nominal_recovery <= 0.0 or ability_cooldown_variance <= 0.0:
+		return maxf(nominal_recovery, 0.0)
+
+	_initialize_ability_randomizer()
+	var minimum_multiplier := maxf(1.0 - ability_cooldown_variance, 0.0)
+	var maximum_multiplier := 1.0 + ability_cooldown_variance
+	return nominal_recovery * ability_rng.randf_range(
+		minimum_multiplier,
+		maximum_multiplier
+	)
+
+
+func get_effective_ability_base_gap() -> float:
+	var multiplier := 1.0
+
+	if current_phase != null:
+		multiplier = current_phase.ability_base_gap_multiplier
+
+	return ability_base_gap * maxf(multiplier, 0.01)
+
+
+func get_next_ability_wait_time() -> float:
+	var base_gap := get_effective_ability_base_gap()
+
+	if next_ability == null:
+		return base_gap
+
+	return maxf(
+		base_gap,
+		get_ability_cooldown_remaining(next_ability.ability_id)
+	)
 func get_display_name() -> String:
 	return boss_display_name
 
@@ -1168,7 +1567,10 @@ func get_effective_attack_cooldown() -> float:
 	var multiplier := 1.0
 
 	if current_phase != null:
-		multiplier = current_phase.attack_speed_multiplier
+		multiplier = (
+			current_phase.attack_speed_multiplier
+			* get_basic_attack_weapon_speed_multiplier()
+		)
 
 	return attack_cooldown / maxf(multiplier, 0.01)
 
@@ -1183,6 +1585,8 @@ func estimate_scheduled_basic_attack_damage(
 ) -> int:
 	if (
 		is_dead
+		or phase_transition_pending
+		or current_ability_is_phase_transition
 		or target == null
 		or target != get_current_target()
 		or horizon_seconds < 0.0
@@ -1246,7 +1650,32 @@ func get_attack_damage_multiplier() -> float:
 	if current_phase == null:
 		return 1.0
 
-	return maxf(current_phase.attack_damage_multiplier, 0.0)
+	return maxf(
+		current_phase.attack_damage_multiplier
+		* get_basic_attack_weapon_damage_multiplier(),
+		0.0
+	)
+
+
+func get_basic_attack_weapon_mode() -> String:
+	if current_phase == null or current_phase.basic_attack_weapon_mode.is_empty():
+		return "club"
+
+	return current_phase.basic_attack_weapon_mode
+
+
+func get_basic_attack_weapon_damage_multiplier() -> float:
+	if current_phase == null:
+		return 1.0
+
+	return maxf(current_phase.basic_attack_weapon_damage_multiplier, 0.0)
+
+
+func get_basic_attack_weapon_speed_multiplier() -> float:
+	if current_phase == null:
+		return 1.0
+
+	return maxf(current_phase.basic_attack_weapon_speed_multiplier, 0.01)
 
 
 func get_ability_damage_multiplier() -> float:
@@ -1278,29 +1707,89 @@ func get_initial_ability_delay() -> float:
 	if initial_ability_delay >= 0.0:
 		return initial_ability_delay
 
-	return get_next_ability_cooldown()
+	return get_effective_ability_base_gap()
+
+
+func _get_phase_for_health_percent(health_percent: float) -> BossPhaseDefinition:
+	if current_phase != null:
+		var current_phase_index := phase_definitions.find(current_phase)
+
+		if current_phase_index >= 0:
+			for phase_index in range(current_phase_index + 1, phase_definitions.size()):
+				var later_phase: BossPhaseDefinition = phase_definitions[phase_index]
+
+				if later_phase != null and health_percent <= later_phase.starts_at_health_percent:
+					return later_phase
+
+			return current_phase
+
+	var phase_for_health: BossPhaseDefinition = null
+
+	for phase in phase_definitions:
+		if phase != null and health_percent <= phase.starts_at_health_percent:
+			phase_for_health = phase
+
+	return phase_for_health
 
 
 func update_current_phase(emit_change_event: bool = true) -> void:
 	if phase_definitions.is_empty() or max_health <= 0:
 		return
 
-	var health_percent := (float(health) / float(max_health)) * 100.0
-	var next_phase: BossPhaseDefinition = null
+	# While an intermission is queued or casting, the active phase remains the
+	# source of all combat modifiers. The completion path performs the follow-up
+	# health check after applying the pending phase.
+	if phase_transition_pending or current_ability_is_phase_transition:
+		return
 
-	for phase in phase_definitions:
-		if phase != null and health_percent <= phase.starts_at_health_percent:
-			next_phase = phase
+	var health_percent := (float(health) / float(max_health)) * 100.0
+	var next_phase := _get_phase_for_health_percent(health_percent)
 
 	if next_phase == null or next_phase == current_phase:
 		return
 
+	var should_defer_effects := (
+		current_phase != null
+		and health > 0
+		and next_phase.defer_phase_effects_until_transition
+		and next_phase.transition_ability != null
+	)
+
+	if should_defer_effects:
+		_set_pending_phase(next_phase)
+		queue_phase_transition(next_phase.transition_ability, next_phase)
+		return
+
+	_apply_phase_definition(next_phase, emit_change_event, true)
+
+
+func _apply_phase_definition(
+	next_phase: BossPhaseDefinition,
+	emit_change_event: bool,
+	queue_transition: bool
+) -> void:
+	if next_phase == null or next_phase == current_phase:
+		return
+
+	clear_positioning_checkpoint("phase_changed")
+
+	var health_percent := (float(health) / float(max_health)) * 100.0
 	var previous_trigger_threshold := get_current_basic_attack_trigger_threshold()
 	current_phase = next_phase
 	var updated_trigger_threshold := get_current_basic_attack_trigger_threshold()
 	var has_explicit_phase_transition := (
 		health > 0 and current_phase.transition_ability != null
 	)
+
+	if (
+		basic_attack_triggered_ability_definition != null
+		and updated_trigger_threshold > 0
+		and basic_attack_trigger_count >= updated_trigger_threshold
+	):
+		_try_open_positioning_checkpoint(
+			basic_attack_triggered_ability_definition,
+			"basic_attack_trigger_ready"
+		)
 
 	if has_explicit_phase_transition:
 		next_ability_index = 0
@@ -1311,48 +1800,56 @@ func update_current_phase(emit_change_event: bool = true) -> void:
 	):
 		next_ability = create_next_ability()
 
-	if not emit_change_event:
-		return
-
-	debug_log(
-		"Phase changed to " + current_phase.display_name
-		+ " at " + str(snappedf(health_percent, 0.1)) + "% health."
-	)
-
-	if previous_trigger_threshold != updated_trigger_threshold:
+	if emit_change_event:
 		debug_log(
-			"Basic-attack trigger threshold changed "
-			+ str(previous_trigger_threshold) + " -> " + str(updated_trigger_threshold)
-			+ "; preserved " + str(basic_attack_trigger_count) + " charge(s); next "
-			+ basic_attack_display_name + " opportunity "
-			+ (
-				"will trigger " + basic_attack_triggered_ability_definition.display_name
-				if (
-					basic_attack_triggered_ability_definition != null
-					and updated_trigger_threshold > 0
-					and basic_attack_trigger_count >= updated_trigger_threshold
-				)
-				else "is not yet at the trigger threshold"
-			)
-			+ "."
+			"Phase changed to " + current_phase.display_name
+			+ " at " + str(snappedf(health_percent, 0.1)) + "% health."
 		)
 
-	phase_changed.emit(current_phase.phase_id, current_phase.display_name)
-	emit_combat_event(
-		"phase_changed",
-		self,
-		current_phase.phase_id,
-		int(round(health_percent)),
-		{"display_name": current_phase.display_name}
-	)
+		if previous_trigger_threshold != updated_trigger_threshold:
+			debug_log(
+				"Basic-attack trigger threshold changed "
+				+ str(previous_trigger_threshold) + " -> " + str(updated_trigger_threshold)
+				+ "; preserved " + str(basic_attack_trigger_count) + " charge(s); next "
+				+ basic_attack_display_name + " opportunity "
+				+ (
+					"will trigger " + basic_attack_triggered_ability_definition.display_name
+					if (
+						basic_attack_triggered_ability_definition != null
+						and updated_trigger_threshold > 0
+						and basic_attack_trigger_count >= updated_trigger_threshold
+					)
+					else "is not yet at the trigger threshold"
+				)
+				+ "."
+			)
 
-	if has_explicit_phase_transition:
+		phase_changed.emit(current_phase.phase_id, current_phase.display_name)
+		emit_combat_event(
+			"phase_changed",
+			self,
+			current_phase.phase_id,
+			int(round(health_percent)),
+			{"display_name": current_phase.display_name}
+		)
+
+	if has_explicit_phase_transition and queue_transition:
 		queue_phase_transition(current_phase.transition_ability)
 
 
-func queue_phase_transition(transition_definition: BossAbilityDefinition) -> void:
+func queue_phase_transition(
+	transition_definition: BossAbilityDefinition,
+	target_phase: BossPhaseDefinition = null
+) -> void:
 	if transition_definition == null or is_dead:
 		return
+
+	clear_positioning_checkpoint("phase_transition")
+
+	if target_phase != null:
+		_set_pending_phase(target_phase)
+	elif _get_pending_phase() == current_phase:
+		_clear_pending_phase()
 
 	if is_casting and current_ability != null:
 		current_ability.on_interrupted(self, party_members)
@@ -1374,6 +1871,23 @@ func queue_phase_transition(transition_definition: BossAbilityDefinition) -> voi
 	reset_basic_attack_sequence(false)
 	update_cast_bar()
 	debug_log("Queued phase transition: " + transition_definition.display_name + ".")
+
+
+func _set_pending_phase(phase: BossPhaseDefinition) -> void:
+	pending_phase = phase
+	pending_phase_definition = phase
+
+
+func _get_pending_phase() -> BossPhaseDefinition:
+	if pending_phase != null:
+		return pending_phase
+
+	return pending_phase_definition
+
+
+func _clear_pending_phase() -> void:
+	pending_phase = null
+	pending_phase_definition = null
 
 
 func get_current_phase_id() -> String:

@@ -30,6 +30,9 @@ func _run() -> void:
 	if not _test_transcription_pause_rules():
 		return
 
+	if not _test_whisper_process_arguments():
+		return
+
 	print("Voice pause recovery regression test passed.")
 	get_tree().quit(0)
 
@@ -187,6 +190,19 @@ func _test_transcription_pause_rules() -> bool:
 		return _fail("Unpaused gameplay time did not expire a stale voice command.")
 
 	transcriber.queue_free()
+	return true
+
+
+func _test_whisper_process_arguments() -> bool:
+	var transcriber := VoiceTranscriberClient.new()
+	var args := transcriber._build_whisper_process_arguments(
+		"test.wav",
+		"model.bin",
+		"test_output"
+	)
+	if args.has("--prompt"):
+		return _fail("Whisper arguments still contain a command-specific prompt.")
+
 	return true
 
 

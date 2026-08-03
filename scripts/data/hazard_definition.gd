@@ -4,6 +4,12 @@ class_name HazardDefinition
 @export var hazard_id: String = "hazard"
 @export var display_name: String = "Hazard"
 
+@export_group("Initiative")
+@export_enum("player_coordinated", "raider_personal")
+var reaction_owner: String = "player_coordinated"
+@export_enum("none", "avoid_area")
+var automatic_response: String = "none"
+
 @export_group("Lifetime")
 ## A duration of zero keeps the hazard active until encounter cleanup.
 @export var duration: float = 5.0

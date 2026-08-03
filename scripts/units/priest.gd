@@ -197,6 +197,10 @@ func _physics_process(delta):
 		_finish_movement_step(step_start_position)
 		return
 
+	if handle_automatic_ground_hazard_escape(combat_facing_target, delta):
+		_finish_movement_step(step_start_position)
+		return
+
 	if is_casting:
 		handle_active_cast(delta)
 		_finish_movement_step(step_start_position)
@@ -213,7 +217,7 @@ func _physics_process(delta):
 	refresh_heal_target_for_assignment()
 
 	if not has_valid_heal_target():
-		stop_movement()
+		handle_healing_assignment_positioning()
 		_finish_movement_step(step_start_position)
 		return
 
@@ -353,7 +357,6 @@ func command_heal(new_target: Node2D) -> bool:
 		return false
 
 	if not can_heal_target(new_target):
-		stop_action()
 		print(get_display_name(), "received invalid heal target.")
 		return false
 
@@ -379,7 +382,7 @@ func command_heal_scope(new_scope: Dictionary, new_target_selector) -> bool:
 	if active_cast_kind != "cure":
 		cancel_current_cast()
 
-	super.stop_action()
+	clear_attack_action()
 	healing_scope = new_scope.duplicate(true)
 	healing_target_selector = new_target_selector
 	heal_target = null
@@ -480,10 +483,12 @@ func handle_active_cast(delta: float):
 
 func handle_heal_positioning() -> void:
 	if not is_valid_node(heal_target):
+		combat_auto_positioner.cancel_support_route()
 		stop_movement()
 		return
 
 	if heal_target == self:
+		combat_auto_positioner.cancel_support_route()
 		stop_movement()
 		try_start_cast()
 		return
@@ -491,9 +496,14 @@ func handle_heal_positioning() -> void:
 	var distance_units: float = get_range_units_to_node(heal_target)
 
 	if distance_units > cast_range_units:
-		move_toward_node(heal_target)
+		move_toward_support_target(
+			combat_facing_target,
+			heal_target,
+			cast_range_units
+		)
 		return
 
+	combat_auto_positioner.cancel_support_route()
 	stop_movement()
 	try_start_cast()
 
@@ -501,15 +511,88 @@ func handle_heal_positioning() -> void:
 func handle_cure_positioning() -> void:
 	if not is_valid_node(cure_target):
 		cure_target = null
+		combat_auto_positioner.cancel_support_route()
 		stop_movement()
 		return
 
 	if cure_target != self and get_range_units_to_node(cure_target) > cure_range_units:
-		move_toward_node(cure_target)
+		move_toward_support_target(
+			combat_facing_target,
+			cure_target,
+			cure_range_units
+		)
 		return
 
+	combat_auto_positioner.cancel_support_route()
 	stop_movement()
 	try_start_cure_cast()
+
+
+func handle_healing_assignment_positioning() -> void:
+	if not has_healing_assignment():
+		combat_auto_positioner.cancel_support_route()
+		stop_movement()
+		return
+
+	if is_positioning_checkpoint_bound():
+		combat_auto_positioner.cancel_support_route()
+		stop_movement()
+		return
+
+	var scope_type := String(healing_scope.get("type", ""))
+
+	if scope_type in ["unit", "unit_identity", "active_tank"]:
+		var assignment_targets: Array = (
+			healing_target_selector.get_living_units_in_scope(healing_scope)
+		)
+		var assignment_target: Node2D = null
+
+		for target_value in assignment_targets:
+			if target_value is Node2D:
+				assignment_target = target_value
+				break
+
+		if assignment_target == null or assignment_target == self:
+			combat_auto_positioner.cancel_support_route()
+			stop_movement()
+			return
+
+		if get_range_units_to_node(assignment_target) > cast_range_units:
+			move_toward_support_target(
+				combat_facing_target,
+				assignment_target,
+				cast_range_units
+			)
+			return
+
+		combat_auto_positioner.cancel_support_route()
+		stop_movement()
+		return
+
+	var anchor: Dictionary = {}
+
+	if (
+		combat_facing_target != null
+		and is_instance_valid(combat_facing_target)
+		and combat_facing_target.has_method("get_healing_coverage_anchor")
+	):
+		anchor = combat_facing_target.get_healing_coverage_anchor(self)
+
+	var anchor_position_value: Variant = anchor.get("position", null)
+
+	if not anchor_position_value is Vector2:
+		combat_auto_positioner.cancel_support_route()
+		stop_movement()
+		return
+
+	var anchor_position: Vector2 = anchor_position_value
+
+	if global_position.distance_to(anchor_position) <= manual_move_stop_distance:
+		combat_auto_positioner.cancel_support_route()
+		stop_movement()
+		return
+
+	move_toward_safe_position(combat_facing_target, anchor_position)
 
 func try_start_cast():
 	if cooldown_timer > 0.0:

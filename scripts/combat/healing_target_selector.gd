@@ -8,6 +8,14 @@ const CommandTargetResolverScript := preload(
 
 const SCOPE_ACTIVE_TANK := CommandSchemaScript.HEAL_SCOPE_ACTIVE_TANK
 const SCOPE_RAID := CommandSchemaScript.HEAL_SCOPE_RAID
+const CAST_START_INTERRUPTION_ABILITIES: Array[String] = [
+	"twin_sweeping_pull"
+]
+const CAST_END_INTERRUPTION_ABILITIES: Array[String] = [
+	"earthshaker_stomp",
+	"boulder_toss",
+	"barbed_recall"
+]
 
 var party_members: Array = []
 var enemy_threat_sources: Array = []
@@ -156,6 +164,80 @@ func get_raid_pressure_multiplier() -> float:
 	return pressure_multiplier if found_source else 1.0
 
 
+func get_upcoming_cast_interruption_seconds() -> float:
+	var earliest_seconds := INF
+
+	for enemy in _get_current_enemy_threat_sources():
+		if not is_valid_node(enemy):
+			continue
+
+		var is_casting := bool(_get_property_value(enemy, "is_casting", false))
+		var seconds_until_next_cast := maxf(
+			float(_get_property_value(enemy, "special_timer", 0.0)),
+			0.0
+		)
+
+		if is_casting:
+			var current_ability = _get_property_value(enemy, "current_ability", null)
+			var current_ability_id := _get_ability_id(current_ability)
+			var current_cast_remaining := maxf(
+				float(_get_property_value(enemy, "cast_timer", 0.0)),
+				0.0
+			)
+
+			if CAST_END_INTERRUPTION_ABILITIES.has(current_ability_id):
+				earliest_seconds = minf(
+					earliest_seconds,
+					current_cast_remaining
+				)
+
+			# Cast-start displacement has already happened once the ability is active.
+			# The unit's forced-movement state remains the cancellation fallback.
+			var current_is_basic_attack_trigger := bool(_get_property_value(
+				enemy,
+				"current_ability_is_basic_attack_trigger",
+				false
+			))
+			var recovery_seconds := seconds_until_next_cast
+
+			if (
+				not current_is_basic_attack_trigger
+				and enemy.has_method("get_ability_recovery_time")
+			):
+				recovery_seconds = maxf(
+					float(enemy.get_ability_recovery_time(current_ability)),
+					0.0
+				)
+
+			seconds_until_next_cast = current_cast_remaining + recovery_seconds
+
+		var next_ability = _get_property_value(enemy, "next_ability", null)
+		var next_ability_id := _get_ability_id(next_ability)
+
+		if not (
+			CAST_START_INTERRUPTION_ABILITIES.has(next_ability_id)
+			or CAST_END_INTERRUPTION_ABILITIES.has(next_ability_id)
+		):
+			continue
+
+		var seconds_until_interruption := seconds_until_next_cast
+
+		if CAST_END_INTERRUPTION_ABILITIES.has(next_ability_id):
+			var ability_speed := (
+				maxf(float(enemy.get_ability_speed_multiplier()), 0.01)
+				if enemy.has_method("get_ability_speed_multiplier")
+				else 1.0
+			)
+			seconds_until_interruption += (
+				maxf(float(_get_property_value(next_ability, "cast_time", 0.0)), 0.0)
+				/ ability_speed
+			)
+
+		earliest_seconds = minf(earliest_seconds, seconds_until_interruption)
+
+	return -1.0 if is_inf(earliest_seconds) else earliest_seconds
+
+
 func _get_current_enemy_threat_sources() -> Array:
 	var current_sources := enemy_threat_sources.duplicate()
 
@@ -172,6 +254,24 @@ func _get_current_enemy_threat_sources() -> Array:
 		break
 
 	return current_sources
+
+
+func _get_ability_id(ability: Variant) -> String:
+	if not ability is Object:
+		return ""
+
+	return String(_get_property_value(ability as Object, "ability_id", ""))
+
+
+func _get_property_value(object: Object, property_name: String, fallback: Variant) -> Variant:
+	if object == null or not is_instance_valid(object):
+		return fallback
+
+	for property_data in object.get_property_list():
+		if String(property_data.get("name", "")) == property_name:
+			return object.get(property_name)
+
+	return fallback
 
 
 func select_target(

@@ -280,6 +280,9 @@ func execute_rotate_to_region(selected_units: Array, region: String) -> bool:
 			continue
 
 		var destination_context := build_destination_context(region, current_range)
+		destination_context = attach_active_positioning_checkpoint(
+			destination_context
+		)
 
 		if execute_as_dodge and unit.has_method("command_dodge_through_positions"):
 			unit.command_dodge_through_positions(destinations, destination_context)
@@ -491,10 +494,42 @@ func issue_position_command(
 	destination: Vector2,
 	command_context: Dictionary
 ) -> void:
+	var resolved_context := attach_active_positioning_checkpoint(command_context)
+
 	if execute_as_dodge and unit.has_method("command_dodge_to_position"):
-		unit.command_dodge_to_position(destination, command_context)
+		unit.command_dodge_to_position(destination, resolved_context)
 	else:
-		unit.command_move_to_position(destination, command_context)
+		unit.command_move_to_position(destination, resolved_context)
+
+
+func attach_active_positioning_checkpoint(command_context: Dictionary) -> Dictionary:
+	var resolved_context := command_context.duplicate(true)
+
+	if not is_valid_node(boss) or not boss.has_method(
+		"get_active_positioning_checkpoint"
+	):
+		return resolved_context
+
+	var checkpoint_value: Variant = boss.get_active_positioning_checkpoint()
+
+	if not checkpoint_value is Dictionary:
+		return resolved_context
+
+	var checkpoint := checkpoint_value as Dictionary
+	var token := int(checkpoint.get("token", 0))
+
+	if token <= 0:
+		return resolved_context
+
+	resolved_context["positioning_checkpoint_boss"] = boss
+	resolved_context["positioning_checkpoint_token"] = token
+	resolved_context["positioning_checkpoint_ability_id"] = String(
+		checkpoint.get("ability_id", "")
+	)
+	resolved_context["positioning_checkpoint_ability_name"] = String(
+		checkpoint.get("ability_name", "")
+	)
+	return resolved_context
 
 
 func build_destination_context(region: String, range_name: String) -> Dictionary:

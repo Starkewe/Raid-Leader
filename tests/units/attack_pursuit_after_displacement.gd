@@ -1,4 +1,4 @@
-extends SceneTree
+extends Node
 
 
 class DummyAttackTarget:
@@ -22,15 +22,15 @@ class DummyAttackTarget:
 		health -= amount
 
 
-func _init() -> void:
+func _ready() -> void:
 	call_deferred("_run")
 
 
 func _run() -> void:
 	var target := DummyAttackTarget.new()
 	var rogue := Rogue.new()
-	root.add_child(target)
-	root.add_child(rogue)
+	add_child(target)
+	add_child(rogue)
 
 	target.global_position = Vector2.ZERO
 	rogue.global_position = Vector2(228.0, 0.0)
@@ -63,18 +63,25 @@ func _run() -> void:
 	rogue._physics_process(0.1)
 	rogue._physics_process(0.016)
 
-	if rogue.is_attack_action_active():
-		_fail("A movement command issued during knockback did not replace the attack action.")
+	if not rogue.is_attack_action_active():
+		_fail("A movement command issued during knockback erased the combat assignment.")
 		return
 
 	if rogue.velocity.x <= 0.0:
 		_fail("The queued movement command did not take priority after knockback.")
 		return
 
+	rogue.global_position = Vector2(700.0, 0.0)
+	rogue._physics_process(0.016)
+
+	if rogue.has_manual_move_order or rogue.velocity.x >= 0.0:
+		_fail("Role pursuit did not resume after ordinary movement arrived.")
+		return
+
 	print("Attack pursuit after displacement regression test passed.")
-	quit(0)
+	get_tree().quit(0)
 
 
 func _fail(message: String) -> void:
 	push_error(message)
-	quit(1)
+	get_tree().quit(1)

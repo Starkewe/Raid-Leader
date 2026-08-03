@@ -179,10 +179,29 @@ func _test_displacement_and_heal_recovery(priest: Priest, boss: DummyBoss) -> bo
 		return false
 
 	priest._physics_process(0.05)
+	var recovery_start := priest.global_position
+	var recovery_route := CombatAutoPositioner.build_safe_support_route(
+		boss,
+		recovery_start,
+		heal_target.global_position,
+		priest.mini_region_footprint_radius
+		+ MovementSlotResolver.MINI_REGION_ENTRY_MARGIN_PIXELS
+	)
+	var recovery_waypoints: Array = recovery_route.get("waypoints", [])
+
+	if recovery_waypoints.is_empty():
+		_fail("Heal-range recovery did not produce a mini-region waypoint.")
+		return false
+
+	var expected_recovery_facing := priest._resolve_facing_direction(
+		recovery_start.direction_to(recovery_waypoints[0]),
+		priest.last_movement_direction,
+		true
+	)
 	priest._physics_process(0.016)
 
-	if priest.get_facing_direction() != Priest.FacingDirection.NORTHWEST:
-		_fail("Heal-range recovery did not update movement-facing.")
+	if priest.get_facing_direction() != expected_recovery_facing:
+		_fail("Heal-range recovery did not face its first safe region waypoint.")
 		return false
 
 	priest.stop_action()
