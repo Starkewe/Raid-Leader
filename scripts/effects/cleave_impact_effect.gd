@@ -138,21 +138,12 @@ func generate_particles() -> void:
 
 
 func get_region_range_polygon(region: String, range_name: String) -> PackedVector2Array:
-	var band_apothems: Vector2 = get_range_band_apothems(range_name)
-	var inner_circumradius: float = get_octagon_circumradius_from_apothem(band_apothems.x)
-	var outer_circumradius: float = get_octagon_circumradius_from_apothem(band_apothems.y)
-
-	var boundary_directions: Array[Vector2] = get_region_boundary_directions(region)
-	var left_direction: Vector2 = boundary_directions[0]
-	var right_direction: Vector2 = boundary_directions[1]
-
-	var points := PackedVector2Array()
-	points.append(left_direction * inner_circumradius)
-	points.append(left_direction * outer_circumradius)
-	points.append(right_direction * outer_circumradius)
-	points.append(right_direction * inner_circumradius)
-
-	return points
+	return MovementSlotResolverScript.get_mini_region_polygon(
+		boss_radius,
+		region,
+		range_name,
+		max_effect_range_units
+	)
 
 
 func get_random_point_in_region_range(region: String, range_name: String) -> Vector2:
@@ -176,32 +167,11 @@ func get_random_point_in_region_range(region: String, range_name: String) -> Vec
 
 
 func get_range_band_apothems(range_name: String) -> Vector2:
-	var close_mid_boundary: float = get_range_boundary_apothem(
-		MovementSlotResolverScript.RANGE_CLOSE,
-		MovementSlotResolverScript.RANGE_MID
-	)
-
-	var mid_far_boundary: float = get_range_boundary_apothem(
-		MovementSlotResolverScript.RANGE_MID,
-		MovementSlotResolverScript.RANGE_FAR
-	)
-
-	var max_outer_apothem: float = boss_radius + CombatMeasurementsScript.range_units_to_pixels(
+	return MovementSlotResolverScript.get_mini_region_apothem_bounds(
+		boss_radius,
+		range_name,
 		max_effect_range_units
 	)
-
-	match range_name:
-		MovementSlotResolverScript.RANGE_CLOSE:
-			return Vector2(boss_radius, close_mid_boundary)
-
-		MovementSlotResolverScript.RANGE_MID:
-			return Vector2(close_mid_boundary, mid_far_boundary)
-
-		MovementSlotResolverScript.RANGE_FAR:
-			return Vector2(mid_far_boundary, max_outer_apothem)
-
-		_:
-			return Vector2(boss_radius, close_mid_boundary)
 
 
 func get_range_boundary_apothem(range_a: String, range_b: String) -> float:

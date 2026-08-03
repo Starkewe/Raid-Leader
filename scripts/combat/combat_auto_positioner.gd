@@ -926,11 +926,11 @@ static func _get_hazard_state_signature(hazards: Array) -> String:
 			continue
 
 		entries.append(
-			"%d:%.3f:%.3f:%.3f" % [
+			"%d:%.3f:%.3f:%s" % [
 				hazard.get_instance_id(),
 				hazard.global_position.x,
 				hazard.global_position.y,
-				_get_hazard_radius(hazard)
+				_get_hazard_coverage_signature(hazard)
 			]
 		)
 
@@ -947,11 +947,16 @@ static func get_active_hazard_mini_region_keys(boss_node: Node) -> Array[String]
 		if hazard == null:
 			continue
 
-		var mini_region := get_mini_region_for_position(
-			boss_node,
-			hazard.global_position
-		)
-		var key := String(mini_region.get("key", ""))
+		var key := ""
+
+		if hazard.has_method("get_coverage_mini_region_key"):
+			key = String(hazard.get_coverage_mini_region_key())
+		else:
+			var mini_region := get_mini_region_for_position(
+				boss_node,
+				hazard.global_position
+			)
+			key = String(mini_region.get("key", ""))
 
 		if not key.is_empty() and not keys.has(key):
 			keys.append(key)
@@ -973,9 +978,7 @@ static func get_hazards_overlapping_position(
 		if hazard == null or not is_instance_valid(hazard):
 			continue
 
-		if position.distance_to(hazard.global_position) < (
-			_get_hazard_radius(hazard) + maxf(clearance_pixels, 0.0)
-		):
+		if _hazard_contains_position(hazard, position, clearance_pixels):
 			overlapping.append(hazard)
 
 	return overlapping
@@ -993,9 +996,7 @@ static func is_position_safe(
 		if hazard == null or not is_instance_valid(hazard):
 			continue
 
-		if position.distance_to(hazard.global_position) < (
-			_get_hazard_radius(hazard) + maxf(clearance_pixels, 0.0)
-		):
+		if _hazard_contains_position(hazard, position, clearance_pixels):
 			return false
 
 	return true
@@ -1033,6 +1034,16 @@ static func _is_route_segment_safe(
 		var hazard := hazard_value as Node2D
 
 		if hazard == null or not is_instance_valid(hazard):
+			continue
+
+		if hazard.has_method("is_world_segment_safe"):
+			if not bool(hazard.is_world_segment_safe(
+				start,
+				finish,
+				clearance_pixels,
+				allow_escape_from_source
+			)):
+				return false
 			continue
 
 		var radius := _get_hazard_radius(hazard) + maxf(clearance_pixels, 0.0)
@@ -1078,12 +1089,41 @@ static func _get_hazard_radius(hazard: Node) -> float:
 	if hazard == null or not is_instance_valid(hazard):
 		return 0.0
 
+	if hazard.has_method("get_coverage_bounds_radius"):
+		return maxf(float(hazard.get_coverage_bounds_radius()), 0.0)
+
 	var definition = hazard.get("definition")
 
 	if definition == null:
 		return 0.0
 
 	return maxf(float(definition.get("affected_radius")), 0.0)
+
+
+static func _get_hazard_coverage_signature(hazard: Node) -> String:
+	if hazard == null or not is_instance_valid(hazard):
+		return "0.0"
+
+	if hazard.has_method("get_coverage_signature"):
+		return String(hazard.get_coverage_signature())
+
+	return str(_get_hazard_radius(hazard))
+
+
+static func _hazard_contains_position(
+	hazard: Node,
+	position: Vector2,
+	clearance_pixels: float
+) -> bool:
+	if hazard == null or not is_instance_valid(hazard):
+		return false
+
+	if hazard.has_method("contains_world_position"):
+		return bool(hazard.contains_world_position(position, clearance_pixels))
+
+	return position.distance_to(hazard.global_position) < (
+		_get_hazard_radius(hazard) + maxf(clearance_pixels, 0.0)
+	)
 
 
 static func _get_node_combat_radius(node: Node) -> float:

@@ -318,6 +318,14 @@ func _test_frenzy_preserves_empowered_slam_threshold() -> void:
 		"Empowered Slam did not become ready on the fifth Frenzy Slam."
 	)
 
+	var empowered_slam := _ability_for_id(boss, "empowered_slam")
+	_expect(
+		empowered_slam != null
+		and empowered_slam.damage == 40
+		and empowered_slam.get_scaled_damage(boss, empowered_slam.damage) == 50,
+		"Empowered Slam did not preserve 40 base damage and Frenzy scaling."
+	)
+
 
 func _test_frenzy_weapon_modifiers() -> void:
 	var boss = _new_boss(EARTHGNASHER)

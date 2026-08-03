@@ -127,6 +127,62 @@ static func get_mini_region_key(region: String, range_name: String) -> String:
 	return region + ":" + range_name
 
 
+static func get_mini_region_polygon(
+	boss_radius: float,
+	region: String,
+	range_name: String,
+	max_range_units: float = 50.0
+) -> PackedVector2Array:
+	var band_apothems := get_mini_region_apothem_bounds(
+		boss_radius,
+		range_name,
+		max_range_units
+	)
+	var inner_circumradius := band_apothems.x / cos(MINI_REGION_HALF_ANGLE)
+	var outer_circumradius := band_apothems.y / cos(MINI_REGION_HALF_ANGLE)
+	var center_angle := get_region_direction(region).angle()
+	var left_direction := Vector2.RIGHT.rotated(
+		center_angle - MINI_REGION_HALF_ANGLE
+	)
+	var right_direction := Vector2.RIGHT.rotated(
+		center_angle + MINI_REGION_HALF_ANGLE
+	)
+
+	return PackedVector2Array([
+		left_direction * inner_circumradius,
+		left_direction * outer_circumradius,
+		right_direction * outer_circumradius,
+		right_direction * inner_circumradius
+	])
+
+
+static func get_mini_region_apothem_bounds(
+	boss_radius: float,
+	range_name: String,
+	max_range_units: float = 50.0
+) -> Vector2:
+	var resolved_boss_radius := maxf(boss_radius, 0.0)
+	var close_mid_boundary := resolved_boss_radius + CombatMeasurementsScript.range_units_to_pixels(
+		(CLOSE_SLOT_RANGE_UNITS + MID_SLOT_RANGE_UNITS) * 0.5
+	)
+	var mid_far_boundary := resolved_boss_radius + CombatMeasurementsScript.range_units_to_pixels(
+		(MID_SLOT_RANGE_UNITS + FAR_SLOT_RANGE_UNITS) * 0.5
+	)
+	var maximum_apothem := resolved_boss_radius + CombatMeasurementsScript.range_units_to_pixels(
+		maxf(max_range_units, (MID_SLOT_RANGE_UNITS + FAR_SLOT_RANGE_UNITS) * 0.5)
+	)
+
+	match range_name:
+		RANGE_CLOSE:
+			return Vector2(resolved_boss_radius, close_mid_boundary)
+		RANGE_MID:
+			return Vector2(close_mid_boundary, mid_far_boundary)
+		RANGE_FAR:
+			return Vector2(mid_far_boundary, maximum_apothem)
+		_:
+			return Vector2(resolved_boss_radius, close_mid_boundary)
+
+
 static func get_mini_region_from_position(
 	boss_node: Node,
 	unit_position: Vector2

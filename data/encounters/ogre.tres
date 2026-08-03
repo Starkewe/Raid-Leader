@@ -116,6 +116,7 @@ commitment_releases = "after_positions_lock"
 script = ExtResource("14_slam_definition")
 affected_ranges = Array[String](["close", "mid", "far"])
 fissure_definition = SubResource("Hazard_CrackedGround")
+slam_vulnerability = SubResource("Status_SlamVulnerability")
 positioning_checkpoint = SubResource("Checkpoint_EmpoweredSlam")
 runtime_script = ExtResource("15_slam_runtime")
 ability_id = "empowered_slam"
@@ -124,7 +125,7 @@ windup_text = "The Ogre's club gathers the weight of the earth."
 impact_text = "The struck lane splits open!"
 cast_time = 2.5
 cooldown = 6.0
-damage = 18
+damage = 40
 interruptible = false
 
 [sub_resource type="Resource" id="Transition_PhaseTwo"]

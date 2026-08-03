@@ -179,6 +179,50 @@ func _test_empowered_slam_checkpoint_contract() -> bool:
 	if first_line_count != 1:
 		return _fail("The first Empowered Slam did not create its fissure line.")
 
+	var health_after_first_slam := tank.health
+	if health_after_first_slam != tank.max_health - 40:
+		return _fail("Empowered Slam did not deal its configured 40 base damage.")
+
+	if tank.get_status_effect_stacks("slam_vulnerability") != 1:
+		return _fail("Empowered Slam did not apply its first Slam Vulnerability stack.")
+
+	var close_hazard: Node = null
+	for encounter_object in boss.encounter_objects:
+		if (
+			encounter_object != null
+			and is_instance_valid(encounter_object)
+			and encounter_object.has_method("contains_world_position")
+			and String(encounter_object.get("coverage_range")) == "close"
+		):
+			close_hazard = encounter_object
+			break
+
+	if close_hazard == null:
+		return _fail("Empowered Slam did not retain a close-range Cracked Ground hazard.")
+
+	var north_direction := MovementSlotResolver.get_region_direction("north")
+	var off_center_position := boss.global_position + north_direction * 360.0
+	var adjacent_region_position := (
+		boss.global_position + north_direction.rotated(PI / 4.0) * 360.0
+	)
+
+	if not close_hazard.contains_world_position(off_center_position):
+		return _fail(
+			"Cracked Ground did not cover the off-center portion of its mini-region."
+		)
+
+	if close_hazard.contains_world_position(adjacent_region_position):
+		return _fail("Cracked Ground leaked into an adjacent mini-region.")
+
+	var active_hazards := CombatAutoPositioner.get_active_avoidable_hazards(boss)
+	if CombatAutoPositioner.is_position_safe(
+		off_center_position,
+		boss,
+		0.0,
+		active_hazards
+	):
+		return _fail("Automatic hazard avoidance ignored off-center Cracked Ground coverage.")
+
 	for _attack in range(5):
 		boss.advance_basic_attack_trigger_sequence()
 
@@ -213,6 +257,12 @@ func _test_empowered_slam_checkpoint_contract() -> bool:
 		{}
 	).get("north", 0)) != 2:
 		return _fail("Repeated Empowered Slam fissures did not stack in one lane.")
+
+	if tank.health != health_after_first_slam - 42:
+		return _fail("Slam Vulnerability did not increase the repeated Empowered Slam damage.")
+
+	if tank.get_status_effect_stacks("slam_vulnerability") != 2:
+		return _fail("Repeated Empowered Slam did not stack Slam Vulnerability.")
 
 	for _attack in range(5):
 		boss.advance_basic_attack_trigger_sequence()
