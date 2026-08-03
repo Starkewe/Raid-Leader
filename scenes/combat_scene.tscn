@@ -188,18 +188,13 @@ text_overrun_behavior = 3
 horizontal_alignment = 1
 
 [node name="RaidFramesPanel" type="PanelContainer" parent="UI" unique_id=27997468]
-anchors_preset = 2
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_top = -1080.0
-offset_right = 1200.0
-offset_bottom = -820.0
-grow_vertical = 0
+anchors_preset = 0
+offset_right = 154.0
+offset_bottom = 50.0
 theme_override_styles/panel = SubResource("StyleBoxEmpty_6ovae")
 
-[node name="RaidFrameGrid" type="GridContainer" parent="UI/RaidFramesPanel" unique_id=1437070350]
+[node name="RaidFrameStack" type="VBoxContainer" parent="UI/RaidFramesPanel" unique_id=1437070350]
 layout_mode = 2
-columns = 5
 
 [node name="CommandPanel" type="PanelContainer" parent="UI" unique_id=555858210]
 visible = false
