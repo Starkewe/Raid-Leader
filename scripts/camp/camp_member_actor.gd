@@ -32,6 +32,10 @@ var step_phase: float = 0.0
 var timing_multiplier: float = 1.0
 var focused_activity_snapshot: Dictionary = {}
 var activity_facing_direction: Vector2 = Vector2.DOWN
+var focused_facing_left: bool = false
+var conversation_target_position: Vector2 = Vector2.ZERO
+var conversation_anchor_position: Vector2 = Vector2.ZERO
+var conversation_approach_time_remaining: float = 0.0
 
 
 func _ready() -> void:
@@ -45,6 +49,11 @@ func configure(member_data: Dictionary, spawn_position: Vector2, start_delay: fl
 	global_position = spawn_position.round()
 	idle_time_remaining = start_delay
 	state = "idle"
+	focused_activity_snapshot.clear()
+	focused_facing_left = false
+	conversation_target_position = Vector2.ZERO
+	conversation_anchor_position = Vector2.ZERO
+	conversation_approach_time_remaining = 0.0
 	queue_redraw()
 
 	if label != null:
@@ -55,6 +64,21 @@ func configure(member_data: Dictionary, spawn_position: Vector2, start_delay: fl
 				"Active" if bool(member.get("active", false)) else "Reserve"
 			]
 		)
+
+
+func update_member_data(member_data: Dictionary) -> void:
+	# Roster edits update presentation metadata without restarting movement or activity.
+	member = member_data.duplicate(true)
+	member_id = String(member.get("member_id", member_id))
+	if label != null:
+		label.text = (
+			"%s Â· %s"
+			% [
+				CampaignState.format_member_label(member),
+				"Active" if bool(member.get("active", false)) else "Reserve"
+			]
+		)
+	queue_redraw()
 
 
 func start_activity(
@@ -81,6 +105,9 @@ func interrupt_activity() -> void:
 	idle_time_remaining = randf_range(0.8, 2.0)
 	current_activity_id = ""
 	current_activity_name = ""
+	conversation_target_position = Vector2.ZERO
+	conversation_anchor_position = Vector2.ZERO
+	conversation_approach_time_remaining = 0.0
 	queue_redraw()
 
 
@@ -104,8 +131,10 @@ func hide_bubble() -> void:
 	bubble_visibility_changed.emit(false)
 
 
-func begin_focused_conversation(other_position: Vector2) -> bool:
-	if state == "focused_conversation":
+func begin_focused_conversation(
+	other_position: Vector2, anchor_position: Vector2 = Vector2.ZERO
+) -> bool:
+	if state in ["focused_conversation", "conversation_approaching"]:
 		return false
 
 	focused_activity_snapshot = {
@@ -116,16 +145,25 @@ func begin_focused_conversation(other_position: Vector2) -> bool:
 		"navigation_time_remaining": navigation_time_remaining,
 		"current_activity_id": current_activity_id,
 		"current_activity_name": current_activity_name,
+		"activity_facing_direction": activity_facing_direction,
 	}
+	focused_facing_left = facing_left
 	path.clear()
-	state = "focused_conversation"
+	conversation_target_position = other_position
+	conversation_anchor_position = anchor_position
+	conversation_approach_time_remaining = 24.0
+	if anchor_position != Vector2.ZERO and global_position.distance_to(anchor_position) > 8.0:
+		path.append(anchor_position)
+		state = "conversation_approaching"
+	else:
+		state = "focused_conversation"
 	face_toward(other_position)
 	queue_redraw()
 	return true
 
 
 func end_focused_conversation() -> void:
-	if state != "focused_conversation":
+	if state not in ["focused_conversation", "conversation_approaching"]:
 		focused_activity_snapshot.clear()
 		return
 
@@ -143,8 +181,15 @@ func end_focused_conversation() -> void:
 		navigation_time_remaining = float(focused_activity_snapshot.get("navigation_time_remaining", 24.0))
 		current_activity_id = String(focused_activity_snapshot.get("current_activity_id", ""))
 		current_activity_name = String(focused_activity_snapshot.get("current_activity_name", ""))
+		activity_facing_direction = focused_activity_snapshot.get(
+			"activity_facing_direction", Vector2.DOWN
+		)
+		facing_left = focused_facing_left
 
 	focused_activity_snapshot.clear()
+	conversation_target_position = Vector2.ZERO
+	conversation_anchor_position = Vector2.ZERO
+	conversation_approach_time_remaining = 0.0
 	queue_redraw()
 
 
@@ -203,6 +248,12 @@ func _process(delta: float) -> void:
 		"walking":
 			_update_walking(delta)
 
+		"conversation_approaching":
+			_update_conversation_approach(delta)
+
+		"focused_conversation":
+			pass
+
 		"performing":
 			perform_time_remaining -= delta
 
@@ -240,6 +291,33 @@ func _update_walking(delta: float) -> void:
 	if distance <= 5.0:
 		global_position = destination.round()
 		path.remove_at(0)
+		return
+
+	var direction := global_position.direction_to(destination)
+	facing_left = direction.x < 0.0
+	global_position += direction * minf(move_speed * delta, distance)
+	global_position = global_position.round()
+	step_phase += delta * 9.0
+	queue_redraw()
+
+
+func _update_conversation_approach(delta: float) -> void:
+	conversation_approach_time_remaining -= delta
+	if conversation_approach_time_remaining <= 0.0 or path.is_empty():
+		path.clear()
+		state = "focused_conversation"
+		face_toward(conversation_target_position)
+		queue_redraw()
+		return
+
+	var destination := path[0]
+	var distance := global_position.distance_to(destination)
+	if distance <= 5.0:
+		global_position = destination.round()
+		path.clear()
+		state = "focused_conversation"
+		face_toward(conversation_target_position)
+		queue_redraw()
 		return
 
 	var direction := global_position.direction_to(destination)

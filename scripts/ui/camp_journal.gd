@@ -21,6 +21,8 @@ var member_detail_label: Label = null
 var refresh_queued: bool = false
 var archive_view_encounter_id: String = ""
 var member_quarters_panel: MemberQuartersPanel = null
+var formation_editor: FormationEditorPanel = null
+var formation_preset_dropdown: OptionButton = null
 
 
 func _ready() -> void:
@@ -138,6 +140,8 @@ func _refresh_current_facility() -> void:
 	page = null
 	member_detail_label = null
 	member_quarters_panel = null
+	formation_editor = null
+	formation_preset_dropdown = null
 
 	match current_facility_id:
 		"command_tent":
@@ -459,28 +463,68 @@ func _build_formation_yard() -> void:
 	formation_page.add_child(current_formation_row)
 	_add_section_label_to(current_formation_row, "Current Formation:")
 
-	var preset_dropdown := OptionButton.new()
-	preset_dropdown.custom_minimum_size = Vector2(230, 42)
-	preset_dropdown.add_item(CampaignState.DEFAULT_FORMATION_NAME)
-	preset_dropdown.set_item_metadata(0, CampaignState.DEFAULT_FORMATION_NAME)
-	var selected_index := 0
+	formation_preset_dropdown = OptionButton.new()
+	formation_preset_dropdown.custom_minimum_size = Vector2(230, 42)
+	formation_preset_dropdown.item_selected.connect(
+		_on_saved_formation_selected.bind(formation_preset_dropdown)
+	)
+	current_formation_row.add_child(formation_preset_dropdown)
+	_refresh_formation_dropdown(current_name)
+
+	formation_editor = FormationEditorPanelScript.new() as FormationEditorPanel
+	formation_editor.set_preserve_preset_name(true)
+	formation_editor.set_map_header_builder(
+		_build_formation_name_controls.bind(formation_preset_dropdown)
+	)
+	formation_editor.configure("", true, false, false)
+	formation_page.add_child(formation_editor)
+
+
+func _refresh_formation_dropdown(current_name: String = "") -> void:
+	if formation_preset_dropdown == null or not is_instance_valid(formation_preset_dropdown):
+		return
+
+	var formation := CampaignState.get_formation()
+	var selected_name := current_name
+	if selected_name.is_empty():
+		selected_name = String(formation.get("preset_name", CampaignState.DEFAULT_FORMATION_NAME))
+
+	formation_preset_dropdown.clear()
+	var names: Array[String] = [CampaignState.DEFAULT_FORMATION_NAME]
+	if selected_name != CampaignState.DEFAULT_FORMATION_NAME and selected_name == "Custom":
+		names.append("Custom")
 
 	for formation_name in CampaignState.get_saved_formation_names():
-		var option_index := preset_dropdown.item_count
-		preset_dropdown.add_item(formation_name)
-		preset_dropdown.set_item_metadata(option_index, formation_name)
+		if not names.has(formation_name):
+			names.append(formation_name)
 
-		if formation_name == current_name:
-			selected_index = option_index
+	for formation_name in names:
+		_add_formation_dropdown_option(formation_preset_dropdown, formation_name)
 
-	preset_dropdown.select(selected_index)
-	preset_dropdown.item_selected.connect(_on_saved_formation_selected.bind(preset_dropdown))
-	current_formation_row.add_child(preset_dropdown)
+	var selected_index := _formation_dropdown_index(selected_name)
 
-	var editor := FormationEditorPanelScript.new() as FormationEditorPanel
-	editor.set_map_header_builder(_build_formation_name_controls.bind(preset_dropdown))
-	editor.configure("", true, false, false)
-	formation_page.add_child(editor)
+	if selected_index < 0:
+		selected_index = 0
+	formation_preset_dropdown.select(selected_index)
+
+
+func _add_formation_dropdown_option(
+	dropdown: OptionButton, formation_name: String
+) -> void:
+	var option_index := dropdown.item_count
+	dropdown.add_item(formation_name)
+	dropdown.set_item_metadata(option_index, formation_name)
+
+
+func _formation_dropdown_index(formation_name: String) -> int:
+	if formation_preset_dropdown == null:
+		return -1
+
+	for index in range(formation_preset_dropdown.item_count):
+		if String(formation_preset_dropdown.get_item_metadata(index)) == formation_name:
+			return index
+
+	return -1
 
 
 func _build_member_quarters() -> void:
@@ -902,7 +946,10 @@ func _on_saved_formation_selected(
 	index: int, dropdown: OptionButton
 ) -> void:
 	if index >= 0:
-		CampaignState.load_formation(String(dropdown.get_item_metadata(index)))
+		var formation_name := String(dropdown.get_item_metadata(index))
+		if formation_name.is_empty():
+			return
+		CampaignState.load_formation(formation_name)
 
 
 func _on_archive_target_selected(encounter_id: String) -> void:
@@ -911,6 +958,16 @@ func _on_archive_target_selected(encounter_id: String) -> void:
 
 
 func _on_campaign_state_changed() -> void:
+	if (
+		visible
+		and current_facility_id == "formation_yard"
+		and formation_editor != null
+		and is_instance_valid(formation_editor)
+	):
+		_refresh_formation_dropdown()
+		formation_editor.refresh()
+		return
+
 	if (
 		visible
 		and current_facility_id == "quarters"

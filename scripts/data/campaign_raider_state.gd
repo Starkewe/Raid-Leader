@@ -20,6 +20,7 @@ static func create(
 		"specialization_id": "",
 		"recruitment_source": recruitment_source,
 		"room_assignment_id": "",
+		"last_camp_position": [],
 		"combat_history": {"attempts": 0, "victories": 0, "defeats": 0},
 		"permanent_milestone_ids": [],
 		"descriptive_title": "",
@@ -42,6 +43,7 @@ static func sanitize(source: Dictionary, raider_id: String, default_class: Strin
 		state.get("recruitment_source", state.get("source_id", "unknown"))
 	)
 	state["room_assignment_id"] = String(state.get("room_assignment_id", ""))
+	state["last_camp_position"] = _sanitize_position(state.get("last_camp_position", []))
 	state["combat_history"] = _sanitize_combat_history(state.get("combat_history", {}))
 	state["permanent_milestone_ids"] = _string_array(
 		state.get("permanent_milestone_ids", [])
@@ -59,6 +61,21 @@ static func _sanitize_combat_history(value: Variant) -> Dictionary:
 		"victories": maxi(int(source.get("victories", 0)), 0),
 		"defeats": maxi(int(source.get("defeats", 0)), 0),
 	}
+
+
+static func _sanitize_position(value: Variant) -> Array:
+	var source: Array = value if value is Array else []
+
+	if source.size() < 2:
+		return []
+
+	var x := float(source[0])
+	var y := float(source[1])
+
+	if x != x or y != y or absf(x) > 100000.0 or absf(y) > 100000.0:
+		return []
+
+	return [x, y]
 
 
 static func _string_array(value: Variant) -> Array[String]:

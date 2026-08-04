@@ -87,6 +87,31 @@ func cancel_all(reason: String = "manual_cancel") -> int:
 	return conversation_ids.size()
 
 
+func cancel_for_participants(participant_ids_value: Variant, reason: String = "participant_removed") -> int:
+	var participant_ids := _string_array(participant_ids_value)
+	var cancelled := 0
+	var conversation_ids: Array = active_conversations.keys()
+
+	for conversation_id_value in conversation_ids:
+		var conversation_id := String(conversation_id_value)
+		if not active_conversations.has(conversation_id):
+			continue
+
+		var session: Dictionary = active_conversations[conversation_id]
+		var session_participants := _string_array(session.get("participant_ids", []))
+		var affects_session := false
+		for participant_id in participant_ids:
+			if session_participants.has(participant_id):
+				affects_session = true
+				break
+
+		if affects_session:
+			_cancel_conversation(conversation_id, reason)
+			cancelled += 1
+
+	return cancelled
+
+
 func set_accelerated_timing(enabled: bool) -> void:
 	timing_multiplier = (
 		float(CampV2TuningScript.ACTIVITIES.get("accelerated_timing_multiplier", 6.0))

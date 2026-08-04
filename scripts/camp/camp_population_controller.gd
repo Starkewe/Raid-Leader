@@ -10,6 +10,7 @@ const CampConversationDirectorScript := preload(
 	"res://scripts/camp/camp_conversation_director.gd"
 )
 const TUNING := CampV2TuningScript.ACTIVITIES
+const CONVERSATION_TUNING := CampV2TuningScript.CONVERSATIONS
 const ACTIVITIES := [
 	preload("res://data/camp/activities/prepare_plan.tres"),
 	preload("res://data/camp/activities/rehearse.tres"),
@@ -72,6 +73,7 @@ func _process(delta: float) -> void:
 func _exit_tree() -> void:
 	if conversation_director != null and is_instance_valid(conversation_director):
 		conversation_director.cancel_all("scene_exit")
+	persist_current_positions()
 	_release_all_reservations()
 
 
@@ -79,6 +81,7 @@ func rebuild_population() -> void:
 	rebuild_queued = false
 	if conversation_director != null:
 		conversation_director.cancel_all("population_rebuild")
+	persist_current_positions()
 	_release_all_reservations()
 
 	for actor in actors_by_id.values():
@@ -94,35 +97,108 @@ func rebuild_population() -> void:
 	visible_bubble_count = 0
 
 	var roster := CampaignState.get_roster_members()
-	var active_ids := CampaignState.get_active_member_ids()
-	var visit_type := String(CampaignState.get_visit_context().get("type", "normal"))
+
+	for index in range(roster.size()):
+		_spawn_actor(roster[index], index, roster.size(), false)
+
+
+func sync_population() -> void:
+	# Roster changes are data changes, not a reason to restart the camp simulation.
+	rebuild_queued = false
+	var roster := CampaignState.get_roster_members()
+	var desired_ids: Dictionary = {}
+	for member in roster:
+		desired_ids[String(member.get("member_id", ""))] = true
+
+	var removed_ids: Array[String] = []
+	for member_id_value in actors_by_id.keys():
+		var member_id := String(member_id_value)
+		if not desired_ids.has(member_id):
+			removed_ids.append(member_id)
+
+	if not removed_ids.is_empty() and conversation_director != null:
+		conversation_director.cancel_for_participants(removed_ids, "roster_change")
+
+	for member_id in removed_ids:
+		_remove_actor(member_id)
 
 	for index in range(roster.size()):
 		var member: Dictionary = roster[index]
 		var member_id := String(member.get("member_id", ""))
-		member["active"] = active_ids.has(member_id)
-		var actor := CampMemberScene.instantiate() as CampMemberActor
-
-		if actor == null:
+		if member_id.is_empty():
 			continue
 
-		get_parent().add_child(actor)
-		actor.configure(
-			member, _spawn_position(index, roster.size(), visit_type), rng.randf_range(0.4, 4.0)
-		)
-		actor.set_timing_multiplier(
-			float(TUNING.get("accelerated_timing_multiplier", 6.0))
-			if accelerated_timing
-			else 1.0
-		)
-		actor.ready_for_activity.connect(_on_actor_ready_for_activity)
-		actor.activity_completed.connect(_on_activity_completed)
-		actor.navigation_failed.connect(_on_navigation_failed)
-		actor.bubble_visibility_changed.connect(_on_bubble_visibility_changed)
-		actors_by_id[member_id] = actor
-		var runtime_state := RuntimeRaiderStateScript.create(member_id)
-		runtime_state["temporary_scene_reference"] = actor
-		runtime_states_by_id[member_id] = runtime_state
+		member["active"] = CampaignState.get_active_member_ids().has(member_id)
+		var actor := actors_by_id.get(member_id) as CampMemberActor
+		if actor != null and is_instance_valid(actor):
+			actor.update_member_data(member)
+		else:
+			_spawn_actor(member, index, roster.size(), true)
+
+
+func persist_current_positions() -> void:
+	for member_id_value in actors_by_id.keys():
+		var member_id := String(member_id_value)
+		var actor := actors_by_id.get(member_id) as CampMemberActor
+		if actor == null or not is_instance_valid(actor):
+			continue
+		if _is_valid_population_position(actor.global_position):
+			CampaignState.set_raider_camp_position(member_id, actor.global_position)
+
+
+func _spawn_actor(
+	member_source: Dictionary, index: int, total: int, force_fallback: bool
+) -> CampMemberActor:
+	var member := member_source.duplicate(true)
+	var member_id := String(member.get("member_id", ""))
+	if member_id.is_empty():
+		return null
+
+	member["active"] = CampaignState.get_active_member_ids().has(member_id)
+	var spawn_position := _saved_spawn_position(member_id) if not force_fallback else Vector2.ZERO
+	if spawn_position == Vector2.ZERO:
+		spawn_position = _fallback_spawn_position(index, total)
+
+	var actor := CampMemberScene.instantiate() as CampMemberActor
+	if actor == null:
+		return null
+
+	get_parent().add_child(actor)
+	actor.configure(member, spawn_position, rng.randf_range(0.4, 4.0))
+	actor.set_timing_multiplier(
+		float(TUNING.get("accelerated_timing_multiplier", 6.0))
+		if accelerated_timing
+		else 1.0
+	)
+	actor.ready_for_activity.connect(_on_actor_ready_for_activity)
+	actor.activity_completed.connect(_on_activity_completed)
+	actor.navigation_failed.connect(_on_navigation_failed)
+	actor.bubble_visibility_changed.connect(_on_bubble_visibility_changed)
+	actors_by_id[member_id] = actor
+	var runtime_state := RuntimeRaiderStateScript.create(member_id)
+	runtime_state["temporary_scene_reference"] = actor
+	runtime_states_by_id[member_id] = runtime_state
+	return actor
+
+
+func _remove_actor(member_id: String) -> void:
+	var actor := actors_by_id.get(member_id) as CampMemberActor
+	if actor != null and is_instance_valid(actor):
+		actor.hide_bubble()
+		actor.interrupt_activity()
+		actor.free()
+
+	_release_member_runtime(member_id)
+	actors_by_id.erase(member_id)
+
+
+func _release_member_runtime(member_id: String) -> void:
+	_remove_from_activity_instance(member_id)
+	_release_reservation(member_id)
+	activity_by_member.erase(member_id)
+	cooldowns_by_member.erase(member_id)
+	completion_outcomes_by_member.erase(member_id)
+	runtime_states_by_id.erase(member_id)
 
 
 func get_actor_count() -> int:
@@ -785,6 +861,7 @@ func begin_conversation_channels(
 	):
 		return false
 
+	var conversation_targets := _conversation_targets(participant_ids)
 	var started_focused: Array[String] = []
 	for index in range(participant_ids.size()):
 		var participant_id := participant_ids[index]
@@ -792,12 +869,12 @@ func begin_conversation_channels(
 		if actor == null or not is_instance_valid(actor):
 			_end_partial_focused(started_focused)
 			return false
-		var other_actor := second_actor if index == 0 else first_actor
-		if delivery == "focused" and not actor.begin_focused_conversation(other_actor.global_position):
+		var other_target: Vector2 = conversation_targets[1] if index == 0 else conversation_targets[0]
+		var own_target: Vector2 = conversation_targets[index]
+		if not actor.begin_focused_conversation(other_target, own_target):
 			_end_partial_focused(started_focused)
 			return false
-		if delivery == "focused":
-			started_focused.append(participant_id)
+		started_focused.append(participant_id)
 
 	for role in participants_by_role.keys():
 		var participant_id := String(participants_by_role[role])
@@ -846,7 +923,7 @@ func end_conversation_channels(
 	var participant_ids := _string_array(participant_ids_value)
 	for participant_id in participant_ids:
 		var actor := actors_by_id.get(participant_id) as CampMemberActor
-		if actor != null and is_instance_valid(actor) and delivery == "focused":
+		if actor != null and is_instance_valid(actor):
 			actor.end_focused_conversation()
 		if not runtime_states_by_id.has(participant_id):
 			continue
@@ -870,6 +947,37 @@ func _end_partial_focused(participant_ids: Array[String]) -> void:
 		var actor := actors_by_id.get(participant_id) as CampMemberActor
 		if actor != null and is_instance_valid(actor):
 			actor.end_focused_conversation()
+
+
+func _conversation_targets(participant_ids: Array[String]) -> Array[Vector2]:
+	var first_actor := actors_by_id.get(participant_ids[0]) as CampMemberActor
+	var second_actor := actors_by_id.get(participant_ids[1]) as CampMemberActor
+	var first_anchor := _conversation_anchor_for(participant_ids[0], first_actor)
+	var second_anchor := _conversation_anchor_for(participant_ids[1], second_actor)
+	var radius := float(CONVERSATION_TUNING.get("participant_conversation_radius", 120.0))
+	var spacing := float(CONVERSATION_TUNING.get("participant_conversation_spacing", 48.0))
+
+	if first_anchor.distance_to(second_anchor) <= radius:
+		return [first_anchor, second_anchor]
+
+	var center := (first_anchor + second_anchor) * 0.5
+	var direction := first_anchor.direction_to(second_anchor)
+	if direction == Vector2.ZERO:
+		direction = Vector2.RIGHT
+
+	return [center - direction * spacing * 0.5, center + direction * spacing * 0.5]
+
+
+func _conversation_anchor_for(member_id: String, actor: CampMemberActor) -> Vector2:
+	if actor == null or not is_instance_valid(actor):
+		return Vector2.ZERO
+
+	var runtime_state: Dictionary = runtime_states_by_id.get(member_id, {})
+	var activity_id := String(runtime_state.get("current_activity_id", ""))
+	var destination: Vector2 = runtime_state.get("destination", Vector2.ZERO)
+	if not activity_id.is_empty() and destination != Vector2.ZERO:
+		return destination
+	return actor.global_position
 
 
 func show_conversation_bubble(member_id: String, text: String, duration: float) -> bool:
@@ -1033,26 +1141,80 @@ func _string_array(value: Variant) -> Array[String]:
 	return result
 
 
-func _spawn_position(index: int, total: int, visit_type: String) -> Vector2:
-	if index < 4 and visit_type != "normal":
-		return Vector2(1390 + index * 70, 1510 + (index % 2) * 45)
+func _saved_spawn_position(member_id: String) -> Vector2:
+	var saved := CampaignState.get_raider_camp_position(member_id)
+	if bool(saved.get("valid", false)):
+		var position: Vector2 = saved.get("position", Vector2.ZERO)
+		if _is_valid_population_position(position) and not _is_position_occupied(position):
+			return position.round()
+	return Vector2.ZERO
 
-	var local_index := index - 4 if visit_type != "normal" else index
-	var columns := 8 if total > 24 else 6
-	return Vector2(480 + (local_index % columns) * 74, 1540 + (local_index / columns) * 64)
+
+func _fallback_spawn_position(_index: int, total: int) -> Vector2:
+	var quarters := _get_facility("quarters")
+	var candidates: Array[Vector2] = []
+	if quarters != null:
+		for offset in quarters.activity_slot_offsets:
+			if offset is Vector2:
+				candidates.append(quarters.global_position + offset)
+
+		# Keep the deterministic overflow grid in the open ground just south of
+		# Quarters. Its width supports the full recruited cast without falling back
+		# to a shared or geometry-invalid point.
+		var extra_count := maxi(total + 24, 48)
+		var grid_columns := 16
+		for candidate_index in range(extra_count):
+			var column := candidate_index % grid_columns
+			var row := floori(float(candidate_index) / float(grid_columns))
+			candidates.append(
+				quarters.global_position + Vector2(-400.0 + column * 80.0, 140.0 + row * 70.0)
+			)
+
+	for candidate in candidates:
+		if not _is_valid_population_position(candidate):
+			continue
+		if _is_position_occupied(candidate):
+			continue
+		return candidate.round()
+
+	# The normal camp layout always provides a valid Quarters fallback. Keep a final
+	# deterministic point for malformed/custom camp scenes rather than returning a
+	# potentially invalid historical position.
+	var final_candidate := Vector2(620.0, 1880.0)
+	if _is_valid_population_position(final_candidate) and not _is_position_occupied(final_candidate):
+		return final_candidate
+	return Vector2.ZERO
+
+
+func _is_position_occupied(position: Vector2) -> bool:
+	for actor_value in actors_by_id.values():
+		var actor := actor_value as CampMemberActor
+		if actor != null and is_instance_valid(actor) and actor.global_position.distance_to(position) < 38.0:
+			return true
+	return false
+
+
+func _is_valid_population_position(position: Vector2) -> bool:
+	var camp_root := get_parent()
+	return (
+		camp_root.has_method("is_valid_population_position")
+		and bool(camp_root.call("is_valid_population_position", position))
+	)
 
 
 func _on_roster_changed() -> void:
-	_queue_rebuild()
+	_queue_population_sync()
 
 
 func _on_plan_changed() -> void:
-	_queue_rebuild()
+	# Raid formation changes affect combat only. The running camp simulation keeps
+	# its actors, activities, reservations, and conversations intact.
+	pass
 
 
-func _queue_rebuild() -> void:
+func _queue_population_sync() -> void:
 	if rebuild_queued:
 		return
 
 	rebuild_queued = true
-	call_deferred("rebuild_population")
+	call_deferred("sync_population")
