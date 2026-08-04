@@ -17,13 +17,13 @@ const ROLE_TEXTURES := {
 }
 
 const FRAME_MARGIN := 2.0
-const HEADER_HEIGHT := 20.0
-const COOLDOWN_STRIP_HEIGHT := 2.0
-const CRITICAL_DEBUFF_ICON_SIZE := 22.0
-const STACKING_DEBUFF_ICON_SIZE := 28.0
-const CRITICAL_DEBUFF_ICON_GAP := 4.0
-const CRITICAL_DEBUFF_BOTTOM_MARGIN := 11.0
-const CRITICAL_DEBUFF_STACK_FONT_SIZE := 13
+const HEADER_HEIGHT := 14.0
+const COOLDOWN_STRIP_HEIGHT := 1.5
+const CRITICAL_DEBUFF_ICON_SIZE := 15.0
+const STACKING_DEBUFF_ICON_SIZE := 20.0
+const CRITICAL_DEBUFF_ICON_GAP := 3.0
+const CRITICAL_DEBUFF_BOTTOM_MARGIN := 8.0
+const CRITICAL_DEBUFF_STACK_FONT_SIZE := 9
 const MAX_CRITICAL_DEBUFF_ICONS := 5
 
 const HEALTH_COLOR := Color(0.12, 0.52, 0.20, 1.0)
@@ -163,7 +163,7 @@ func rebuild_critical_debuff_icons() -> void:
 	if critical_debuffs.is_empty() or unit_is_dead:
 		return
 
-	var icon_right := size.x - FRAME_MARGIN - 2.0
+	var icon_right := size.x - FRAME_MARGIN - 1.5
 	var icon_bottom := size.y - COOLDOWN_STRIP_HEIGHT - CRITICAL_DEBUFF_BOTTOM_MARGIN
 	var visible_count := mini(critical_debuffs.size(), MAX_CRITICAL_DEBUFF_ICONS)
 
@@ -231,8 +231,8 @@ func _add_debuff_stack_badge(icon_panel: Control, stacks: int) -> void:
 	badge_style.set_border_width_all(1)
 	badge.add_theme_stylebox_override("normal", badge_style)
 	icon_panel.add_child(badge)
-	badge.position = Vector2(icon_panel.size.x - 17.0, icon_panel.size.y - 16.0)
-	badge.size = Vector2(17.0, 16.0)
+	badge.position = Vector2(icon_panel.size.x - 12.0, icon_panel.size.y - 11.0)
+	badge.size = Vector2(12.0, 11.0)
 
 
 func _get_debuff_tooltip(debuff: Dictionary) -> String:
@@ -291,8 +291,8 @@ func draw_absorb_layer(inner_rect: Rect2, fill_width: float) -> void:
 		maxf(inner_rect.size.x - absorb_width, 0.0)
 	)
 	var layer_rect := Rect2(
-		inner_rect.position + Vector2(start_x, inner_rect.size.y - 10.0),
-		Vector2(absorb_width, 7.0)
+		inner_rect.position + Vector2(start_x, inner_rect.size.y - 7.0),
+		Vector2(absorb_width, 5.0)
 	)
 
 	draw_rect(layer_rect, ABSORB_COLOR)
@@ -317,25 +317,25 @@ func draw_header_plates(inner_rect: Rect2) -> void:
 	var plate_color := Color(0.025, 0.03, 0.04, 0.72)
 	draw_rect(
 		Rect2(
-			Vector2(28.0, inner_rect.position.y),
-			Vector2(maxf(size.x - 62.0, 1.0), HEADER_HEIGHT)
+			Vector2(20.0, inner_rect.position.y),
+			Vector2(maxf(size.x - 43.0, 1.0), HEADER_HEIGHT)
 		),
 		plate_color
 	)
 	draw_rect(
-		Rect2(Vector2(2.0, 2.0), Vector2(24.0, HEADER_HEIGHT)),
+		Rect2(Vector2(2.0, 2.0), Vector2(17.0, HEADER_HEIGHT)),
 		plate_color
 	)
 	draw_rect(
-		Rect2(Vector2(size.x - 31.0, 2.0), Vector2(29.0, HEADER_HEIGHT)),
+		Rect2(Vector2(size.x - 22.0, 2.0), Vector2(20.0, HEADER_HEIGHT)),
 		plate_color
 	)
 
 	if transient_status_label.visible:
 		draw_rect(
 			Rect2(
-				Vector2(27.0, 43.0),
-				Vector2(maxf(size.x - 54.0, 1.0), 18.0)
+				Vector2(19.0, 30.0),
+				Vector2(maxf(size.x - 38.0, 1.0), 13.0)
 			),
 			Color(0.025, 0.03, 0.04, 0.78)
 		)
@@ -357,8 +357,8 @@ func draw_threat_indicator() -> void:
 
 	var pulse := 0.5 + 0.5 * sin(visual_time * 8.0)
 	var color := Color(1.0, 0.10, 0.08, 0.66 + pulse * 0.28)
-	var bracket_length := 10.0
-	var inset := 1.5
+	var bracket_length := 7.0
+	var inset := 1.0
 	var maximum := size - Vector2(inset, inset)
 
 	draw_rect(
@@ -368,43 +368,43 @@ func draw_threat_indicator() -> void:
 		2.0
 	)
 
-	draw_line(Vector2(inset, inset), Vector2(inset + bracket_length, inset), color, 3.0)
-	draw_line(Vector2(inset, inset), Vector2(inset, inset + bracket_length), color, 3.0)
+	draw_line(Vector2(inset, inset), Vector2(inset + bracket_length, inset), color, 2.0)
+	draw_line(Vector2(inset, inset), Vector2(inset, inset + bracket_length), color, 2.0)
 	draw_line(
 		Vector2(maximum.x, inset),
 		Vector2(maximum.x - bracket_length, inset),
 		color,
-		3.0
+		2.0
 	)
 	draw_line(
 		Vector2(maximum.x, inset),
 		Vector2(maximum.x, inset + bracket_length),
 		color,
-		3.0
+		2.0
 	)
 	draw_line(
 		Vector2(inset, maximum.y),
 		Vector2(inset + bracket_length, maximum.y),
 		color,
-		3.0
+		2.0
 	)
 	draw_line(
 		Vector2(inset, maximum.y),
 		Vector2(inset, maximum.y - bracket_length),
 		color,
-		3.0
+		2.0
 	)
 	draw_line(
 		Vector2(maximum.x, maximum.y),
 		Vector2(maximum.x - bracket_length, maximum.y),
 		color,
-		3.0
+		2.0
 	)
 	draw_line(
 		Vector2(maximum.x, maximum.y),
 		Vector2(maximum.x, maximum.y - bracket_length),
 		color,
-		3.0
+		2.0
 	)
 
 

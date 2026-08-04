@@ -2,15 +2,21 @@ extends CanvasLayer
 
 const CommandDebugPanelScript := preload("res://scripts/ui/command_debug_panel.gd")
 
+const RAID_GROUP_SIZE := 5
+const RAID_GROUP_COUNT := 4
+const RAID_GROUP_LABEL_FONT_SIZE := 10
+const RAID_GROUP_LABEL_HEIGHT := 12.0
+
 signal raid_frame_hovered(unit)
 signal raid_frame_unhovered(unit)
 signal command_panel_submitted(command_data: Dictionary)
 
 @export var raid_member_frame_scene: PackedScene
 
-@export var raid_panel_margin: Vector2 = Vector2(20, 20)
-@export var raid_panel_size: Vector2 = Vector2(1200, 320)
-@export var command_panel_reserved_width: float = 340.0
+@export var raid_panel_margin: Vector2 = Vector2(12, 8)
+@export var raid_frame_size: Vector2 = Vector2(154, 50)
+@export var raid_group_separation: int = 2
+@export var raid_frame_separation: int = 0
 
 @export var boss_overlay_size: Vector2 = Vector2(360.0, 92.0)
 @export var boss_overlay_offset: Vector2 = Vector2(0.0, -176.0)
@@ -18,7 +24,9 @@ signal command_panel_submitted(command_data: Dictionary)
 @export var show_legacy_command_panel_in_development: bool = false
 
 @onready var raid_frames_panel: Control = get_node_or_null("RaidFramesPanel")
-@onready var raid_frame_grid: GridContainer = get_node_or_null("RaidFramesPanel/RaidFrameGrid")
+@onready var raid_frame_stack: VBoxContainer = get_node_or_null(
+	"RaidFramesPanel/RaidFrameStack"
+) as VBoxContainer
 
 @onready var boss_frame_panel: Control = get_node_or_null("BossFramePanel")
 @onready var boss_name_label: Label = get_node_or_null("BossFramePanel/VBoxContainer/BossNameLabel")
@@ -45,8 +53,10 @@ func _ready():
 
 	position_ui_panels()
 
-	if raid_frame_grid == null:
-		print("ERROR: UI cannot find RaidFramesPanel/RaidFrameGrid.")
+	if raid_frame_stack == null:
+		print("ERROR: UI cannot find RaidFramesPanel/RaidFrameStack.")
+	else:
+		raid_frame_stack.add_theme_constant_override("separation", raid_group_separation)
 
 	if boss_health_bar != null:
 		boss_health_bar.show_percentage = false
@@ -67,37 +77,12 @@ func position_ui_panels():
 	position_command_debug_panel()
 
 func position_raid_frames_panel():
-	if raid_frames_panel == null:
+	if raid_frames_panel == null or raid_frame_stack == null:
 		return
 
-	var viewport_size := get_viewport().get_visible_rect().size
-	var reserved_width := (
-		command_panel_reserved_width
-		if command_panel != null and command_panel.visible
-		else 0.0
-	)
-	var available_width := maxf(
-		viewport_size.x - raid_panel_margin.x * 2.0 - reserved_width,
-		320.0
-	)
-	var responsive_width := minf(raid_panel_size.x, available_width)
-	var column_count := clampi(floori(responsive_width / 220.0), 1, 5)
-	var frame_count := frame_by_unit.size()
-	var row_count := ceili(float(maxi(frame_count, 1)) / float(column_count))
-	var content_height := float(row_count * 72)
-	var responsive_size := Vector2(
-		responsive_width,
-		minf(maxf(raid_panel_size.y, content_height), maxf(viewport_size.y * 0.55, 180.0))
-	)
-
-	if raid_frame_grid != null:
-		raid_frame_grid.columns = column_count
-
-	raid_frames_panel.size = responsive_size
-	raid_frames_panel.position = Vector2(
-		raid_panel_margin.x,
-		viewport_size.y - responsive_size.y - raid_panel_margin.y
-	)
+	var content_size := raid_frame_stack.get_combined_minimum_size()
+	raid_frames_panel.size = content_size
+	raid_frames_panel.position = raid_panel_margin
 
 func position_boss_frame_panel():
 	if boss_frame_panel == null:
@@ -118,43 +103,89 @@ func position_boss_frame_panel():
 func setup_raid_frames(units: Array):
 	clear_raid_frames()
 
-	if raid_frame_grid == null:
-		print("ERROR: Cannot setup raid frames because RaidFrameGrid is missing.")
+	if raid_frame_stack == null:
+		print("ERROR: Cannot setup raid frames because RaidFrameStack is missing.")
 		return
 
 	if raid_member_frame_scene == null:
 		print("ERROR: Raid member frame scene is not assigned on UI.")
 		return
 
-	for unit in units:
-		if unit == null or not is_instance_valid(unit):
+	for group_index in range(RAID_GROUP_COUNT):
+		var group_start := group_index * RAID_GROUP_SIZE
+		var group_end := mini(group_start + RAID_GROUP_SIZE, units.size())
+		var group_units: Array = []
+
+		for unit_index in range(group_start, group_end):
+			var unit = units[unit_index]
+
+			if unit != null and is_instance_valid(unit):
+				group_units.append(unit)
+
+		if group_units.is_empty():
 			continue
 
-		var frame = raid_member_frame_scene.instantiate()
-		raid_frame_grid.add_child(frame)
+		var group_number := group_index + 1
+		var group_section := _create_raid_group_section(group_number)
+		raid_frame_stack.add_child(group_section)
+		var member_stack := group_section.get_node("MemberFrames") as VBoxContainer
 
-		var display_name = get_unit_display_name(unit)
+		for unit in group_units:
+			var frame = raid_member_frame_scene.instantiate()
+			frame.custom_minimum_size = raid_frame_size
+			member_stack.add_child(frame)
 
-		if frame.has_method("setup"):
-			frame.setup(unit, display_name)
-		else:
-			print("ERROR: Raid frame scene root is missing setup(). Check raid_member_frame.gd.")
+			var display_name = get_unit_display_name(unit)
 
-		if frame.has_signal("hovered"):
-			frame.hovered.connect(_on_raid_member_frame_hovered)
+			if frame.has_method("setup"):
+				frame.setup(unit, display_name)
+			else:
+				print("ERROR: Raid frame scene root is missing setup(). Check raid_member_frame.gd.")
 
-		if frame.has_signal("unhovered"):
-			frame.unhovered.connect(_on_raid_member_frame_unhovered)
+			if frame.has_signal("hovered"):
+				frame.hovered.connect(_on_raid_member_frame_hovered)
 
-		frame_by_unit[unit] = frame
+			if frame.has_signal("unhovered"):
+				frame.unhovered.connect(_on_raid_member_frame_unhovered)
+
+			frame_by_unit[unit] = frame
 
 	position_raid_frames_panel()
 
+
+func _create_raid_group_section(group_number: int) -> VBoxContainer:
+	var group_section := VBoxContainer.new()
+	group_section.name = "Group%dSection" % group_number
+	group_section.custom_minimum_size = Vector2(raid_frame_size.x, 0.0)
+	group_section.add_theme_constant_override("separation", 0)
+
+	var group_label := Label.new()
+	group_label.name = "GroupLabel"
+	group_label.text = "Group %d" % group_number
+	group_label.custom_minimum_size = Vector2(raid_frame_size.x, RAID_GROUP_LABEL_HEIGHT)
+	group_label.add_theme_font_size_override("font_size", RAID_GROUP_LABEL_FONT_SIZE)
+	group_label.add_theme_color_override("font_color", Color(0.72, 0.68, 0.56, 1.0))
+	group_label.add_theme_color_override("font_outline_color", Color(0.02, 0.02, 0.025, 0.96))
+	group_label.add_theme_constant_override("outline_size", 2)
+	group_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	group_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	group_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	group_section.add_child(group_label)
+
+	var member_stack := VBoxContainer.new()
+	member_stack.name = "MemberFrames"
+	member_stack.add_theme_constant_override("separation", raid_frame_separation)
+	group_section.add_child(member_stack)
+
+	return group_section
+
+
 func clear_raid_frames():
-	if raid_frame_grid == null:
+	if raid_frame_stack == null:
 		return
 
-	for child in raid_frame_grid.get_children():
+	for child in raid_frame_stack.get_children():
+		raid_frame_stack.remove_child(child)
 		child.queue_free()
 
 	frame_by_unit.clear()
