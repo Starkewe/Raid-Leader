@@ -7,17 +7,13 @@ signal unhovered(unit)
 const CriticalDebuffCatalogScript := preload(
 	"res://scripts/ui/critical_debuff_catalog.gd"
 )
-const ROLE_TEXTURES := {
-	"tank": preload("res://icons/Warrior (Small).png"),
-	"healer": preload("res://icons/Priest (Small).png"),
-	"rogue": preload("res://icons/Rogue (Small).png"),
-	"mage": preload("res://icons/Mage (Small).png"),
-	"warrior": preload("res://icons/Warrior (Small).png"),
-	"priest": preload("res://icons/Priest (Small).png")
-}
+const ClassVisualCatalogScript := preload(
+	"res://scripts/ui/class_visual_catalog.gd"
+)
 
 const FRAME_MARGIN := 2.0
-const HEADER_HEIGHT := 14.0
+const CLASS_ICON_SIZE := 44.0
+const HEALTH_REGION_GAP := 2.0
 const COOLDOWN_STRIP_HEIGHT := 1.5
 const CRITICAL_DEBUFF_ICON_SIZE := 15.0
 const STACKING_DEBUFF_ICON_SIZE := 20.0
@@ -26,7 +22,6 @@ const CRITICAL_DEBUFF_BOTTOM_MARGIN := 8.0
 const CRITICAL_DEBUFF_STACK_FONT_SIZE := 9
 const MAX_CRITICAL_DEBUFF_ICONS := 5
 
-const HEALTH_COLOR := Color(0.12, 0.52, 0.20, 1.0)
 const MISSING_HEALTH_COLOR := Color(0.48, 0.08, 0.08, 1.0)
 const INCOMING_HEAL_COLOR := Color(0.40, 0.95, 0.52, 0.48)
 const ABSORB_COLOR := Color(0.32, 0.78, 0.94, 0.62)
@@ -35,14 +30,18 @@ const HARMFUL_OVERLAY_COLOR := Color(0.75, 0.08, 0.08, 0.18)
 const ABSORB_OVERLAY_COLOR := Color(0.20, 0.60, 0.72, 0.07)
 const DEAD_OVERLAY_COLOR := Color(0.05, 0.05, 0.06, 0.82)
 
-@onready var role_icon: TextureRect = $RoleIcon
+@onready var class_icon_frame: Panel = $ClassIconFrame
+@onready var class_icon: TextureRect = $ClassIconFrame/ClassIcon
 @onready var name_label: Label = $NameLabel
-@onready var number_label: Label = $NumberLabel
 @onready var cast_bar: ProgressBar = $CastBar
 @onready var transient_status_label: Label = $TransientStatusLabel
 
 var unit: Node = null
 var display_name: String = ""
+var visual_definition: ClassVisualDefinition = null
+var active_visual_class_id: String = ""
+var active_base_class_id: String = ""
+var visual_class_signal_unit: Node = null
 var is_boss_target: bool = false
 var is_hovered: bool = false
 
@@ -101,33 +100,28 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	var inner_rect := Rect2(
-		Vector2(FRAME_MARGIN, FRAME_MARGIN),
-		Vector2(
-			maxf(size.x - FRAME_MARGIN * 2.0, 1.0),
-			maxf(size.y - FRAME_MARGIN * 2.0 - COOLDOWN_STRIP_HEIGHT, 1.0)
-		)
-	)
-	var fill_width := inner_rect.size.x * get_health_ratio()
+	var health_rect := get_health_region_rect()
+	var fill_width := health_rect.size.x * get_health_ratio()
+	var icon_rect := get_class_icon_rect()
 
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.025, 0.03, 0.035, 0.98))
-	draw_rect(inner_rect, MISSING_HEALTH_COLOR)
+	draw_rect(icon_rect, Color(0.018, 0.02, 0.024, 0.98))
+	draw_rect(health_rect, MISSING_HEALTH_COLOR)
 	draw_rect(
-		Rect2(inner_rect.position, Vector2(fill_width, inner_rect.size.y)),
-		HEALTH_COLOR
+		Rect2(health_rect.position, Vector2(fill_width, health_rect.size.y)),
+		get_health_fill_color()
 	)
 
-	draw_incoming_heal(inner_rect, fill_width)
-	draw_absorb_layer(inner_rect, fill_width)
-	draw_condition_overlay(inner_rect)
-	draw_header_plates(inner_rect)
-	draw_transient_flash(inner_rect)
+	draw_incoming_heal(health_rect, fill_width)
+	draw_absorb_layer(health_rect, fill_width)
+	draw_condition_overlay(health_rect)
+	draw_transient_flash(health_rect)
 
 	if unit_is_dead:
-		draw_rect(inner_rect, DEAD_OVERLAY_COLOR)
+		draw_rect(health_rect, DEAD_OVERLAY_COLOR)
 
 	if is_hovered:
-		draw_rect(inner_rect, Color(1.0, 1.0, 1.0, 0.09))
+		draw_rect(health_rect, Color(1.0, 1.0, 1.0, 0.09))
 
 	draw_rect(
 		Rect2(Vector2(0.5, 0.5), size - Vector2.ONE),
@@ -136,7 +130,7 @@ func _draw() -> void:
 		1.0
 	)
 	draw_threat_indicator()
-	draw_dodge_cooldown_strip()
+	draw_dodge_cooldown_strip(health_rect)
 
 
 func rebuild_critical_debuff_icons() -> void:
@@ -313,34 +307,6 @@ func draw_condition_overlay(inner_rect: Rect2) -> void:
 		draw_rect(inner_rect, ABSORB_OVERLAY_COLOR)
 
 
-func draw_header_plates(inner_rect: Rect2) -> void:
-	var plate_color := Color(0.025, 0.03, 0.04, 0.72)
-	draw_rect(
-		Rect2(
-			Vector2(20.0, inner_rect.position.y),
-			Vector2(maxf(size.x - 43.0, 1.0), HEADER_HEIGHT)
-		),
-		plate_color
-	)
-	draw_rect(
-		Rect2(Vector2(2.0, 2.0), Vector2(17.0, HEADER_HEIGHT)),
-		plate_color
-	)
-	draw_rect(
-		Rect2(Vector2(size.x - 22.0, 2.0), Vector2(20.0, HEADER_HEIGHT)),
-		plate_color
-	)
-
-	if transient_status_label.visible:
-		draw_rect(
-			Rect2(
-				Vector2(19.0, 30.0),
-				Vector2(maxf(size.x - 38.0, 1.0), 13.0)
-			),
-			Color(0.025, 0.03, 0.04, 0.78)
-		)
-
-
 func draw_transient_flash(inner_rect: Rect2) -> void:
 	if damage_flash_remaining > 0.0:
 		var strength := damage_flash_remaining / 0.18
@@ -408,8 +374,11 @@ func draw_threat_indicator() -> void:
 	)
 
 
-func draw_dodge_cooldown_strip() -> void:
+func draw_dodge_cooldown_strip(health_rect: Rect2) -> void:
 	if unit == null or not is_instance_valid(unit):
+		return
+
+	if unit_is_dead:
 		return
 
 	if not unit.has_method("get_dodge_charge_display"):
@@ -421,19 +390,19 @@ func draw_dodge_cooldown_strip() -> void:
 		return
 
 	var gap := 2.0 if segments.size() > 1 else 0.0
-	var total_width := maxf(size.x - 4.0, 1.0)
+	var total_width := maxf(health_rect.size.x, 1.0)
 	var segment_width := (
 		(total_width - gap * float(segments.size() - 1))
 		/ float(segments.size())
 	)
-	var bar_y := size.y - COOLDOWN_STRIP_HEIGHT
+	var bar_y := health_rect.position.y + health_rect.size.y
 	var empty_color := Color(0.32, 0.28, 0.12, 0.28)
 	var charging_color := Color(0.82, 0.66, 0.12, 0.78)
 	var ready_color := Color(1.0, 0.84, 0.12, 1.0)
 
 	for segment_index in range(segments.size()):
 		var segment: Dictionary = segments[segment_index]
-		var x := 2.0 + float(segment_index) * (segment_width + gap)
+		var x := health_rect.position.x + float(segment_index) * (segment_width + gap)
 		var segment_rect := Rect2(
 			Vector2(x, bar_y),
 			Vector2(segment_width, COOLDOWN_STRIP_HEIGHT)
@@ -466,13 +435,12 @@ func draw_dodge_cooldown_strip() -> void:
 
 
 func setup(new_unit: Node, new_display_name: String) -> void:
+	_disconnect_visual_class_signal()
 	unit = new_unit
+	_connect_visual_class_signal()
 	display_name = _without_class_suffix(new_display_name)
 	name_label.text = display_name
 	name_label.tooltip_text = ""
-	number_label.text = get_character_number()
-	role_icon.texture = get_role_texture()
-	role_icon.tooltip_text = get_role_label()
 	sync_visual_state(false)
 	update_cast_bar()
 	queue_redraw()
@@ -495,6 +463,8 @@ func sync_visual_state(show_flash: bool) -> void:
 		unit_is_dead = true
 		rebuild_critical_debuff_icons()
 		name_label.text = display_name
+		apply_visual_definition(null, "", "")
+		name_label.modulate = Color(0.68, 0.68, 0.70, 1.0)
 		return
 
 	var previous_health := current_health
@@ -505,6 +475,7 @@ func sync_visual_state(show_flash: bool) -> void:
 	harmful_overlay_kind = get_unit_harmful_overlay_kind()
 	critical_debuffs = get_unit_critical_debuffs()
 	unit_is_dead = not get_unit_is_alive()
+	_refresh_visual_class()
 	rebuild_critical_debuff_icons()
 
 	if show_flash and state_initialized:
@@ -515,9 +486,7 @@ func sync_visual_state(show_flash: bool) -> void:
 
 	state_initialized = true
 	name_label.modulate = Color(0.68, 0.68, 0.70, 1.0) if unit_is_dead else Color.WHITE
-	number_label.modulate = name_label.modulate
-	role_icon.modulate = name_label.modulate
-	tooltip_text = ""
+	class_icon.modulate = Color(0.48, 0.48, 0.50, 1.0) if unit_is_dead else Color.WHITE
 
 
 func _without_class_suffix(source_name: String) -> String:
@@ -607,6 +576,156 @@ func get_health_ratio() -> float:
 	return clampf(float(current_health) / float(maximum_health), 0.0, 1.0)
 
 
+func get_health_fill_color() -> Color:
+	return (
+		visual_definition.main_color
+		if visual_definition != null
+		else ClassVisualCatalogScript.get_neutral_definition().main_color
+	)
+
+
+func get_health_region_rect() -> Rect2:
+	var region_x := FRAME_MARGIN + CLASS_ICON_SIZE + HEALTH_REGION_GAP
+	var region_width := maxf(size.x - region_x - FRAME_MARGIN, 1.0)
+	var region_height := maxf(
+		size.y - FRAME_MARGIN * 2.0 - COOLDOWN_STRIP_HEIGHT,
+		1.0
+	)
+	return Rect2(Vector2(region_x, FRAME_MARGIN), Vector2(region_width, region_height))
+
+
+func get_class_icon_rect() -> Rect2:
+	var icon_width := minf(
+		CLASS_ICON_SIZE,
+		maxf(size.x - FRAME_MARGIN * 2.0, 1.0)
+	)
+	var icon_height := minf(
+		CLASS_ICON_SIZE,
+		maxf(size.y - FRAME_MARGIN * 2.0, 1.0)
+	)
+	var icon_y := maxf((size.y - icon_height) * 0.5, FRAME_MARGIN)
+	return Rect2(Vector2(FRAME_MARGIN, icon_y), Vector2(icon_width, icon_height))
+
+
+func get_active_visual_class_id() -> String:
+	return active_visual_class_id
+
+
+func _refresh_visual_class() -> void:
+	var next_visual_id := get_unit_active_visual_class_id()
+	var next_base_id := get_unit_base_class_id()
+
+	if (
+		next_visual_id == active_visual_class_id
+		and next_base_id == active_base_class_id
+		and visual_definition != null
+	):
+		return
+
+	var next_definition := ClassVisualCatalogScript.resolve_for_unit(
+		next_base_id,
+		next_visual_id
+	)
+	apply_visual_definition(next_definition, next_visual_id, next_base_id)
+
+
+func _connect_visual_class_signal() -> void:
+	if unit == null or not is_instance_valid(unit):
+		return
+
+	if not unit.has_signal("visual_class_changed"):
+		return
+
+	var callback := Callable(self, "_on_unit_visual_class_changed")
+	if not unit.is_connected("visual_class_changed", callback):
+		unit.connect("visual_class_changed", callback)
+	visual_class_signal_unit = unit
+
+
+func _disconnect_visual_class_signal() -> void:
+	if (
+		visual_class_signal_unit == null
+		or not is_instance_valid(visual_class_signal_unit)
+	):
+		visual_class_signal_unit = null
+		return
+
+	var callback := Callable(self, "_on_unit_visual_class_changed")
+	if visual_class_signal_unit.is_connected("visual_class_changed", callback):
+		visual_class_signal_unit.disconnect("visual_class_changed", callback)
+	visual_class_signal_unit = null
+
+
+func _on_unit_visual_class_changed(_class_id: String) -> void:
+	_refresh_visual_class()
+	queue_redraw()
+
+
+func apply_visual_definition(
+	definition: ClassVisualDefinition,
+	visual_class_id: String,
+	base_class_id: String
+) -> void:
+	visual_definition = (
+		definition
+		if definition != null
+		else ClassVisualCatalogScript.get_neutral_definition()
+	)
+	active_visual_class_id = visual_class_id
+	active_base_class_id = base_class_id
+
+	if class_icon != null:
+		class_icon.texture = visual_definition.icon_resource
+
+	if class_icon_frame != null:
+		var icon_style := StyleBoxFlat.new()
+		icon_style.bg_color = Color(0.018, 0.02, 0.024, 0.98)
+		icon_style.border_color = visual_definition.main_color
+		icon_style.set_border_width_all(1)
+		class_icon_frame.add_theme_stylebox_override("panel", icon_style)
+
+	var class_label := visual_definition.display_name
+	var base_definition := ClassVisualCatalogScript.get_base_definition(base_class_id)
+	var base_label := (
+		base_definition.display_name
+		if base_definition != null
+		else visual_definition.display_name
+	)
+	tooltip_text = (
+		"%s\nClass: %s" % [display_name, class_label]
+		if class_label == base_label
+		else "%s\nClass: %s\nBase: %s" % [display_name, class_label, base_label]
+	)
+
+
+func get_unit_active_visual_class_id() -> String:
+	if unit == null or not is_instance_valid(unit):
+		return ""
+
+	if unit.has_method("get_active_visual_class_id"):
+		return String(unit.get_active_visual_class_id()).strip_edges()
+
+	var advanced_value = unit.get("advanced_class_id")
+	var advanced_id := String(advanced_value).strip_edges() if advanced_value != null else ""
+
+	if not advanced_id.is_empty():
+		return advanced_id
+
+	var class_value = unit.get("unit_class")
+	return String(class_value).strip_edges() if class_value != null else ""
+
+
+func get_unit_base_class_id() -> String:
+	if unit == null or not is_instance_valid(unit):
+		return ""
+
+	if unit.has_method("get_base_class"):
+		return String(unit.get_base_class()).strip_edges()
+
+	var class_value = unit.get("unit_class")
+	return String(class_value).strip_edges() if class_value != null else ""
+
+
 func get_unit_current_health() -> int:
 	if unit.has_method("get_current_health"):
 		return int(unit.get_current_health())
@@ -662,59 +781,6 @@ func get_unit_is_alive() -> bool:
 
 	var dead_value = unit.get("is_dead")
 	return dead_value == null or not bool(dead_value)
-
-
-func get_character_number() -> String:
-	if unit != null and is_instance_valid(unit):
-		if unit.has_method("get_class_ordinal"):
-			return str(unit.get_class_ordinal())
-
-		var number_value = unit.get("unit_number")
-
-		if number_value != null:
-			return str(number_value)
-
-	return "-"
-
-
-func get_role_texture() -> Texture2D:
-	var role_key := get_role_key()
-	return ROLE_TEXTURES.get(role_key) as Texture2D
-
-
-func get_role_label() -> String:
-	var role_key := get_role_key()
-
-	match role_key:
-		"tank":
-			return "Tank"
-		"healer":
-			return "Healer"
-		_:
-			return "Damage"
-
-
-func get_role_key() -> String:
-	if unit != null and is_instance_valid(unit) and unit.has_method("get_roles"):
-		var roles: Array[String] = unit.get_roles()
-
-		if roles.has("tank"):
-			return "tank"
-
-		if roles.has("healer"):
-			return "healer"
-
-	var class_value = (
-		unit.get("unit_class")
-		if unit != null and is_instance_valid(unit)
-		else null
-	)
-	var class_key := "" if class_value == null else String(class_value).to_lower()
-
-	if ROLE_TEXTURES.has(class_key):
-		return class_key
-
-	return "rogue"
 
 
 func _on_mouse_entered() -> void:
