@@ -16,6 +16,9 @@ var show_map_heading: bool = true
 var show_validation: bool = true
 var map_header_builder: Callable = Callable()
 var refresh_queued: bool = false
+var preserve_preset_name: bool = false
+var roster_scroll: ScrollContainer = null
+var roster_scroll_position: int = 0
 
 
 func configure(
@@ -35,14 +38,22 @@ func set_map_header_builder(builder: Callable) -> void:
 	map_header_builder = builder
 
 
+func set_preserve_preset_name(value: bool) -> void:
+	preserve_preset_name = value
+
+
 func refresh() -> void:
 	_queue_rebuild()
 
 
 func _rebuild() -> void:
+	if roster_scroll != null and is_instance_valid(roster_scroll):
+		roster_scroll_position = roster_scroll.scroll_vertical
+
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
+	roster_scroll = null
 
 	add_theme_constant_override("separation", 10)
 
@@ -78,7 +89,7 @@ func _rebuild() -> void:
 	member_column.add_child(member_heading)
 	member_column.add_child(_make_roster_header())
 
-	var roster_scroll := ScrollContainer.new()
+	roster_scroll = ScrollContainer.new()
 	roster_scroll.custom_minimum_size = Vector2(520, 486)
 	roster_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	roster_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -150,6 +161,14 @@ func _rebuild() -> void:
 		)
 		add_child(validation_label)
 
+	call_deferred("_restore_roster_scroll")
+
+
+func _restore_roster_scroll() -> void:
+	if roster_scroll == null or not is_instance_valid(roster_scroll):
+		return
+	roster_scroll.set_deferred("scroll_vertical", roster_scroll_position)
+
 
 func _make_roster_header() -> Control:
 	var header := HBoxContainer.new()
@@ -174,7 +193,9 @@ func _make_header_label(label_text: String, width: float) -> Label:
 
 
 func _on_member_dropped(member_id: String, region: String, range_name: String) -> void:
-	if CampaignState.set_member_placement(member_id, region, range_name):
+	if CampaignState.set_member_placement(
+		member_id, region, range_name, "", preserve_preset_name
+	):
 		formation_changed.emit()
 		_queue_rebuild()
 

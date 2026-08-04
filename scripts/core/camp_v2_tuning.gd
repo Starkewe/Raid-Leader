@@ -73,6 +73,8 @@ const CONVERSATIONS := {
 	"schedule_miss_retry_seconds": 7.0,
 	"bubble_duration_seconds": 3.8,
 	"pause_between_bubbles_seconds": 0.8,
+	"participant_conversation_radius": 120.0,
+	"participant_conversation_spacing": 48.0,
 	"lore_schedule_chance": 0.16,
 	"debug_history_limit": 100,
 	"population_for_second_conversation": 25,

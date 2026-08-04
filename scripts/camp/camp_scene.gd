@@ -1,6 +1,8 @@
 extends Node2D
 
 const GamePauseMenuScript := preload("res://scripts/ui/game_pause_menu.gd")
+const CAMP_WORLD_RECT := Rect2(0, 0, 3000, 2100)
+const POPULATION_COLLISION_MARGIN := 26.0
 
 @onready var player: CampPlayer = $CampPlayer
 @onready var journal: CampJournal = $CampHUD/CampJournal
@@ -57,6 +59,26 @@ func _mark_input_handled() -> void:
 
 func get_facility(facility_id: String) -> CampFacility:
 	return facilities_by_id.get(facility_id) as CampFacility
+
+
+func is_valid_population_position(population_position: Vector2) -> bool:
+	if not CAMP_WORLD_RECT.grow(-POPULATION_COLLISION_MARGIN).has_point(population_position):
+		return false
+
+	for facility_value in facilities_by_id.values():
+		var facility := facility_value as CampFacility
+		if facility == null or facility.footprint.x <= 0.0 or facility.footprint.y <= 0.0:
+			continue
+
+		var collision_center := facility.global_position + facility.collision_offset
+		var blocking_rect := Rect2(
+			collision_center - facility.footprint * 0.5,
+			facility.footprint
+		).grow(POPULATION_COLLISION_MARGIN)
+		if blocking_rect.has_point(population_position):
+			return false
+
+	return true
 
 
 func build_camp_path(

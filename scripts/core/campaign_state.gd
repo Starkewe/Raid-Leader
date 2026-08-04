@@ -32,7 +32,7 @@ signal memory_promoted(event: Dictionary)
 signal relationship_threshold_reached(event: Dictionary)
 
 const SAVE_PATH := "user://raid_leader_campaign_v1.json"
-const SCHEMA_VERSION := 8
+const SCHEMA_VERSION := 9
 const ACTIVE_RAID_SIZE := 20
 const ATTEMPT_HISTORY_LIMIT := 5
 const FIRST_REGION_ID := "beast_crucible"
@@ -114,6 +114,7 @@ func write_campaign(path: String, metadata: Dictionary = {}) -> bool:
 		push_warning("Campaign save could not be written: " + path)
 		return false
 
+	_capture_camp_positions_for_save()
 	var persistent_snapshot := campaign.duplicate(true)
 	# Current-visit reactions are scene texture, not durable campaign truth.
 	persistent_snapshot.erase("visit_context")
@@ -135,6 +136,16 @@ func save_campaign() -> void:
 	# Compatibility seam for existing state mutators. Campaign changes intentionally remain
 	# in memory until CampaignSaveManager performs a named save or combat-return autosave.
 	pass
+
+
+func _capture_camp_positions_for_save() -> void:
+	for controller in get_tree().get_nodes_in_group("camp_population_controller"):
+		if (
+			controller != null
+			and is_instance_valid(controller)
+			and controller.has_method("persist_current_positions")
+		):
+			controller.call("persist_current_positions")
 
 
 func get_save_context() -> Dictionary:
@@ -270,6 +281,56 @@ func get_future_recruit_ids() -> Array[String]:
 func get_raider_campaign_state(raider_id: String) -> Dictionary:
 	var state_value: Variant = campaign.get("raider_states", {}).get(raider_id, {})
 	return Dictionary(state_value).duplicate(true) if state_value is Dictionary else {}
+
+
+func get_raider_camp_position(raider_id: String) -> Dictionary:
+	var state := get_raider_campaign_state(raider_id)
+	var value: Variant = state.get("last_camp_position", [])
+
+	if value is Array and value.size() >= 2:
+		return {
+			"valid": true,
+			"position": Vector2(float(value[0]), float(value[1])),
+		}
+
+	return {"valid": false, "position": Vector2.ZERO}
+
+
+func set_raider_camp_position(raider_id: String, position: Vector2) -> bool:
+	var states_value: Variant = campaign.get("raider_states", {})
+	if not states_value is Dictionary:
+		return false
+
+	var states: Dictionary = states_value
+	var state_value: Variant = states.get(raider_id, {})
+	if not state_value is Dictionary:
+		return false
+
+	if position.x != position.x or position.y != position.y:
+		return clear_raider_camp_position(raider_id)
+
+	var state: Dictionary = Dictionary(state_value).duplicate(true)
+	state["last_camp_position"] = [position.x, position.y]
+	states[raider_id] = state
+	campaign["raider_states"] = states
+	return true
+
+
+func clear_raider_camp_position(raider_id: String) -> bool:
+	var states_value: Variant = campaign.get("raider_states", {})
+	if not states_value is Dictionary:
+		return false
+
+	var states: Dictionary = states_value
+	var state_value: Variant = states.get(raider_id, {})
+	if not state_value is Dictionary:
+		return false
+
+	var state: Dictionary = Dictionary(state_value).duplicate(true)
+	state["last_camp_position"] = []
+	states[raider_id] = state
+	campaign["raider_states"] = states
+	return true
 
 
 func get_member_label(member_id: String) -> String:
@@ -448,7 +509,11 @@ func get_formation(_encounter_id: String = "") -> Dictionary:
 
 
 func set_member_placement(
-	member_id: String, region: String, range_name: String, _encounter_id: String = ""
+	member_id: String,
+	region: String,
+	range_name: String,
+	_encounter_id: String = "",
+	preserve_preset_name: bool = false
 ) -> bool:
 	if not RaidPlanValidatorScript.VALID_REGIONS.has(region):
 		return false
@@ -463,7 +528,8 @@ func set_member_placement(
 	campaign["raid_plan"]["formation"]["placements"][member_id] = {
 		"region": region, "range": range_name
 	}
-	campaign["raid_plan"]["formation"]["preset_name"] = "Custom"
+	if not preserve_preset_name:
+		campaign["raid_plan"]["formation"]["preset_name"] = "Custom"
 	save_campaign()
 	raid_plan_changed.emit()
 	state_changed.emit()
@@ -544,6 +610,8 @@ func delete_saved_formation(formation_name: String) -> bool:
 
 	saved_formations.erase(formation_name)
 	campaign["raid_plan"]["saved_formations"] = saved_formations
+	if String(campaign["raid_plan"]["formation"].get("preset_name", "")) == formation_name:
+		campaign["raid_plan"]["formation"] = _build_default_formation()
 	save_campaign()
 	raid_plan_changed.emit()
 	state_changed.emit()
