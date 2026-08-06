@@ -120,8 +120,8 @@ func _validate_catalog() -> bool:
 		if definition.icon_resource == null or definition.compact_icon_resource == null:
 			return _fail("A class visual definition is missing an icon resource.")
 
-		if definition.icon_resource.get_width() != 128 or definition.icon_resource.get_height() != 128:
-			return _fail("A raid-frame class master is not 128x128.")
+		if definition.icon_resource.get_width() != 1254 or definition.icon_resource.get_height() != 1254:
+			return _fail("A raid-frame class master is not 1254x1254.")
 
 		if definition.compact_icon_resource.get_width() != 16 or definition.compact_icon_resource.get_height() != 16:
 			return _fail("A compact class icon is not 16x16.")
