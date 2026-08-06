@@ -44,6 +44,10 @@ var frame_by_unit: Dictionary = {}
 var boss: Node = null
 
 func _ready():
+	# This UI is combat-only; establish the context for direct scene regression
+	# instantiation before registering its command debug panel.
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_COMBAT)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	configure_command_interfaces()
 	connect_command_panel_signals()
 	setup_command_debug_panel()

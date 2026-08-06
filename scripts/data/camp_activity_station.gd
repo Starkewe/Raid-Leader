@@ -28,6 +28,29 @@ func get_facility_id() -> String:
 	return String(definition.get("facility_id", ""))
 
 
+func get_supported_activity_ids() -> Array[String]:
+	return _string_array(definition.get("supported_activity_ids", []))
+
+
+func get_slot_count() -> int:
+	return maxi(int(definition.get("capacity", 1)), 0)
+
+
+func get_slot_offset(slot_index: int) -> Vector2:
+	var offsets: Array = definition.get("participant_offsets", [])
+	if slot_index < 0 or slot_index >= offsets.size():
+		return Vector2.ZERO
+	return _vector_from(offsets[slot_index])
+
+
+func get_slot_assignment(slot_index: int) -> Dictionary:
+	for reservation_value in reservations.values():
+		var assignment := Dictionary(reservation_value)
+		if int(assignment.get("slot_index", -1)) == slot_index:
+			return assignment.duplicate(true)
+	return {}
+
+
 func supports_activity(activity_id: String) -> bool:
 	return definition.get("supported_activity_ids", []).has(activity_id)
 

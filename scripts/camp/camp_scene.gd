@@ -4,6 +4,82 @@ const GamePauseMenuScript := preload("res://scripts/ui/game_pause_menu.gd")
 const CAMP_WORLD_RECT := Rect2(0, 0, 3000, 2100)
 const POPULATION_COLLISION_MARGIN := 26.0
 
+# These are authored travel landmarks rather than navigation obstacles. Keep the
+# coordinates in one catalog so routing and the F12 route overlay cannot drift
+# apart.
+const CAMP_ROUTE_NODE_CATALOG := {
+	"south_transition": {
+		"world_position": Vector2(1500, 1410),
+		"node_type": "transition",
+		"facility_id": "",
+	},
+	"central_crossroads": {
+		"world_position": Vector2(1500, 1125),
+		"node_type": "crossroads",
+		"facility_id": "",
+	},
+	"command_tent_approach": {
+		"world_position": Vector2(1500, 690),
+		"node_type": "facility_approach",
+		"facility_id": "command_tent",
+	},
+	"formation_yard_approach": {
+		"world_position": Vector2(1030, 1080),
+		"node_type": "facility_approach",
+		"facility_id": "formation_yard",
+	},
+	"archive_approach": {
+		"world_position": Vector2(2010, 1080),
+		"node_type": "facility_approach",
+		"facility_id": "archive",
+	},
+	"smith_approach": {
+		"world_position": Vector2(760, 1160),
+		"node_type": "facility_approach",
+		"facility_id": "smith",
+	},
+	"apothecary_approach": {
+		"world_position": Vector2(2250, 1160),
+		"node_type": "facility_approach",
+		"facility_id": "apothecary",
+	},
+	"communal_fire_approach": {
+		"world_position": Vector2(1500, 1310),
+		"node_type": "facility_approach",
+		"facility_id": "communal_fire",
+	},
+	"quarters_approach": {
+		"world_position": Vector2(850, 1570),
+		"node_type": "facility_approach",
+		"facility_id": "quarters",
+	},
+	"training_approach": {
+		"world_position": Vector2(1110, 1280),
+		"node_type": "facility_approach",
+		"facility_id": "training",
+	},
+	"liaison_approach": {
+		"world_position": Vector2(2230, 1500),
+		"node_type": "facility_approach",
+		"facility_id": "liaison",
+	},
+}
+
+# The route spine is intentionally static: activity-slot destinations remain
+# dynamic and continue to be represented by active actor paths.
+const CAMP_ROUTE_SEGMENTS := [
+	["south_transition", "central_crossroads"],
+	["central_crossroads", "command_tent_approach"],
+	["central_crossroads", "formation_yard_approach"],
+	["central_crossroads", "archive_approach"],
+	["central_crossroads", "smith_approach"],
+	["central_crossroads", "apothecary_approach"],
+	["central_crossroads", "communal_fire_approach"],
+	["central_crossroads", "quarters_approach"],
+	["central_crossroads", "training_approach"],
+	["central_crossroads", "liaison_approach"],
+]
+
 @onready var player: CampPlayer = $CampPlayer
 @onready var journal: CampJournal = $CampHUD/CampJournal
 @onready var interaction_prompt: Label = $CampHUD/InteractionPrompt
@@ -15,6 +91,9 @@ var nearest_facility: CampFacility = null
 
 
 func _ready() -> void:
+	# Keep direct scene instantiation consistent with SceneFlow scene entry.
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_CAMP)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	_build_facility_catalog()
 	journal.journal_visibility_changed.connect(_on_journal_visibility_changed)
 	journal.embark_requested.connect(_on_embark_requested)
@@ -65,10 +144,50 @@ func get_population_collision_margin() -> float:
 	return POPULATION_COLLISION_MARGIN
 
 
-func is_valid_population_position(population_position: Vector2) -> bool:
-	if not CAMP_WORLD_RECT.grow(-POPULATION_COLLISION_MARGIN).has_point(population_position):
-		return false
+func get_camp_route_node_catalog() -> Dictionary:
+	return CAMP_ROUTE_NODE_CATALOG.duplicate(true)
 
+
+func get_route_node_catalog() -> Dictionary:
+	return get_camp_route_node_catalog()
+
+
+func get_camp_route_node_position(node_id: String) -> Vector2:
+	var node_data: Dictionary = CAMP_ROUTE_NODE_CATALOG.get(node_id, {})
+	var position: Variant = node_data.get("world_position", Vector2.ZERO)
+	return position if position is Vector2 else Vector2.ZERO
+
+
+func get_camp_route_approach_node_id(facility_id: String) -> String:
+	var node_id := facility_id + "_approach"
+	return node_id if CAMP_ROUTE_NODE_CATALOG.has(node_id) else ""
+
+
+func get_camp_route_segments() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+
+	for segment_value in CAMP_ROUTE_SEGMENTS:
+		var segment: Array = segment_value
+		if segment.size() < 2:
+			continue
+
+		var from_node_id := String(segment[0])
+		var to_node_id := String(segment[1])
+		result.append({
+			"from_node_id": from_node_id,
+			"to_node_id": to_node_id,
+			"start_node_id": from_node_id,
+			"end_node_id": to_node_id,
+		})
+
+	return result
+
+
+func get_route_segments() -> Array[Dictionary]:
+	return get_camp_route_segments()
+
+
+func is_population_clearance_blocked(population_position: Vector2) -> bool:
 	for facility_value in facilities_by_id.values():
 		var facility := facility_value as CampFacility
 		if facility == null:
@@ -81,38 +200,35 @@ func is_valid_population_position(population_position: Vector2) -> bool:
 			continue
 
 		if blocking_rect.has_point(population_position):
-			return false
+			return true
 
-	return true
+	return false
+
+
+func is_valid_population_position(population_position: Vector2) -> bool:
+	if not CAMP_WORLD_RECT.grow(-POPULATION_COLLISION_MARGIN).has_point(population_position):
+		return false
+
+	return not is_population_clearance_blocked(population_position)
 
 
 func build_camp_path(
 	from_position: Vector2, destination: Vector2, facility_id: String
 ) -> Array[Vector2]:
 	var path: Array[Vector2] = []
-	var approaches := {
-		"command_tent": Vector2(1500, 690),
-		"formation_yard": Vector2(1030, 1080),
-		"archive": Vector2(2010, 1080),
-		"smith": Vector2(760, 1160),
-		"apothecary": Vector2(2250, 1160),
-		"communal_fire": Vector2(1500, 1310),
-		"quarters": Vector2(850, 1570),
-		"training": Vector2(1110, 1280),
-		"liaison": Vector2(2230, 1500)
-	}
 
 	if from_position.y > 1420.0 and destination.y < 1380.0:
-		path.append(Vector2(1500, 1410))
+		path.append(get_camp_route_node_position("south_transition"))
 
 	if (
 		facility_id != "communal_fire"
 		and (absf(from_position.x - destination.x) > 760.0 or destination.y < 1150.0)
 	):
-		path.append(Vector2(1500, 1125))
+		path.append(get_camp_route_node_position("central_crossroads"))
 
-	if approaches.has(facility_id):
-		path.append(approaches[facility_id])
+	var approach_node_id := get_camp_route_approach_node_id(facility_id)
+	if not approach_node_id.is_empty():
+		path.append(get_camp_route_node_position(approach_node_id))
 
 	path.append(destination)
 	return _remove_redundant_waypoints(from_position, path)
