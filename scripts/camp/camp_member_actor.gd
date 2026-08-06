@@ -231,6 +231,10 @@ func get_member_data() -> Dictionary:
 	return member.duplicate(true)
 
 
+func get_debug_sprite_bounds() -> Rect2:
+	return Rect2(-10, -17, 30, 36)
+
+
 func _process(delta: float) -> void:
 	delta *= timing_multiplier
 	_update_hover_label()

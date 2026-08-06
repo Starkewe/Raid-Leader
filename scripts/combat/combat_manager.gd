@@ -223,9 +223,6 @@ func get_enemy_threat_sources() -> Array:
 	return enemies
 
 func _process(delta):
-	if Input.is_action_just_pressed("toggle_raid_debug"):
-		GameState.toggle_raid_debug_visibility()
-
 	if Input.is_action_just_pressed("reset_encounter"):
 		_on_retry_requested()
 		return

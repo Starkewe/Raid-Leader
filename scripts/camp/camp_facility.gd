@@ -37,6 +37,22 @@ func get_interaction_text() -> String:
 	return "E  %s" % display_name
 
 
+func get_collision_world_rect() -> Rect2:
+	if footprint.x <= 0.0 or footprint.y <= 0.0:
+		return Rect2()
+
+	var collision_center := global_position + collision_offset
+	return Rect2(collision_center - footprint * 0.5, footprint)
+
+
+func get_population_clearance_world_rect(margin: float) -> Rect2:
+	var collision_rect := get_collision_world_rect()
+	if collision_rect.size.x <= 0.0 or collision_rect.size.y <= 0.0:
+		return Rect2()
+
+	return collision_rect.grow(margin)
+
+
 func get_free_slot_count() -> int:
 	return maxi(activity_slot_offsets.size() - reservations.size(), 0)
 

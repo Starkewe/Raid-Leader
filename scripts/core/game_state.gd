@@ -163,7 +163,21 @@ var voice_settings: Dictionary = {
 
 
 func _ready() -> void:
+	# The debug toggle must remain available while a gameplay scene is paused.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	set_process_unhandled_input(true)
 	load_persistent_settings()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("toggle_raid_debug"):
+		return
+
+	toggle_raid_debug_visibility()
+
+	var viewport := get_viewport()
+	if viewport != null:
+		viewport.set_input_as_handled()
 
 
 func register_raid_debug_content(content: CanvasItem, is_available: bool = true) -> void:
