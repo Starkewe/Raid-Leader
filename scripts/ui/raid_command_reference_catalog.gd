@@ -3,15 +3,9 @@ class_name RaidCommandReferenceCatalog
 
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 const GameStateScript := preload("res://scripts/core/game_state.gd")
+const ClassVisualCatalogScript := preload("res://scripts/ui/class_visual_catalog.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 const VoiceCommandVocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
-
-const CLASS_ICONS := {
-	"Warrior": preload("res://icons/Warrior (Small).png"),
-	"Priest": preload("res://icons/Priest (Small).png"),
-	"Rogue": preload("res://icons/Rogue (Small).png"),
-	"Mage": preload("res://icons/Mage (Small).png")
-}
 
 const ACTION_ORDER: Array[String] = [
 	CommandSchemaScript.ACTION_ATTACK,
@@ -114,7 +108,7 @@ static func get_who_entries(
 			},
 			"Raiders",
 			{
-				"icon": CLASS_ICONS.get(_get_unit_class(unit)),
+				"icon": _get_unit_compact_icon(unit),
 				"tooltip": _get_unit_tooltip(unit, canonical_label)
 			}
 		))
@@ -465,7 +459,7 @@ static func _get_healing_entries(
 			},
 			section,
 			{
-				"icon": CLASS_ICONS.get(_get_unit_class(unit)),
+				"icon": _get_unit_compact_icon(unit),
 				"tooltip": _get_unit_tooltip(unit, canonical_label)
 			}
 		))
@@ -515,6 +509,14 @@ static func _get_unit_class(unit: Node) -> String:
 
 	var class_value = unit.get("unit_class")
 	return String(class_value) if class_value != null else ""
+
+
+static func _get_unit_compact_icon(unit: Node) -> Texture2D:
+	var definition := ClassVisualCatalogScript.get_base_definition(
+		_get_unit_class(unit)
+	)
+
+	return null if definition == null else definition.compact_icon_resource
 
 
 static func _get_unit_tooltip(unit: Node, canonical_label: String) -> String:

@@ -12,6 +12,7 @@ const StatusEffectControllerScript := preload("res://scripts/combat/status_effec
 
 signal defeated(unit)
 signal combat_event(event: Dictionary)
+signal visual_class_changed(class_id: String)
 
 const ACTION_NONE := ""
 const ACTION_ATTACK := "attack"
@@ -36,6 +37,7 @@ var unit_roles: Array[String] = []
 var taunt_cooldown_remaining: float = 0.0
 
 var unit_class: String = ""
+var advanced_class_id: String = ""
 var unit_number: int = 0
 var display_name: String = ""
 var member_id: String = ""
@@ -1318,6 +1320,7 @@ func get_node_display_name(target_node: Node) -> String:
 
 func setup_unit_identity(new_unit_class: String, new_unit_number: int):
 	unit_class = new_unit_class
+	set_advanced_class_id("")
 	unit_number = new_unit_number
 	display_name = new_unit_class + " " + str(new_unit_number)
 	member_id = ""
@@ -1326,6 +1329,7 @@ func setup_unit_identity(new_unit_class: String, new_unit_number: int):
 
 func setup_campaign_identity(member_data: Dictionary, class_ordinal: int) -> void:
 	setup_unit_identity(String(member_data.get("unit_class", "")), class_ordinal)
+	set_advanced_class_id(String(member_data.get("advanced_class_id", "")))
 	member_id = String(member_data.get("member_id", ""))
 	display_name = CampaignState.format_member_label(member_data)
 	member_description = String(member_data.get("description", ""))
@@ -1357,6 +1361,24 @@ func get_member_id() -> String:
 
 func get_class_ordinal() -> int:
 	return unit_number
+
+
+func set_advanced_class_id(new_advanced_class_id: String) -> void:
+	var normalized_id := new_advanced_class_id.strip_edges()
+
+	if advanced_class_id == normalized_id:
+		return
+
+	advanced_class_id = normalized_id
+	visual_class_changed.emit(get_active_visual_class_id())
+
+
+func get_advanced_class_id() -> String:
+	return advanced_class_id
+
+
+func get_active_visual_class_id() -> String:
+	return advanced_class_id if not advanced_class_id.is_empty() else unit_class
 
 
 func has_role(role_name: String) -> bool:
