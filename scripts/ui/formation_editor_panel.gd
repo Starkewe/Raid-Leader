@@ -149,6 +149,7 @@ func _rebuild() -> void:
 	formation_map.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	formation_map.configure(active_members, formation)
 	formation_map.member_dropped.connect(_on_member_dropped)
+	formation_map.mini_region_dropped.connect(_on_mini_region_dropped)
 	map_column.add_child(formation_map)
 
 	if show_validation:
@@ -195,6 +196,23 @@ func _make_header_label(label_text: String, width: float) -> Label:
 func _on_member_dropped(member_id: String, region: String, range_name: String) -> void:
 	if CampaignState.set_member_placement(
 		member_id, region, range_name, "", preserve_preset_name
+	):
+		formation_changed.emit()
+		_queue_rebuild()
+
+
+func _on_mini_region_dropped(
+	source_region: String,
+	source_range: String,
+	destination_region: String,
+	destination_range: String
+) -> void:
+	if CampaignState.move_formation_mini_region(
+		source_region,
+		source_range,
+		destination_region,
+		destination_range,
+		preserve_preset_name
 	):
 		formation_changed.emit()
 		_queue_rebuild()

@@ -536,6 +536,82 @@ func set_member_placement(
 	return true
 
 
+func move_formation_mini_region(
+	source_region: String,
+	source_range: String,
+	destination_region: String,
+	destination_range: String,
+	preserve_preset_name: bool = false
+) -> bool:
+	if not RaidPlanValidatorScript.VALID_REGIONS.has(source_region):
+		return false
+
+	if not RaidPlanValidatorScript.VALID_RANGES.has(source_range):
+		return false
+
+	if not RaidPlanValidatorScript.VALID_REGIONS.has(destination_region):
+		return false
+
+	if not RaidPlanValidatorScript.VALID_RANGES.has(destination_range):
+		return false
+
+	if source_region == destination_region and source_range == destination_range:
+		return false
+
+	var raid_plan_value: Variant = campaign.get("raid_plan", {})
+	if not raid_plan_value is Dictionary:
+		return false
+
+	var raid_plan: Dictionary = raid_plan_value
+	var formation_value: Variant = raid_plan.get("formation", {})
+	if not formation_value is Dictionary:
+		return false
+
+	var formation: Dictionary = formation_value
+	var placements_value: Variant = formation.get("placements", {})
+	if not placements_value is Dictionary:
+		return false
+
+	var placements: Dictionary = placements_value
+	var source_member_ids: Array[String] = []
+	var source_key := source_region + ":" + source_range
+
+	for member_id in get_active_member_ids():
+		var placement_value: Variant = placements.get(member_id, {})
+		if not placement_value is Dictionary:
+			continue
+
+		var placement: Dictionary = placement_value
+		var placement_key := "%s:%s" % [
+			String(placement.get("region", "")), String(placement.get("range", ""))
+		]
+
+		if placement_key == source_key:
+			source_member_ids.append(member_id)
+
+	if source_member_ids.is_empty():
+		return false
+
+	var next_formation := formation.duplicate(true)
+	var next_placements := placements.duplicate(true)
+
+	for member_id in source_member_ids:
+		next_placements[member_id] = {
+			"region": destination_region,
+			"range": destination_range,
+		}
+
+	next_formation["placements"] = next_placements
+	if not preserve_preset_name:
+		next_formation["preset_name"] = "Custom"
+
+	campaign["raid_plan"]["formation"] = next_formation
+	save_campaign()
+	raid_plan_changed.emit()
+	state_changed.emit()
+	return true
+
+
 func apply_default_formation(_encounter_id: String = "") -> void:
 	campaign["raid_plan"]["formation"] = _build_default_formation()
 	save_campaign()
