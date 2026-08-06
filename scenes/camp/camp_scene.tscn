@@ -7,6 +7,7 @@
 [ext_resource type="Script" uid="uid://o4cvbkubp0c6" path="res://scripts/camp/camp_population_controller.gd" id="5_population"]
 [ext_resource type="PackedScene" path="res://scenes/ui/camp_journal.tscn" id="6_journal"]
 [ext_resource type="Script" uid="uid://bdo8044ox5ptc" path="res://scripts/camp/camp_atmosphere.gd" id="7_atmosphere"]
+[ext_resource type="Script" path="res://scripts/camp/camp_debug_visuals.gd" id="8_debug_visuals"]
 
 [sub_resource type="CapsuleShape2D" id="Capsule_player"]
 radius = 12.0
@@ -170,6 +171,10 @@ limit_bottom = 2100
 
 [node name="CampPopulationController" type="Node" parent="." unique_id=1501054319]
 script = ExtResource("5_population")
+
+[node name="CampDebugVisuals" type="Node2D" parent="." unique_id=245775141]
+z_index = 2000
+script = ExtResource("8_debug_visuals")
 
 [node name="CampHUD" type="CanvasLayer" parent="." unique_id=1490163907]
 
