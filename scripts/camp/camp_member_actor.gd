@@ -12,6 +12,7 @@ const CLASS_COLORS := {
 	"Rogue": Color("677d55"),
 	"Mage": Color("5c6f9d")
 }
+const WAYPOINT_ARRIVAL_DISTANCE := 5.0
 
 var member: Dictionary = {}
 var member_id: String = ""
@@ -292,7 +293,7 @@ func _update_walking(delta: float) -> void:
 	var destination := path[0]
 	var distance := global_position.distance_to(destination)
 
-	if distance <= 5.0:
+	if distance <= WAYPOINT_ARRIVAL_DISTANCE:
 		global_position = destination.round()
 		path.remove_at(0)
 		return
@@ -316,7 +317,7 @@ func _update_conversation_approach(delta: float) -> void:
 
 	var destination := path[0]
 	var distance := global_position.distance_to(destination)
-	if distance <= 5.0:
+	if distance <= WAYPOINT_ARRIVAL_DISTANCE:
 		global_position = destination.round()
 		path.clear()
 		state = "focused_conversation"

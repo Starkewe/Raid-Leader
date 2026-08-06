@@ -105,6 +105,9 @@ var healing_coverage_coordinator: HealingCoverageCoordinator = (
 )
 
 func _ready():
+	# Keep direct boss/combat instantiation aligned with a fresh combat scene.
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_COMBAT)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	encounter_origin_position = global_position
 	target_controller = BossTargetControllerScript.new()
 	apply_selected_boss_profile()

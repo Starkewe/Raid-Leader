@@ -205,6 +205,132 @@ func get_actor_count() -> int:
 	return actors_by_id.size()
 
 
+func get_activity_slot_debug_data() -> Array[Dictionary]:
+	# Activity slots are authored by station definitions.  The legacy facility
+	# offsets are intentionally not consulted here because actors reserve and
+	# route to CampActivityStation assignments instead.
+	var result: Array[Dictionary] = []
+	var station_ids: Array[String] = []
+	for station_id_value in stations_by_id.keys():
+		station_ids.append(String(station_id_value))
+	station_ids.sort()
+
+	for station_id in station_ids:
+		var station := stations_by_id.get(station_id) as CampActivityStation
+		if station == null:
+			continue
+		var facility := _get_facility(station.get_facility_id())
+		if facility == null or not is_instance_valid(facility):
+			continue
+
+		for slot_index in range(station.get_slot_count()):
+			var offset := station.get_slot_offset(slot_index)
+			var assignment := station.get_slot_assignment(slot_index)
+			var occupying_member := String(assignment.get("participant_id", ""))
+			var occupied := not occupying_member.is_empty()
+			var reservation_state := "temporarily_unavailable" if station.unavailable else "free"
+			if not assignment.is_empty():
+				reservation_state = String(
+					assignment.get("reservation_level", station.get_reservation_state())
+				)
+			var slot_id := _activity_slot_id(station_id, slot_index)
+			var world_position := facility.global_position + offset
+			result.append({
+				"slot_id": slot_id,
+				"slot_key": slot_id,
+				"station_id": station_id,
+				"slot_index": slot_index,
+				"facility_id": station.get_facility_id(),
+				"supported_activity_ids": station.get_supported_activity_ids(),
+				"supported_activities": station.get_supported_activity_ids(),
+				"offset": offset,
+				"position_offset": offset,
+				"world_position": world_position,
+				"position": world_position,
+				"occupied": occupied,
+				"is_occupied": occupied,
+				"occupancy": occupied,
+				"occupancy_state": "occupied" if occupied else "free",
+				"occupancy_count": 1 if occupied else 0,
+				"occupants": [occupying_member] if occupied else [],
+				"reservation_state": reservation_state,
+				"occupying_member": occupying_member,
+				"occupying_member_id": occupying_member,
+			})
+
+	return result
+
+
+func get_activity_slots_debug_data() -> Array[Dictionary]:
+	return get_activity_slot_debug_data()
+
+
+func get_activity_slot_catalog_debug_data() -> Array[Dictionary]:
+	return get_activity_slot_debug_data()
+
+
+func get_activity_target_debug_data(member_id: String) -> Dictionary:
+	var result: Dictionary = {
+		"member_id": member_id,
+		"target_position": Vector2.ZERO,
+		"target_slot_id": "",
+		"station_id": "",
+		"activity_id": String(activity_by_member.get(member_id, "")),
+		"slot_index": -1,
+	}
+	var station_id := String(reservations_by_member.get(member_id, ""))
+	var station := stations_by_id.get(station_id) as CampActivityStation
+	var runtime_state: Dictionary = runtime_states_by_id.get(member_id, {})
+	if station == null:
+		var state_destination: Variant = runtime_state.get("destination", Vector2.ZERO)
+		if state_destination is Vector2:
+			result["target_position"] = state_destination
+		result["station_id"] = station_id
+		result["activity_id"] = String(
+			runtime_state.get("current_activity_id", result["activity_id"])
+		)
+		return result
+
+	var assignment := Dictionary(station.reservations.get(member_id, {})).duplicate(true)
+	var slot_index := int(assignment.get("slot_index", -1))
+	var facility := _get_facility(station.get_facility_id())
+	var destination: Variant = runtime_state.get("destination", Vector2.ZERO)
+	if (
+		facility != null
+		and is_instance_valid(facility)
+		and slot_index >= 0
+	):
+		destination = facility.global_position + station.get_slot_offset(slot_index)
+	if not destination is Vector2:
+		destination = Vector2.ZERO
+
+	result["target_position"] = destination
+	result["target_slot_id"] = (
+		_activity_slot_id(station_id, slot_index) if slot_index >= 0 else ""
+	)
+	result["station_id"] = station_id
+	result["slot_index"] = slot_index
+	result["reservation_state"] = String(
+		assignment.get("reservation_level", station.get_reservation_state())
+	)
+	result["activity_id"] = String(
+		runtime_state.get("current_activity_id", result["activity_id"])
+	)
+	return result
+
+
+func get_member_activity_target_debug_data(member_id: String) -> Dictionary:
+	return get_activity_target_debug_data(member_id)
+
+
+func get_activity_slot_id(station_id: String, slot_index: int) -> String:
+	return _activity_slot_id(station_id, slot_index)
+
+
+func _activity_slot_id(station_id: String, slot_index: int) -> String:
+	return "%s_slot_%d" % [station_id, slot_index]
+
+
 func _on_actor_ready_for_activity(member_id: String) -> void:
 	var actor := actors_by_id.get(member_id) as CampMemberActor
 
@@ -1094,6 +1220,7 @@ func get_camp_v2_runtime_debug_report() -> Dictionary:
 	return {
 		"raiders": raiders,
 		"stations": stations,
+		"activity_slots": get_activity_slot_debug_data(),
 		"activity_instances": activity_instances.duplicate(true),
 		"recent_activity_completion_outcomes": completion_outcomes_by_member.duplicate(true),
 		"activity_cooldowns": cooldowns_by_member.duplicate(true),

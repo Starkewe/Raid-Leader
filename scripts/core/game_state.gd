@@ -1,11 +1,29 @@
 extends Node
 
 signal raid_debug_visibility_changed(is_visible: bool)
+signal raid_debug_mode_changed(mode: String)
+signal raid_debug_context_changed(context: String)
 
 const MAX_RAID_SIZE: int = 20
 const SETTINGS_PATH := "user://raid_leader_settings.cfg"
 const RAID_DEBUG_CONTENT_GROUP: StringName = &"raid_debug_content"
 const RAID_DEBUG_AVAILABLE_META: StringName = &"raid_debug_available"
+
+const RAID_DEBUG_MODE_OFF: String = "off"
+const RAID_DEBUG_MODE_ALL: String = "all"
+const RAID_DEBUG_MODE_GEOMETRY: String = "geometry"
+const RAID_DEBUG_MODE_LABELS: String = "labels"
+const RAID_DEBUG_CONTEXT_CAMP: String = "camp"
+const RAID_DEBUG_CONTEXT_COMBAT: String = "combat"
+
+# Short aliases keep the mode/context values convenient for callers while the
+# RAID_DEBUG_* names make their scope explicit at call sites.
+const OFF: String = RAID_DEBUG_MODE_OFF
+const ALL: String = RAID_DEBUG_MODE_ALL
+const GEOMETRY: String = RAID_DEBUG_MODE_GEOMETRY
+const LABELS: String = RAID_DEBUG_MODE_LABELS
+const CAMP: String = RAID_DEBUG_CONTEXT_CAMP
+const COMBAT: String = RAID_DEBUG_CONTEXT_COMBAT
 
 const TUTORIAL_BOSS_CLEAVE_CLOSE_REGION := "cleave_close_region"
 const TUTORIAL_BOSS_LONG_REGION_CONE := "long_region_cone"
@@ -36,6 +54,8 @@ const ENCOUNTER_CHAINMASTER_DEFINITION: EncounterDefinition = preload("res://dat
 var selected_tutorial_boss_id: String = DEFAULT_ENCOUNTER_ID
 var selected_normal_encounter_id: String = DEFAULT_ENCOUNTER_ID
 var raid_debug_visible: bool = false
+var raid_debug_mode: String = RAID_DEBUG_MODE_OFF
+var raid_debug_context: String = RAID_DEBUG_CONTEXT_CAMP
 
 var normal_encounter_order: Array[String] = [
 	ENCOUNTER_OGRE,
@@ -173,7 +193,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("toggle_raid_debug"):
 		return
 
-	toggle_raid_debug_visibility()
+	cycle_raid_debug_mode()
 
 	var viewport := get_viewport()
 	if viewport != null:
@@ -198,13 +218,93 @@ func toggle_raid_debug_visibility() -> bool:
 
 
 func set_raid_debug_visibility(is_visible: bool) -> void:
-	if raid_debug_visible == is_visible:
-		_apply_raid_debug_visibility()
+	# This is the compatibility API for callers that only understand the old
+	# binary toggle. A visible state always means the complete debug overlay.
+	set_raid_debug_mode(RAID_DEBUG_MODE_ALL if is_visible else RAID_DEBUG_MODE_OFF)
+
+
+func set_raid_debug_mode(mode: String) -> void:
+	var requested_mode := mode.to_lower().strip_edges()
+	if requested_mode not in [
+		RAID_DEBUG_MODE_OFF,
+		RAID_DEBUG_MODE_ALL,
+		RAID_DEBUG_MODE_GEOMETRY,
+		RAID_DEBUG_MODE_LABELS,
+	]:
+		push_warning("Unknown raid debug mode: " + mode)
 		return
 
-	raid_debug_visible = is_visible
+	# Combat intentionally exposes only the old binary state. Keep the state
+	# valid even when a caller uses the generalized mode setter directly.
+	if raid_debug_context == RAID_DEBUG_CONTEXT_COMBAT and requested_mode != RAID_DEBUG_MODE_OFF:
+		requested_mode = RAID_DEBUG_MODE_ALL
+
+	var mode_changed := raid_debug_mode != requested_mode
+	var next_visible := requested_mode != RAID_DEBUG_MODE_OFF
+	var visibility_changed := raid_debug_visible != next_visible
+	raid_debug_mode = requested_mode
+	raid_debug_visible = next_visible
 	_apply_raid_debug_visibility()
-	raid_debug_visibility_changed.emit(raid_debug_visible)
+
+	if visibility_changed:
+		raid_debug_visibility_changed.emit(raid_debug_visible)
+	if mode_changed:
+		raid_debug_mode_changed.emit(raid_debug_mode)
+
+
+func get_raid_debug_mode() -> String:
+	return raid_debug_mode
+
+
+func set_raid_debug_context(context: String) -> void:
+	var requested_context := context.to_lower().strip_edges()
+	if requested_context not in [RAID_DEBUG_CONTEXT_CAMP, RAID_DEBUG_CONTEXT_COMBAT]:
+		push_warning("Unknown raid debug context: " + context)
+		return
+
+	var context_changed := raid_debug_context != requested_context
+	raid_debug_context = requested_context
+	if context_changed:
+		raid_debug_context_changed.emit(raid_debug_context)
+
+	# Do not allow a camp-only mode to leak into combat when a caller changes
+	# context directly. SceneFlow also explicitly resets every scene entry.
+	if (
+		raid_debug_context == RAID_DEBUG_CONTEXT_COMBAT
+		and raid_debug_mode in [RAID_DEBUG_MODE_GEOMETRY, RAID_DEBUG_MODE_LABELS]
+	):
+		set_raid_debug_mode(RAID_DEBUG_MODE_OFF)
+	else:
+		_apply_raid_debug_visibility()
+
+
+func get_raid_debug_context() -> String:
+	return raid_debug_context
+
+
+func cycle_raid_debug_mode() -> String:
+	var next_mode := RAID_DEBUG_MODE_OFF
+	if raid_debug_context == RAID_DEBUG_CONTEXT_COMBAT:
+		next_mode = (
+			RAID_DEBUG_MODE_ALL
+			if raid_debug_mode == RAID_DEBUG_MODE_OFF
+			else RAID_DEBUG_MODE_OFF
+		)
+	else:
+		match raid_debug_mode:
+			RAID_DEBUG_MODE_OFF:
+				next_mode = RAID_DEBUG_MODE_ALL
+			RAID_DEBUG_MODE_ALL:
+				next_mode = RAID_DEBUG_MODE_GEOMETRY
+			RAID_DEBUG_MODE_GEOMETRY:
+				next_mode = RAID_DEBUG_MODE_LABELS
+			RAID_DEBUG_MODE_LABELS:
+				next_mode = RAID_DEBUG_MODE_OFF
+			_:
+				next_mode = RAID_DEBUG_MODE_OFF
+
+	set_raid_debug_mode(next_mode)
+	return raid_debug_mode
 
 
 func _apply_raid_debug_visibility() -> void:
