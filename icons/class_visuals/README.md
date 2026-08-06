@@ -1,6 +1,6 @@
 # Class visual assets
 
-The twenty PNGs in this directory are the supplied 128×128 class-icon masters. They
+The twenty PNGs in this directory are the supplied 1254×1254 class-icon masters. They
 are intentionally kept as complete opaque tiles; the raid frame does not chroma-key,
 recolor, or split them apart.
 

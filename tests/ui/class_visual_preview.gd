@@ -36,7 +36,7 @@ func _build_preview() -> void:
 	add_child(background)
 
 	var title := Label.new()
-	title.text = "Class Visual Catalog — 128px masters / 44px raid tile / 16px command icon"
+	title.text = "Class Visual Catalog — 1254px masters / 44px raid tile / 16px command icon"
 	title.position = OUTER_MARGIN
 	title.size = Vector2(1700, 30)
 	title.add_theme_font_size_override("font_size", 20)
@@ -84,7 +84,7 @@ func _add_card(definition, card_position: Vector2) -> void:
 	name_label.add_theme_color_override("font_color", Color("f1eadb"))
 	card.add_child(name_label)
 
-	_add_caption(card, "MASTER 128", Vector2(10, 34), Vector2(128, 16))
+	_add_caption(card, "MASTER 1254", Vector2(10, 34), Vector2(128, 16))
 	_add_caption(card, "RAID 44", Vector2(156, 34), Vector2(78, 16))
 	_add_caption(card, "COMPACT 16", Vector2(260, 34), Vector2(90, 16))
 	_add_caption(card, "COLORS", Vector2(360, 34), Vector2(70, 16))
