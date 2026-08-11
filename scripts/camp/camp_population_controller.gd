@@ -5,24 +5,21 @@ const CampMemberScene := preload("res://scenes/camp/camp_member.tscn")
 const RuntimeRaiderStateScript := preload("res://scripts/data/runtime_raider_state.gd")
 const CampActivityStationScript := preload("res://scripts/data/camp_activity_station.gd")
 const CampContentCatalogScript := preload("res://scripts/core/camp_content_catalog.gd")
+const CampDefinitionCatalogScript := preload(
+	"res://scripts/core/camp_definition_catalog.gd"
+)
 const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
 const CampConversationDirectorScript := preload(
 	"res://scripts/camp/camp_conversation_director.gd"
 )
+const CampActorLifecycleServiceScript := preload(
+	"res://scripts/camp/camp_actor_lifecycle_service.gd"
+)
+const CampActivityReservationServiceScript := preload(
+	"res://scripts/camp/camp_activity_reservation_service.gd"
+)
 const TUNING := CampV2TuningScript.ACTIVITIES
 const CONVERSATION_TUNING := CampV2TuningScript.CONVERSATIONS
-const ACTIVITIES := [
-	preload("res://data/camp/activities/prepare_plan.tres"),
-	preload("res://data/camp/activities/rehearse.tres"),
-	preload("res://data/camp/activities/study_target.tres"),
-	preload("res://data/camp/activities/smith_work.tres"),
-	preload("res://data/camp/activities/apothecary_work.tres"),
-	preload("res://data/camp/activities/train.tres"),
-	preload("res://data/camp/activities/socialize.tres"),
-	preload("res://data/camp/activities/rest.tres"),
-	preload("res://data/camp/activities/reflect.tres"),
-	preload("res://data/camp/activities/victory_gather.tres")
-]
 
 var actors_by_id: Dictionary = {}
 # Compatibility name retained for existing diagnostics; values are now stable station IDs.
@@ -35,6 +32,8 @@ var activity_instances: Dictionary = {}
 var completion_outcomes_by_member: Dictionary = {}
 var activity_instance_sequence: int = 0
 var conversation_director: CampConversationDirector = null
+var actor_lifecycle_service = CampActorLifecycleServiceScript.new()
+var activity_reservation_service = CampActivityReservationServiceScript.new()
 var rng := RandomNumberGenerator.new()
 var reaction_timer: float = 2.0
 var visible_bubble_count: int = 0
@@ -84,11 +83,7 @@ func rebuild_population() -> void:
 	persist_current_positions()
 	_release_all_reservations()
 
-	for actor in actors_by_id.values():
-		if actor != null and is_instance_valid(actor):
-			actor.free()
-
-	actors_by_id.clear()
+	actor_lifecycle_service.destroy_all(actors_by_id)
 	activity_by_member.clear()
 	cooldowns_by_member.clear()
 	runtime_states_by_id.clear()
@@ -159,21 +154,19 @@ func _spawn_actor(
 	if spawn_position == Vector2.ZERO:
 		spawn_position = _fallback_spawn_position(index, total)
 
-	var actor := CampMemberScene.instantiate() as CampMemberActor
+	var actor := actor_lifecycle_service.create_actor(
+		get_parent(), CampMemberScene, member, spawn_position,
+		rng.randf_range(0.4, 4.0),
+		float(TUNING.get("accelerated_timing_multiplier", 6.0)) if accelerated_timing else 1.0,
+		{
+			"ready_for_activity": Callable(self, "_on_actor_ready_for_activity"),
+			"activity_completed": Callable(self, "_on_activity_completed"),
+			"navigation_failed": Callable(self, "_on_navigation_failed"),
+			"bubble_visibility_changed": Callable(self, "_on_bubble_visibility_changed"),
+		}
+	) as CampMemberActor
 	if actor == null:
 		return null
-
-	get_parent().add_child(actor)
-	actor.configure(member, spawn_position, rng.randf_range(0.4, 4.0))
-	actor.set_timing_multiplier(
-		float(TUNING.get("accelerated_timing_multiplier", 6.0))
-		if accelerated_timing
-		else 1.0
-	)
-	actor.ready_for_activity.connect(_on_actor_ready_for_activity)
-	actor.activity_completed.connect(_on_activity_completed)
-	actor.navigation_failed.connect(_on_navigation_failed)
-	actor.bubble_visibility_changed.connect(_on_bubble_visibility_changed)
 	actors_by_id[member_id] = actor
 	var runtime_state := RuntimeRaiderStateScript.create(member_id)
 	runtime_state["temporary_scene_reference"] = actor
@@ -183,10 +176,7 @@ func _spawn_actor(
 
 func _remove_actor(member_id: String) -> void:
 	var actor := actors_by_id.get(member_id) as CampMemberActor
-	if actor != null and is_instance_valid(actor):
-		actor.hide_bubble()
-		actor.interrupt_activity()
-		actor.free()
+	actor_lifecycle_service.destroy_actor(actor)
 
 	_release_member_runtime(member_id)
 	actors_by_id.erase(member_id)
@@ -400,7 +390,7 @@ func _select_activity(actor: CampMemberActor) -> Dictionary:
 	var candidates: Array[Dictionary] = []
 	var total_weight := 0.0
 
-	for activity_value in ACTIVITIES:
+	for activity_value in CampDefinitionCatalogScript.get_activity_definitions():
 		var activity := activity_value as CampActivityDefinition
 
 		if activity == null:
@@ -817,7 +807,7 @@ func _get_facility(facility_id: String) -> CampFacility:
 
 
 func _get_activity(activity_id: String) -> CampActivityDefinition:
-	for activity_value in ACTIVITIES:
+	for activity_value in CampDefinitionCatalogScript.get_activity_definitions():
 		var activity := activity_value as CampActivityDefinition
 
 		if activity != null and activity.activity_id == activity_id:
@@ -827,21 +817,13 @@ func _get_activity(activity_id: String) -> CampActivityDefinition:
 
 
 func _release_reservation(member_id: String) -> void:
-	var station_id := String(reservations_by_member.get(member_id, ""))
-	var station := stations_by_id.get(station_id) as CampActivityStation
-
-	if station != null:
-		station.release(member_id)
-
-	reservations_by_member.erase(member_id)
+	activity_reservation_service.release_member(
+		member_id, stations_by_id, reservations_by_member
+	)
 
 
 func _release_all_reservations() -> void:
-	for station_value in stations_by_id.values():
-		var station := station_value as CampActivityStation
-		if station != null:
-			station.release_all()
-	reservations_by_member.clear()
+	activity_reservation_service.release_all(stations_by_id, reservations_by_member)
 
 
 func _set_cooldown(member_id: String, activity_id: String, duration: float) -> void:
@@ -872,12 +854,9 @@ func _update_cooldowns(delta: float) -> void:
 
 
 func _build_station_registry() -> void:
-	stations_by_id.clear()
-	for definition in CampContentCatalogScript.get_station_definitions():
-		var station := CampActivityStationScript.create(definition)
-		var station_id := station.get_station_id()
-		if not station_id.is_empty():
-			stations_by_id[station_id] = station
+	stations_by_id = activity_reservation_service.build_station_registry(
+		CampContentCatalogScript.get_station_definitions()
+	)
 
 
 func _remove_from_activity_instance(member_id: String) -> void:

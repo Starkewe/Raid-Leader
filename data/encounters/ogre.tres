@@ -16,7 +16,7 @@
 [ext_resource type="Script" uid="uid://cusrrmqltv338" path="res://scripts/data/empowered_slam_definition.gd" id="14_slam_definition"]
 [ext_resource type="Script" uid="uid://cwogrjcck07ip" path="res://scripts/abilities/empowered_slam.gd" id="15_slam_runtime"]
 [ext_resource type="Script" uid="uid://mkdfy3soox02" path="res://scripts/abilities/phase_transition.gd" id="16_transition_runtime"]
-[ext_resource type="Script" path="res://scripts/data/positioning_checkpoint_definition.gd" id="17_checkpoint_type"]
+[ext_resource type="Script" uid="uid://dukhwsnmc0sen" path="res://scripts/data/positioning_checkpoint_definition.gd" id="17_checkpoint_type"]
 
 [sub_resource type="Resource" id="Ability_TwinSweepingPull"]
 script = ExtResource("6_twin_definition")
@@ -117,16 +117,19 @@ script = ExtResource("14_slam_definition")
 affected_ranges = Array[String](["close", "mid", "far"])
 fissure_definition = SubResource("Hazard_CrackedGround")
 slam_vulnerability = SubResource("Status_SlamVulnerability")
-positioning_checkpoint = SubResource("Checkpoint_EmpoweredSlam")
 runtime_script = ExtResource("15_slam_runtime")
 ability_id = "empowered_slam"
 display_name = "Empowered Slam"
 windup_text = "The Ogre's club gathers the weight of the earth."
 impact_text = "The struck lane splits open!"
+positioning_checkpoint = SubResource("Checkpoint_EmpoweredSlam")
 cast_time = 2.5
 cooldown = 6.0
 damage = 40
 interruptible = false
+
+[sub_resource type="Resource" id="Phase_One"]
+script = ExtResource("3_phase_type")
 
 [sub_resource type="Resource" id="Transition_PhaseTwo"]
 script = ExtResource("2_ability_type")
@@ -138,20 +141,6 @@ cast_time = 5.0
 cooldown = 0.0
 interruptible = false
 requires_active_target = false
-
-[sub_resource type="Resource" id="Transition_Frenzy"]
-script = ExtResource("2_ability_type")
-runtime_script = ExtResource("16_transition_runtime")
-ability_id = "earthgnasher_frenzy_transition"
-display_name = "Earthgnasher Frenzy Transition"
-windup_text = "Enough! I will tear you apart with my bare hands!"
-cast_time = 8.0
-cooldown = 0.0
-interruptible = false
-requires_active_target = false
-
-[sub_resource type="Resource" id="Phase_One"]
-script = ExtResource("3_phase_type")
 
 [sub_resource type="Resource" id="Phase_Two"]
 script = ExtResource("3_phase_type")
@@ -167,6 +156,17 @@ ability_target_count_bonus = 1
 transition_ability = SubResource("Transition_PhaseTwo")
 defer_phase_effects_until_transition = true
 
+[sub_resource type="Resource" id="Transition_Frenzy"]
+script = ExtResource("2_ability_type")
+runtime_script = ExtResource("16_transition_runtime")
+ability_id = "earthgnasher_frenzy_transition"
+display_name = "Earthgnasher Frenzy Transition"
+windup_text = "Enough! I will tear you apart with my bare hands!"
+cast_time = 8.0
+cooldown = 0.0
+interruptible = false
+requires_active_target = false
+
 [sub_resource type="Resource" id="Phase_Frenzy"]
 script = ExtResource("3_phase_type")
 phase_id = "phase_3"
@@ -178,11 +178,11 @@ ability_cooldown_multiplier = 0.75
 attack_damage_multiplier = 1.25
 ability_damage_multiplier = 1.25
 ability_target_count_bonus = 2
-basic_attack_trigger_threshold_override = 5
-enabled_ability_ids = Array[String](["earthshaker_stomp"])
 basic_attack_weapon_mode = "fists"
 basic_attack_weapon_damage_multiplier = 0.5
 basic_attack_weapon_speed_multiplier = 2.0
+basic_attack_trigger_threshold_override = 5
+enabled_ability_ids = Array[String](["earthshaker_stomp"])
 transition_ability = SubResource("Transition_Frenzy")
 defer_phase_effects_until_transition = true
 

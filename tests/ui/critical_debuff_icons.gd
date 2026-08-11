@@ -78,7 +78,7 @@ func _run() -> void:
 		_fail("The vulnerability icon remained after the debuff was removed.")
 		return
 
-	print("Critical debuff icon regression test passed.")
+	print("RAID_TEST_PASS:critical_debuff_icons | Critical debuff icon regression test passed.")
 	quit(0)
 
 

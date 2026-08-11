@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CampStationDefinition" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/data/camp_station_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+station_id = "victory_spike_view"
+facility_id = "victory_spike"
+supported_activity_ids = Array[String](["victory_gather"])
+participant_offsets = Array[Vector2]([Vector2(-100, 90), Vector2(0, 115), Vector2(100, 90)])
+facing = Vector2(0, -1)
+capacity = 3
+participant_arrangement = "shared_witnesses"
+animation_profile = "reflection"
+conversation_compatible = true
+allowed_conversation_tones = Array[String](["positive", "reflective", "competitive"])
+allowed_conversation_categories = Array[String](["victory", "combat_memory", "relationship"])
+station_tags = Array[String](["reflection", "shared"])

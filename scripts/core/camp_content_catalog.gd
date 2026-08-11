@@ -1,19 +1,21 @@
 extends RefCounted
 class_name CampContentCatalog
 
-const STATION_PATH := "res://data/camp/activity_stations.json"
+const CampDefinitionCatalogScript := preload(
+	"res://scripts/core/camp_definition_catalog.gd"
+)
 const CONVERSATION_PATH := "res://data/camp/conversations/conversation_frames.json"
 const LORE_PATH := "res://data/lore/camp_lore_topics.json"
 
 static var _loaded: bool = false
-static var _stations: Array[Dictionary] = []
+static var _stations: Array[Resource] = []
 static var _frames: Array[Dictionary] = []
 static var _lore_by_id: Dictionary = {}
 static var _warnings: Array[String] = []
 static var _validation_report: Dictionary = {}
 
 
-static func get_station_definitions() -> Array[Dictionary]:
+static func get_station_definitions() -> Array[Resource]:
 	_ensure_loaded()
 	return _stations.duplicate(true)
 
@@ -43,28 +45,21 @@ static func _ensure_loaded() -> void:
 		return
 
 	_loaded = true
-	var station_root := _load_json(STATION_PATH)
 	var frame_root := _load_json(CONVERSATION_PATH)
 	var lore_root := _load_json(LORE_PATH)
 	var station_ids: Dictionary = {}
 
-	for value in station_root.get("stations", []):
-		if not value is Dictionary:
-			_warnings.append("Camp station catalog contains a non-object entry.")
+	for station in CampDefinitionCatalogScript.get_station_definitions():
+		if station == null:
+			_warnings.append("Camp station catalog contains a null resource.")
 			continue
-		var station := Dictionary(value).duplicate(true)
-		var station_id := String(station.get("station_id", "")).strip_edges()
+		var station_id: String = String(station.get("station_id")).strip_edges()
 		if station_id.is_empty() or station_ids.has(station_id):
 			_warnings.append("Camp station has a missing or duplicate ID: " + station_id)
 			continue
-		if String(station.get("facility_id", "")).is_empty():
-			_warnings.append("Camp station is missing facility_id: " + station_id)
-			continue
-		if int(station.get("capacity", 0)) <= 0:
-			_warnings.append("Camp station has invalid capacity: " + station_id)
-			continue
-		if _string_array(station.get("supported_activity_ids", [])).is_empty():
-			_warnings.append("Camp station supports no activities: " + station_id)
+		var station_issues: Array = station.call("validate")
+		if not station_issues.is_empty():
+			_warnings.append_array(station_issues)
 			continue
 		station_ids[station_id] = true
 		_stations.append(station)

@@ -21,6 +21,19 @@ const SELECTOR_ROLE := "role"
 
 const DESTINATION_BOSS := "boss"
 const DESTINATION_BOSS_TARGET := "boss_target"
+const DESTINATION_ENCOUNTER_TARGET := "encounter_target"
+
+
+static func normalize(command_data: Dictionary) -> Dictionary:
+	var normalized := command_data.duplicate(true)
+	var selectors_value: Variant = normalized.get("who_selectors", [])
+	if not selectors_value is Array or Array(selectors_value).is_empty():
+		normalized["who_selectors"] = [{
+			"type": String(normalized.get("who_type", SELECTOR_EVERYONE)),
+			"value": normalized.get("who_value", ""),
+			"unit": normalized.get("unit", null),
+		}]
+	return normalized
 const DESTINATION_HEALING_SCOPE := "healing_scope"
 const DESTINATION_CURABLE_ALLIES := "curable_allies"
 const DESTINATION_PLAYER := "me"
@@ -90,8 +103,26 @@ static func validate(command_data: Dictionary) -> Dictionary:
 
 	match action:
 		ACTION_ATTACK, ACTION_INTERRUPT, ACTION_TAUNT:
-			if destination != DESTINATION_BOSS:
+			if action == ACTION_INTERRUPT and destination != DESTINATION_BOSS:
 				return _failure(action.capitalize() + " requires the boss destination.")
+
+			if action in [ACTION_ATTACK, ACTION_TAUNT] and destination not in [
+				DESTINATION_BOSS,
+				DESTINATION_ENCOUNTER_TARGET
+			]:
+				return _failure(action.capitalize() + " requires the boss or an encounter target.")
+
+			if destination == DESTINATION_ENCOUNTER_TARGET:
+				var encounter_target = command_data.get("encounter_target", null)
+				if not encounter_target is Dictionary:
+					return _failure("Encounter target data is missing.")
+
+				var target_selector: Dictionary = encounter_target
+				if (
+					String(target_selector.get("kind", "")).is_empty()
+					and String(target_selector.get("target_id", "")).is_empty()
+				):
+					return _failure("Encounter target kind is missing.")
 
 		ACTION_HEAL:
 			if destination != DESTINATION_HEALING_SCOPE:
@@ -172,7 +203,7 @@ static func _validate_selectors(command_data: Dictionary) -> Dictionary:
 	var selectors: Array = command_data.get("who_selectors", [])
 
 	if selectors.is_empty():
-		selectors = [{"type": String(command_data.get("who_type", SELECTOR_EVERYONE))}]
+		return _failure("Command requires at least one canonical Who selector.")
 
 	for selector_value in selectors:
 		if not selector_value is Dictionary:

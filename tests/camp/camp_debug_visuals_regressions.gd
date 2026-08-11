@@ -470,7 +470,7 @@ func _finish(camp: Node) -> void:
 		get_tree().quit(1)
 		return
 
-	print("Camp debug visuals regressions passed.")
+	print("RAID_TEST_PASS:camp_debug_visuals | Camp debug visuals regressions passed.")
 	get_tree().quit(0)
 
 

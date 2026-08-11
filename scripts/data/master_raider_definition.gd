@@ -36,48 +36,6 @@ static func sanitize(source: Dictionary) -> Dictionary:
 	return definition
 
 
-static func fallback(raider_id: String, legacy_snapshot: Dictionary = {}) -> Dictionary:
-	var unit_class := String(
-		legacy_snapshot.get("unit_class", legacy_snapshot.get("default_class", "Mage"))
-	)
-	return sanitize(
-		{
-			"raider_id": raider_id,
-			"display_name": String(legacy_snapshot.get("display_name", "Missing Raider")),
-			"biography": String(
-				legacy_snapshot.get(
-					"description",
-					legacy_snapshot.get(
-						"biography", "This raider's authored definition is unavailable."
-					)
-				)
-			),
-			"personality_tags": legacy_snapshot.get(
-				"attributes", legacy_snapshot.get("personality_tags", [])
-			),
-			"personality_description": String(
-				legacy_snapshot.get("personality_description", "")
-			),
-			"speech_profile_id": String(
-				legacy_snapshot.get("speech_profile_id", "writ_fallback")
-			),
-			"visual_assets": legacy_snapshot.get("visual_assets", {}),
-			"preferred_activity_tags": legacy_snapshot.get("preferred_activity_tags", []),
-			"permitted_class_paths": legacy_snapshot.get(
-				"permitted_class_paths", [unit_class]
-			),
-			"lore_knowledge_tags": legacy_snapshot.get("lore_knowledge_tags", []),
-			"authored_connection_ids": legacy_snapshot.get("authored_connection_ids", []),
-			"recruitment": {"missing_definition_fallback": true},
-			"default_class": unit_class,
-			"default_role": String(
-				legacy_snapshot.get("role", legacy_snapshot.get("default_role", "dps"))
-			),
-			"catalog_order": int(legacy_snapshot.get("recruit_order", 9999)),
-		}
-	)
-
-
 static func _string_array(value: Variant) -> Array[String]:
 	var result: Array[String] = []
 

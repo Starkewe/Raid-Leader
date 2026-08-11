@@ -39,7 +39,7 @@ func _run() -> void:
 		return
 
 	combat_scene.queue_free()
-	print("Raid frame layout regression test passed.")
+	print("RAID_TEST_PASS:raid_frame_layout | Raid frame layout regression test passed.")
 	get_tree().quit(0)
 
 

@@ -14,9 +14,14 @@ var reservations: Dictionary = {}
 var unavailable: bool = false
 
 
-static func create(source: Dictionary) -> CampActivityStation:
+static func create(source: Variant) -> CampActivityStation:
 	var station := CampActivityStation.new()
-	station.definition = _sanitize_definition(source)
+	var source_dictionary: Dictionary = (
+		source.to_dictionary()
+		if source is Resource and source.has_method("to_dictionary")
+		else Dictionary(source)
+	)
+	station.definition = _sanitize_definition(source_dictionary)
 	return station
 
 

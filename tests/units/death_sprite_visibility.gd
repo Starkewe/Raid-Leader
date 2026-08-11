@@ -17,7 +17,7 @@ func _run() -> void:
 		_validate_scene(String(scene_path))
 
 	if failures.is_empty():
-		print("Raid death sprite visibility regression test passed.")
+		print("RAID_TEST_PASS:death_sprite_visibility | Raid death sprite visibility regression test passed.")
 		get_tree().quit(0)
 		return
 

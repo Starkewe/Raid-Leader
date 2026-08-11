@@ -48,7 +48,7 @@ func _run() -> void:
 	if not _test_empowered_slam_checkpoint_contract():
 		return
 
-	print("Positioning checkpoint movement regressions passed.")
+	print("RAID_TEST_PASS:positioning_checkpoint_movement | Positioning checkpoint movement regressions passed.")
 	get_tree().quit(0)
 
 
@@ -200,9 +200,9 @@ func _test_empowered_slam_checkpoint_contract() -> bool:
 	if close_hazard == null:
 		return _fail("Empowered Slam did not retain a close-range Cracked Ground hazard.")
 
-	var north_direction := MovementSlotResolver.get_region_direction("north")
-	var off_center_position := boss.global_position + north_direction * 360.0
-	var adjacent_region_position := (
+	var north_direction: Vector2 = MovementSlotResolver.get_region_direction("north")
+	var off_center_position: Vector2 = boss.global_position + north_direction * 360.0
+	var adjacent_region_position: Vector2 = (
 		boss.global_position + north_direction.rotated(PI / 4.0) * 360.0
 	)
 

@@ -3,6 +3,7 @@ class_name VoiceCommandVocabulary
 
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
+const EncounterCatalogScript := preload("res://scripts/data/encounter_catalog.gd")
 
 const ACTION_ALIASES := {
 	CommandSchemaScript.ACTION_INTERRUPT: ["interrupt", "kick"],
@@ -106,6 +107,22 @@ static func get_action_destination(action: String) -> Dictionary:
 			return {"where": CommandSchemaScript.DESTINATION_CURABLE_ALLIES}
 		_:
 			return {}
+
+
+static func get_encounter_target_entries() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for catalog_entry in EncounterCatalogScript.get_voice_target_entries():
+		result.append({
+			"alias": String(catalog_entry.get("alias", "")),
+			"actions": Array(catalog_entry.get("actions", [])).duplicate(),
+			"where_data": {
+				"where": CommandSchemaScript.DESTINATION_ENCOUNTER_TARGET,
+				"encounter_target": Dictionary(
+					catalog_entry.get("selector", {})
+				).duplicate(true)
+			}
+		})
+	return result
 
 
 static func get_region_entries(include_semantic: bool = false) -> Array[Dictionary]:

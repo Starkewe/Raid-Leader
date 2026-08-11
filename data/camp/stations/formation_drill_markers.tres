@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="CampStationDefinition" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/data/camp_station_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+station_id = "formation_drill_markers"
+facility_id = "formation_yard"
+supported_activity_ids = Array[String](["rehearse"])
+participant_offsets = Array[Vector2]([Vector2(-150, -110), Vector2(-80, -145), Vector2(0, -155), Vector2(80, -145), Vector2(150, -110), Vector2(0, 145)])
+capacity = 6
+participant_arrangement = "drill_line"
+animation_profile = "formation_drill"
+conversation_compatible = true
+allowed_conversation_tones = Array[String](["neutral", "competitive", "encouraging"])
+allowed_conversation_categories = Array[String](["training", "combat_memory", "relationship"])
+station_tags = Array[String](["training", "shared"])

@@ -16,11 +16,6 @@ static func has_any_save() -> bool:
 	return not list_saves().is_empty()
 
 
-static func has_current_save() -> bool:
-	# Compatibility alias for the existing main-menu call site.
-	return has_any_save()
-
-
 static func start_new_campaign(seed_override: int = 0) -> void:
 	# Starting a campaign changes memory only. It neither overwrites nor manufactures a save.
 	# Tests and developer tools may provide a seed; normal New Game generates one.
@@ -116,16 +111,6 @@ static func list_saves() -> Array[Dictionary]:
 
 		directory.list_dir_end()
 
-	# Preserve access to the pre-named-save campaign file without rewriting it.
-	if FileAccess.file_exists(CampaignState.SAVE_PATH):
-		var legacy_entry := _read_save_entry(CampaignState.SAVE_PATH)
-
-		if not legacy_entry.is_empty():
-			legacy_entry["kind"] = "legacy"
-			legacy_entry["display_name"] = "Legacy Campaign"
-			legacy_entry["deletable"] = false
-			result.append(legacy_entry)
-
 	result.sort_custom(
 		func(a: Dictionary, b: Dictionary) -> bool:
 			var a_is_autosave := String(a.get("kind", "")) == "autosave"
@@ -145,11 +130,6 @@ static func list_saves() -> Array[Dictionary]:
 			) < 0
 	)
 	return result
-
-
-static func list_snapshots() -> Array[Dictionary]:
-	# Compatibility alias for callers from the previous snapshot implementation.
-	return list_saves()
 
 
 static func get_most_recent_save() -> Dictionary:
@@ -178,10 +158,6 @@ static func load_save(path: String) -> bool:
 		return false
 
 	return CampaignState.load_campaign(path)
-
-
-static func load_snapshot(path: String) -> bool:
-	return load_save(path)
 
 
 static func delete_save(path: String) -> bool:
@@ -220,7 +196,7 @@ static func _read_save_entry(path: String) -> Dictionary:
 		return {}
 
 	var payload := parsed as Dictionary
-	var campaign_value: Variant = payload.get("campaign", payload)
+	var campaign_value: Variant = payload.get("campaign")
 
 	if not campaign_value is Dictionary:
 		return {}
@@ -241,7 +217,10 @@ static func _read_save_entry(path: String) -> Dictionary:
 	var display_name := String(metadata.get("display_name", "")).strip_edges()
 
 	if display_name.is_empty():
-		display_name = "Autosave" if path == AUTOSAVE_PATH else _legacy_display_name(path.get_file())
+		display_name = (
+			"Autosave" if path == AUTOSAVE_PATH
+			else path.get_file().get_basename().trim_prefix(MANUAL_PREFIX).replace("_", " ").capitalize()
+		)
 
 	var region_name := String(context.get("region_name", context.get("region_id", "Camp")))
 	var encounter_name := String(
@@ -298,19 +277,5 @@ static func _safe_filename(value: String) -> String:
 	return result
 
 
-static func _legacy_display_name(file_name: String) -> String:
-	var stem := file_name.get_basename()
-
-	if stem.begins_with(MANUAL_PREFIX):
-		stem = stem.trim_prefix(MANUAL_PREFIX)
-	else:
-		var separator_index := stem.find("_")
-
-		if separator_index >= 0 and stem.left(separator_index).is_valid_int():
-			stem = stem.substr(separator_index + 1)
-
-	return stem.replace("_", " ").capitalize()
-
-
 static func _is_managed_path(path: String) -> bool:
-	return path == CampaignState.SAVE_PATH or path.begins_with(SAVE_DIRECTORY + "/")
+	return path.begins_with(SAVE_DIRECTORY + "/")

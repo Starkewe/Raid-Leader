@@ -91,7 +91,7 @@ func _init() -> void:
 		return
 
 	controller.free()
-	print("Voice capture padding, duration, and focus regression test passed.")
+	print("RAID_TEST_PASS:voice_capture_padding | Voice capture padding, duration, and focus regression test passed.")
 	quit(0)
 
 

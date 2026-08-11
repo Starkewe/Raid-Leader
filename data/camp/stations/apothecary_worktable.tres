@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CampStationDefinition" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/data/camp_station_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+station_id = "apothecary_worktable"
+facility_id = "apothecary"
+supported_activity_ids = Array[String](["apothecary_work"])
+participant_offsets = Array[Vector2]([Vector2(-165, 140), Vector2(-95, 155), Vector2(95, 155), Vector2(165, 140)])
+facing = Vector2(0, -1)
+capacity = 4
+participant_arrangement = "paired_worktables"
+animation_profile = "apothecary_work"
+conversation_compatible = true
+allowed_conversation_tones = Array[String](["neutral", "informative", "reflective"])
+allowed_conversation_categories = Array[String](["work", "teaching", "relationship"])
+station_tags = Array[String](["work", "study"])

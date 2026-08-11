@@ -1,6 +1,9 @@
 extends Control
 
 const CampaignSaveManagerScript := preload("res://scripts/core/campaign_save_manager.gd")
+const TutorialSandboxConfigScript := preload(
+	"res://scripts/data/tutorial_sandbox_config.gd"
+)
 const ScrollingMapBackgroundScript := preload(
 	"res://scripts/ui/scrolling_map_background.gd"
 )
@@ -272,7 +275,7 @@ func _show_tutorial() -> void:
 	_begin_secondary("Tutorial")
 	_apply_tutorial_default_roster()
 	var note := Label.new()
-	note.text = "Tutorial roster: 2 Warriors · 5 Priests · 6 Rogues · 7 Mages"
+	note.text = "Tutorial roster: " + TutorialSandboxConfigScript.get_roster_summary()
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	note.add_theme_color_override("font_color", Color("c9b37b"))
 	secondary_panel.add_child(note)
@@ -283,10 +286,11 @@ func _show_tutorial() -> void:
 	grid.add_theme_constant_override("v_separation", 8)
 	secondary_panel.add_child(grid)
 
-	var boss_ids = GameState.get_tutorial_boss_ids()
+	var game_state := _get_game_state()
+	var boss_ids: Array = game_state.get_tutorial_boss_ids() if game_state != null else []
 
 	for boss_id in boss_ids:
-		var data = GameState.get_tutorial_boss_data(boss_id)
+		var data = game_state.get_tutorial_boss_data(boss_id)
 		var button := Button.new()
 		button.text = String(data.get("display_name", boss_id))
 		button.custom_minimum_size = Vector2(290, 58)
@@ -317,9 +321,10 @@ func _show_settings() -> void:
 	secondary_panel.add_child(label)
 
 	settings_dropdown = OptionButton.new()
-	var current_value = GameState.get_model_setting("speech_to_text_model")
+	var game_state := _get_game_state()
+	var current_value = game_state.get_model_setting("speech_to_text_model") if game_state != null else ""
 
-	for option_data in GameState.get_speech_to_text_model_options():
+	for option_data in game_state.get_speech_to_text_model_options() if game_state != null else []:
 		var index := settings_dropdown.item_count
 		settings_dropdown.add_item(String(option_data[0]))
 		settings_dropdown.set_item_metadata(index, String(option_data[1]))
@@ -357,17 +362,17 @@ func _clear_secondary() -> void:
 
 func _on_new_game_pressed() -> void:
 	CampaignSaveManagerScript.start_new_campaign()
-	SceneFlow.enter_camp("normal")
+	_get_scene_flow().enter_camp("normal")
 
 
 func _on_continue_pressed() -> void:
 	if CampaignSaveManagerScript.load_most_recent_save():
-		SceneFlow.enter_camp("normal")
+		_get_scene_flow().enter_camp("normal")
 
 
 func _on_snapshot_pressed(path: String) -> void:
 	if CampaignSaveManagerScript.load_save(path):
-		SceneFlow.enter_camp("normal", {"loaded_save": true})
+		_get_scene_flow().enter_camp("normal", {"loaded_save": true})
 
 
 func _on_delete_save_pressed(path: String) -> void:
@@ -381,38 +386,56 @@ func _delete_save_and_refresh(path: String) -> void:
 
 
 func _apply_tutorial_default_roster() -> void:
-	for unit_class in GameState.get_available_classes():
-		GameState.set_class_count(unit_class, 0)
+	var game_state := _get_game_state()
+	if game_state == null:
+		return
+	for unit_class in game_state.get_available_classes():
+		game_state.set_class_count(unit_class, 0)
 
-	GameState.set_class_count("Warrior", 2)
-	GameState.set_class_count("Priest", 5)
-	GameState.set_class_count("Rogue", 6)
-	GameState.set_class_count("Mage", 7)
+	var roster := TutorialSandboxConfigScript.get_roster()
+	for unit_class in roster:
+		game_state.set_class_count(String(unit_class), int(roster[unit_class]))
 
 
 func _on_tutorial_boss_selected(boss_id: String) -> void:
-	GameState.set_selected_tutorial_boss(boss_id)
-	var data = GameState.get_tutorial_boss_data(boss_id)
+	var game_state := _get_game_state()
+	if game_state == null:
+		return
+	game_state.set_selected_tutorial_boss(boss_id)
+	var data = game_state.get_tutorial_boss_data(boss_id)
 
 	if tutorial_description != null:
 		tutorial_description.text = String(data.get("description", ""))
 
 	if tutorial_start_button != null:
-		tutorial_start_button.disabled = not GameState.has_valid_team()
+		tutorial_start_button.disabled = not game_state.has_valid_team()
 
 
 func _on_start_tutorial_pressed() -> void:
-	SceneFlow.launch_tutorial(GameState.get_selected_tutorial_boss_id())
+	var game_state := _get_game_state()
+	if game_state != null:
+		_get_scene_flow().launch_tutorial(game_state.get_selected_tutorial_boss_id())
 
 
 func _on_apply_settings_pressed() -> void:
 	if settings_dropdown == null or settings_dropdown.selected < 0:
 		return
 
-	GameState.set_model_setting(
+	var game_state := _get_game_state()
+	if game_state == null:
+		return
+	game_state.set_model_setting(
 		"speech_to_text_model",
 		String(settings_dropdown.get_item_metadata(settings_dropdown.selected))
 	)
+
+
+func _get_game_state() -> Node:
+	return get_node_or_null("/root/GameState")
+
+
+func _get_scene_flow() -> Node:
+	return get_node_or_null("/root/SceneFlow")
 
 
 func _on_quit_pressed() -> void:

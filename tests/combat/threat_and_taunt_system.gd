@@ -213,7 +213,7 @@ func _finish() -> void:
 			node.queue_free()
 
 	if failures.is_empty():
-		print("Threat and taunt regressions passed.")
+		print("RAID_TEST_PASS:threat_and_taunt_system | Threat and taunt regressions passed.")
 		get_tree().quit(0)
 		return
 

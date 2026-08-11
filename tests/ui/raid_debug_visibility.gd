@@ -138,7 +138,7 @@ func _run() -> void:
 		_fail("Registered raid debug content did not become hidden.")
 		return
 
-	print("Raid debug visibility regression test passed.")
+	print("RAID_TEST_PASS:raid_debug_visibility | Raid debug visibility regression test passed.")
 	quit(0)
 
 

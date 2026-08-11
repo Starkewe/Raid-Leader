@@ -82,7 +82,7 @@ func _run() -> void:
 	if not _test_hazard_expiration_releases_constraint():
 		return
 
-	print("Automatic hazard positioning regressions passed.")
+	print("RAID_TEST_PASS:automatic_hazard_positioning | Automatic hazard positioning regressions passed.")
 	get_tree().quit(0)
 
 

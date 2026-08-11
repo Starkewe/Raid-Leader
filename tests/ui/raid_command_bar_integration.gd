@@ -135,7 +135,7 @@ func _run() -> void:
 		_fail("The voice command stopped reaching normal combat execution.")
 		return
 
-	print("Raid command bar combat integration test passed.")
+	print("RAID_TEST_PASS:raid_command_bar_integration | Raid command bar combat integration test passed.")
 	get_tree().quit(0)
 
 

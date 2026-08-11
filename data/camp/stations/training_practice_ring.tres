@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CampStationDefinition" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/data/camp_station_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+station_id = "training_practice_ring"
+facility_id = "training"
+supported_activity_ids = Array[String](["train"])
+participant_offsets = Array[Vector2]([Vector2(-150, -90), Vector2(-80, -120), Vector2(20, -130), Vector2(130, -85), Vector2(-150, 90), Vector2(-60, 125), Vector2(50, 125), Vector2(145, 85)])
+facing = Vector2(0, 0)
+capacity = 8
+participant_arrangement = "practice_pairs"
+animation_profile = "training"
+conversation_compatible = true
+allowed_conversation_tones = Array[String](["neutral", "competitive", "teasing", "encouraging"])
+allowed_conversation_categories = Array[String](["training", "relationship", "combat_memory"])
+station_tags = Array[String](["training", "shared"])

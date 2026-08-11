@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="CampStationDefinition" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/data/camp_station_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+station_id = "smith_work_benches"
+facility_id = "smith"
+supported_activity_ids = Array[String](["smith_work"])
+participant_offsets = Array[Vector2]([Vector2(130, -15), Vector2(-150, 110)])
+capacity = 2
+participant_arrangement = "separate_benches"
+animation_profile = "equipment_work"
+station_tags = Array[String](["work", "quiet"])

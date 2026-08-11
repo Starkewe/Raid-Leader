@@ -13,10 +13,12 @@ const SELECTOR_UNIT_IDENTITY := CommandSchemaScript.SELECTOR_UNIT_IDENTITY
 const SELECTOR_ROLE := CommandSchemaScript.SELECTOR_ROLE
 
 var party_members: Array = []
+var game_state: Node = null
 
 
-func setup(new_party_members: Array) -> void:
+func setup(new_party_members: Array, new_game_state: Node = null) -> void:
 	party_members = new_party_members
+	game_state = new_game_state if new_game_state != null else _resolve_game_state()
 
 
 func get_units_for_command(command_data: Dictionary) -> Array:
@@ -27,9 +29,6 @@ func get_units_for_command(command_data: Dictionary) -> Array:
 
 	for selector in include_selectors:
 		append_unique_units(selected_units, get_units_for_selector(selector))
-
-	if selected_units.is_empty():
-		selected_units = get_units_from_legacy_command_data(command_data)
 
 	if not exclude_selectors.is_empty():
 		var excluded_units: Array = []
@@ -44,17 +43,7 @@ func get_units_for_command(command_data: Dictionary) -> Array:
 
 func get_include_selectors(command_data: Dictionary) -> Array:
 	var selectors_value = command_data.get("who_selectors", [])
-
-	if selectors_value is Array and not selectors_value.is_empty():
-		return selectors_value
-
-	return [
-		{
-			"type": String(command_data.get("who_type", SELECTOR_EVERYONE)),
-			"value": command_data.get("who_value", ""),
-			"unit": command_data.get("unit", null)
-		}
-	]
+	return selectors_value if selectors_value is Array else []
 
 
 func get_exclude_selectors(command_data: Dictionary) -> Array:
@@ -64,14 +53,6 @@ func get_exclude_selectors(command_data: Dictionary) -> Array:
 		return selectors_value
 
 	return []
-
-
-func get_units_from_legacy_command_data(command_data: Dictionary) -> Array:
-	return get_units_for_selector({
-		"type": String(command_data.get("who_type", SELECTOR_EVERYONE)),
-		"value": command_data.get("who_value", ""),
-		"unit": command_data.get("unit", null)
-	})
 
 
 func get_units_for_selector(selector: Dictionary) -> Array:
@@ -159,7 +140,9 @@ func get_living_units_by_group(group_number: int) -> Array:
 
 func get_living_units_by_role(role_name: String) -> Array:
 	var normalized_role := normalize_role_name(role_name)
-	var role_data := GameState.get_role_data(normalized_role)
+	var role_data: Dictionary = (
+		game_state.get_role_data(normalized_role) if game_state != null else {}
+	)
 
 	if role_data.is_empty():
 		print("Unknown role:", role_name)
@@ -190,15 +173,28 @@ func get_living_units_by_role(role_name: String) -> Array:
 			return matching_units
 
 func normalize_role_name(role_name: String) -> String:
-	return GameState.normalize_role_name(role_name)
+	return (
+		String(game_state.normalize_role_name(role_name))
+		if game_state != null
+		else role_name.to_lower().strip_edges().replace(" ", "_")
+	)
 
 
 func unit_has_role(unit: Node, role_name: String) -> bool:
 	if unit.has_method("has_role"):
 		return bool(unit.has_role(role_name))
 
-	var definition := GameState.get_unit_definition(get_unit_class_name(unit))
+	var definition = (
+		game_state.get_unit_definition(get_unit_class_name(unit))
+		if game_state != null
+		else null
+	)
 	return definition != null and definition.has_role(role_name)
+
+
+func _resolve_game_state() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	return tree.root.get_node_or_null("GameState") if tree != null else null
 
 
 func get_living_unit_by_identity(class_name_value: String, unit_number_value: int) -> Node:

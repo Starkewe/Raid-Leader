@@ -78,7 +78,7 @@ func _run() -> void:
 		_fail("Role pursuit did not resume after ordinary movement arrived.")
 		return
 
-	print("Attack pursuit after displacement regression test passed.")
+	print("RAID_TEST_PASS:attack_pursuit_after_displacement | Attack pursuit after displacement regression test passed.")
 	get_tree().quit(0)
 
 

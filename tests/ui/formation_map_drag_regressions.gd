@@ -142,7 +142,7 @@ func _finish() -> void:
 		get_tree().quit(1)
 		return
 
-	print("Formation map drag regressions passed.")
+	print("RAID_TEST_PASS:formation_map_drag | Formation map drag regressions passed.")
 	get_tree().quit(0)
 
 

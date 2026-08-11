@@ -115,7 +115,7 @@ func _run() -> void:
 			node.queue_free()
 
 	if failures.is_empty():
-		print("Earthgnasher phase rollover and Twin recovery regressions passed.")
+		print("RAID_TEST_PASS:earthgnasher_phase_rollover | Earthgnasher phase rollover and Twin recovery regressions passed.")
 		get_tree().quit(0)
 		return
 
@@ -764,6 +764,13 @@ func _resolved_twin(boss) -> TwinSweepingPull:
 
 
 func _ability_for_id(boss, ability_id: String) -> BossAbility:
+	if boss.encounter_definition != null:
+		var encounter_ability: BossAbilityDefinition = (
+			boss.encounter_definition.get_ability_definition(ability_id)
+		)
+		if encounter_ability != null:
+			return BossAbilityFactoryScript.create_ability_from_definition(encounter_ability)
+
 	for definition in boss.ability_definitions:
 		if definition != null and definition.ability_id == ability_id:
 			return BossAbilityFactoryScript.create_ability_from_definition(definition)

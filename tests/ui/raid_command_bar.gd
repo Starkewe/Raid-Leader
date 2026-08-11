@@ -116,7 +116,7 @@ func _run() -> void:
 	if _failed:
 		return
 
-	print("Raid command bar regression test passed.")
+	print("RAID_TEST_PASS:raid_command_bar | Raid command bar regression test passed.")
 	quit(0)
 
 

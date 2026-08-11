@@ -4,6 +4,7 @@ class_name JointCommandDecoder
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 const TuningScript := preload("res://scripts/voice/command_decoder_tuning.gd")
 const VocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
+const VoiceTextSimilarityScript := preload("res://scripts/voice/voice_text_similarity.gd")
 
 const SLOT_EXPLICIT := "explicit"
 const SLOT_OMITTED := "omitted"
@@ -55,6 +56,30 @@ func rebuild_vocabulary_cache() -> void:
 				}
 				merged_sequence_cache.append(
 					_cache_text_entry(entry, action_alias + " " + destination_alias)
+				)
+
+	for action_value in [CommandSchemaScript.ACTION_ATTACK, CommandSchemaScript.ACTION_TAUNT]:
+		var encounter_action := String(action_value)
+		for action_alias_value in VocabularyScript.get_action_aliases(encounter_action):
+			var encounter_action_alias := String(action_alias_value)
+			for destination in VocabularyScript.get_encounter_target_entries():
+				var allowed_actions: Array = destination.get("actions", [CommandSchemaScript.ACTION_ATTACK])
+				if not allowed_actions.has(encounter_action):
+					continue
+
+				var destination_alias := String(destination.get("alias", ""))
+				var encounter_entry := {
+					"action": encounter_action,
+					"action_alias": encounter_action_alias,
+					"destination_alias": destination_alias,
+					"where_data": Dictionary(destination.get("where_data", {})).duplicate(true),
+					"canonical_terms": [encounter_action_alias, destination_alias]
+				}
+				merged_sequence_cache.append(
+					_cache_text_entry(
+						encounter_entry,
+						encounter_action_alias + " " + destination_alias
+					)
 				)
 
 
@@ -924,15 +949,13 @@ func _merged_alignments_for_exact_action(
 		if not tokens.is_empty() and VocabularyScript.WHEN_ALIASES.has(tokens[-1])
 		else tokens.size()
 	)
-	var maximum_end := mini(command_end, start + 2)
 
-	if maximum_end < minimum_end:
+	if command_end < minimum_end:
 		return alignments
 
-	var span_text := _join_tokens(tokens, start, maximum_end)
-	var same_span_as_action := maximum_end == minimum_end
 	var exact_action_name := String(exact_action.get("action", ""))
 	var exact_alias := String(exact_action.get("alias", ""))
+	var action_only_span := command_end == minimum_end
 
 	for sequence in merged_sequence_cache:
 		var sequence_action_alias := String(sequence.get("action_alias", ""))
@@ -940,9 +963,33 @@ func _merged_alignments_for_exact_action(
 		if String(sequence.get("action", "")) != exact_action_name:
 			continue
 
-		if not same_span_as_action and sequence_action_alias != exact_alias:
+		if not action_only_span and sequence_action_alias != exact_alias:
 			continue
 
+		var sequence_end := minimum_end
+		var same_span_as_action := action_only_span
+
+		if sequence_action_alias == exact_alias:
+			var destination_alias := String(sequence.get("destination_alias", ""))
+			var destination_tokens := _tokens(destination_alias)
+			var where_data: Dictionary = Dictionary(sequence.get("where_data", {}))
+			var is_encounter_target := String(where_data.get("where", "")) == CommandSchemaScript.DESTINATION_ENCOUNTER_TARGET
+
+			if is_encounter_target:
+				## Encounter targets have multi-word names. Require the entire
+				## destination span so a partial phrase such as "attack east"
+				## cannot become "attack east growth" through fuzzy matching.
+				if command_end - minimum_end < destination_tokens.size():
+					continue
+				sequence_end = minimum_end + destination_tokens.size()
+			else:
+				sequence_end = mini(command_end, start + 2)
+
+			if sequence_end <= minimum_end:
+				continue
+			same_span_as_action = false
+
+		var span_text := _join_tokens(tokens, start, sequence_end)
 		var similarity := 0.0
 
 		if same_span_as_action:
@@ -973,7 +1020,7 @@ func _merged_alignments_for_exact_action(
 			"action": exact_action_name,
 			"alias": exact_alias,
 			"start": start,
-			"end": maximum_end,
+			"end": sequence_end,
 			"span_text": span_text,
 			"score": similarity,
 			"sequence_score": similarity,
@@ -2111,129 +2158,35 @@ func _increment_reason(reasons: Dictionary, reason: String) -> void:
 
 
 func _normalize_text(text: String) -> String:
-	var normalized := text.to_lower().strip_edges()
-
-	while normalized.contains("  "):
-		normalized = normalized.replace("  ", " ")
-
-	return normalized
+	return VoiceTextSimilarityScript.normalize(text, false)
 
 
 func _compact_text(text: String) -> String:
-	var output := ""
-
-	for index in range(text.length()):
-		var character := text.substr(index, 1)
-
-		if character >= "a" and character <= "z":
-			output += character
-
-	return output
+	return VoiceTextSimilarityScript.letters_only(text)
 
 
 func _phonetic_code(text: String) -> String:
-	var letters := _compact_text(text)
-
-	if letters.is_empty():
-		return ""
-
-	if letters.begins_with("th") and letters.length() > 3:
-		letters = letters.substr(2)
-
-	var output := letters.substr(0, 1).to_upper()
-	var previous_code := _phonetic_digit(letters.substr(0, 1))
-
-	for index in range(1, letters.length()):
-		var code := _phonetic_digit(letters.substr(index, 1))
-
-		if code != "0" and code != previous_code:
-			output += code
-
-		previous_code = code
-
-		if output.length() >= 8:
-			break
-
-	return output
+	return VoiceTextSimilarityScript.phonetic_code(text, 8, true)
 
 
 func _phrase_phonetic_code(text: String) -> String:
-	var codes: Array[String] = []
-
-	for token in _tokens(text):
-		var code := _phonetic_code(token)
-
-		if not code.is_empty():
-			codes.append(code)
-
-	return "-".join(codes)
+	return VoiceTextSimilarityScript.phrase_phonetic_code(text, 8, true)
 
 
 func _phonetic_similarity(left: String, right: String) -> float:
-	if left.is_empty() or right.is_empty():
-		return 0.0
-
-	if left == right:
-		return 1.0
-
-	var initial := 1.0 if left.substr(0, 1) == right.substr(0, 1) else 0.0
-	var digits := _normalized_similarity(left.substr(1), right.substr(1))
-	return initial * 0.35 + digits * 0.65
+	return VoiceTextSimilarityScript.phonetic_similarity(left, right)
 
 
 func _phonetic_digit(character: String) -> String:
-	if character in ["b", "f", "p", "v"]:
-		return "1"
-
-	if character in ["c", "g", "j", "k", "q", "s", "x", "z"]:
-		return "2"
-
-	if character in ["d", "t"]:
-		return "3"
-
-	if character == "l":
-		return "4"
-
-	if character in ["m", "n"]:
-		return "5"
-
-	if character == "r":
-		return "6"
-
-	return "0"
+	return VoiceTextSimilarityScript.phonetic_digit(character)
 
 
 func _normalized_similarity(left: String, right: String) -> float:
-	if left == right:
-		return 1.0
-
-	if left.is_empty() or right.is_empty():
-		return 0.0
-
-	var maximum_length := maxi(left.length(), right.length())
-	return 1.0 - float(_levenshtein_distance(left, right)) / float(maximum_length)
+	return VoiceTextSimilarityScript.normalized_similarity(left, right)
 
 
 func _levenshtein_distance(left: String, right: String) -> int:
-	var previous: Array[int] = []
-
-	for column in range(right.length() + 1):
-		previous.append(column)
-
-	for row in range(1, left.length() + 1):
-		var current: Array[int] = [row]
-		var left_character := left.substr(row - 1, 1)
-
-		for column in range(1, right.length() + 1):
-			var cost := 0 if left_character == right.substr(column - 1, 1) else 1
-			current.append(mini(
-				current[column - 1] + 1,
-				mini(previous[column] + 1, previous[column - 1] + cost)
-			))
-
-		previous = current
-
-	return previous[-1]
+	return VoiceTextSimilarityScript.levenshtein_distance(left, right)
 
 
 func _failure(

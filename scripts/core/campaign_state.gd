@@ -1,9 +1,5 @@
 extends Node
 
-const RaidMemberRecordScript := preload("res://scripts/data/raid_member_record.gd")
-const MasterRaiderDefinitionScript := preload(
-	"res://scripts/data/master_raider_definition.gd"
-)
 const CampaignRaiderStateScript := preload("res://scripts/data/campaign_raider_state.gd")
 const RaiderCatalogScript := preload("res://scripts/data/raider_catalog.gd")
 const CampaignCastGeneratorScript := preload("res://scripts/core/campaign_cast_generator.gd")
@@ -21,6 +17,19 @@ const CampConversationStateScript := preload(
 const CampContentCatalogScript := preload("res://scripts/core/camp_content_catalog.gd")
 const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
 const RaidPlanValidatorScript := preload("res://scripts/core/raid_plan_validator.gd")
+const CampaignPersistenceServiceScript := preload(
+	"res://scripts/core/campaign_persistence_service.gd"
+)
+const CampaignRosterServiceScript := preload("res://scripts/core/campaign_roster_service.gd")
+const CampaignRaidPlanServiceScript := preload(
+	"res://scripts/core/campaign_raid_plan_service.gd"
+)
+const CampaignProgressionServiceScript := preload(
+	"res://scripts/core/campaign_progression_service.gd"
+)
+const CampaignSocialMemoryServiceScript := preload(
+	"res://scripts/core/campaign_social_memory_service.gd"
+)
 
 signal state_changed
 signal raid_plan_changed
@@ -31,8 +40,8 @@ signal notable_event_recorded(event: Dictionary)
 signal memory_promoted(event: Dictionary)
 signal relationship_threshold_reached(event: Dictionary)
 
-const SAVE_PATH := "user://raid_leader_campaign_v1.json"
-const SCHEMA_VERSION := 9
+const SAVE_PATH := "user://raid_leader_saves/autosave.json"
+const SCHEMA_VERSION := 10
 const ACTIVE_RAID_SIZE := 20
 const ATTEMPT_HISTORY_LIMIT := 5
 const FIRST_REGION_ID := "beast_crucible"
@@ -40,8 +49,12 @@ const DEFAULT_FORMATION_NAME := "Default"
 const QUARTERS_ROOM_COUNT := 20
 const QUARTERS_ROOM_CAPACITY := 4
 
-var campaign: Dictionary = {}
-var missing_definition_warnings_emitted: Dictionary = {}
+var _campaign: Dictionary = {}
+var _persistence_service = CampaignPersistenceServiceScript.new()
+var _roster_service = CampaignRosterServiceScript.new()
+var _raid_plan_service = CampaignRaidPlanServiceScript.new()
+var _progression_service = CampaignProgressionServiceScript.new()
+var _social_memory_service = CampaignSocialMemoryServiceScript.new()
 
 
 func _ready() -> void:
@@ -49,8 +62,7 @@ func _ready() -> void:
 
 
 func reset_campaign(emit_change: bool = true, seed_override: int = 0) -> void:
-	missing_definition_warnings_emitted.clear()
-	campaign = _create_default_campaign(seed_override)
+	_campaign = _create_default_campaign(seed_override)
 	_print_campaign_cast_report_if_debug()
 
 	if emit_change:
@@ -60,35 +72,23 @@ func reset_campaign(emit_change: bool = true, seed_override: int = 0) -> void:
 
 
 func load_campaign(path: String = SAVE_PATH) -> bool:
-	if path.is_empty() or not FileAccess.file_exists(path):
-		push_warning("Campaign save does not exist: " + path)
+	var payload: Dictionary = _persistence_service.read_payload(path)
+	if not bool(payload.get("ok", false)):
+		push_warning("Campaign save could not be loaded (%s): %s" % [
+			String(payload.get("error", "invalid")), path
+		])
 		return false
-
-	var file := FileAccess.open(path, FileAccess.READ)
-
-	if file == null:
-		push_warning("Campaign save could not be opened: " + path)
+	var source: Dictionary = payload.get("campaign", {})
+	if not _is_current_schema_compatible(source):
+		push_warning(
+			"Campaign schema is incompatible; starting a new campaign and preserving: " + path
+		)
+		reset_campaign(true)
 		return false
-
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	file.close()
-
-	if not parsed is Dictionary:
-		push_warning("Campaign save was invalid: " + path)
-		return false
-
-	var parsed_dictionary := parsed as Dictionary
-	var campaign_value: Variant = parsed_dictionary.get("campaign", parsed_dictionary)
-
-	if not campaign_value is Dictionary:
-		push_warning("Campaign save did not contain campaign data: " + path)
-		return false
-
-	campaign = _migrate_campaign(campaign_value as Dictionary)
+	_campaign = _sanitize_current_campaign(source)
 	CampV2EventSystemScript.advance_lifecycle(
-		campaign, int(Time.get_unix_time_from_system())
+		_campaign, int(Time.get_unix_time_from_system())
 	)
-	missing_definition_warnings_emitted.clear()
 	_print_campaign_cast_report_if_debug()
 	roster_changed.emit()
 	raid_plan_changed.emit()
@@ -97,45 +97,38 @@ func load_campaign(path: String = SAVE_PATH) -> bool:
 
 
 func write_campaign(path: String, metadata: Dictionary = {}) -> bool:
-	if path.is_empty():
-		push_warning("Campaign save path was empty.")
-		return false
-
-	var directory_path := ProjectSettings.globalize_path(path.get_base_dir())
-	var directory_result := DirAccess.make_dir_recursive_absolute(directory_path)
-
-	if directory_result != OK:
-		push_warning("Campaign save directory could not be created: " + path.get_base_dir())
-		return false
-
-	var file := FileAccess.open(path, FileAccess.WRITE)
-
-	if file == null:
-		push_warning("Campaign save could not be written: " + path)
-		return false
-
 	_capture_camp_positions_for_save()
-	var persistent_snapshot := campaign.duplicate(true)
-	# Current-visit reactions are scene texture, not durable campaign truth.
+	var persistent_snapshot := _campaign.duplicate(true)
+	# Current-visit reactions are scene texture, not durable _campaign truth.
 	persistent_snapshot.erase("visit_context")
 	# Runtime scene state is owned by CampPopulationController and must never enter a save.
 	persistent_snapshot.erase("runtime_raider_states")
 	persistent_snapshot.erase("runtime_state")
-	# Authored identity stays in the catalog; saves retain only stable-ID campaign state.
+	# Authored identity stays in the catalog; saves retain only stable-ID _campaign state.
 	persistent_snapshot.erase("roster")
-	var payload := {
-		"save_metadata": metadata.duplicate(true),
-		"campaign": persistent_snapshot,
-	}
-	file.store_string(JSON.stringify(payload, "\t"))
-	file.close()
+	var written: bool = _persistence_service.write_payload(path, persistent_snapshot, metadata)
+	if not written:
+		push_warning("Campaign save could not be written: " + path)
+	return written
+
+
+func get_campaign_snapshot() -> Dictionary:
+	return _campaign.duplicate(true)
+
+
+func is_campaign_snapshot_compatible(source: Dictionary) -> bool:
+	return _is_current_schema_compatible(source)
+
+
+func debug_replace_raider_states(states: Dictionary) -> bool:
+	if not GameState.is_raid_test_mode():
+		return false
+	_campaign["raider_states"] = states.duplicate(true)
+	_ensure_valid_room_assignments(_campaign)
+	_sync_active_state_flags()
+	roster_changed.emit()
+	state_changed.emit()
 	return true
-
-
-func save_campaign() -> void:
-	# Compatibility seam for existing state mutators. Campaign changes intentionally remain
-	# in memory until CampaignSaveManager performs a named save or combat-return autosave.
-	pass
 
 
 func _capture_camp_positions_for_save() -> void:
@@ -149,12 +142,12 @@ func _capture_camp_positions_for_save() -> void:
 
 
 func get_save_context() -> Dictionary:
-	var raid_plan: Dictionary = campaign.get("raid_plan", {})
+	var raid_plan: Dictionary = _campaign.get("raid_plan", {})
 	var encounter_id := get_selected_encounter_id()
 	var definition = GameState.get_encounter_definition(encounter_id)
 	var victory_total := 0
 
-	for victory_count in campaign.get("victories", {}).values():
+	for victory_count in _campaign.get("victories", {}).values():
 		victory_total += int(victory_count)
 
 	return {
@@ -163,12 +156,12 @@ func get_save_context() -> Dictionary:
 		"encounter_id": encounter_id,
 		"encounter_name": encounter_id if definition == null else definition.display_name,
 		"victory_count": victory_total,
-		"latest_outcome": String(campaign.get("latest_attempt", {}).get("outcome", "")),
+		"latest_outcome": String(_campaign.get("latest_attempt", {}).get("outcome", "")),
 	}
 
 
 func get_available_encounter_ids() -> Array[String]:
-	return [GameState.ENCOUNTER_OGRE, GameState.ENCOUNTER_CHAINMASTER]
+	return GameState.get_normal_encounter_ids()
 
 
 func get_region_options() -> Array[Dictionary]:
@@ -195,19 +188,18 @@ func get_region_options() -> Array[Dictionary]:
 
 
 func get_raid_plan() -> Dictionary:
-	return Dictionary(campaign.get("raid_plan", {})).duplicate(true)
+	return _raid_plan_service.get_plan(_campaign)
 
 
 func get_selected_encounter_id() -> String:
-	return String(campaign.get("raid_plan", {}).get("encounter_id", GameState.ENCOUNTER_OGRE))
+	return _raid_plan_service.get_encounter(_campaign, GameState.ENCOUNTER_OGRE)
 
 
 func set_selected_encounter(encounter_id: String) -> bool:
 	if not get_available_encounter_ids().has(encounter_id):
 		return false
 
-	campaign["raid_plan"]["encounter_id"] = encounter_id
-	save_campaign()
+	_raid_plan_service.set_encounter(_campaign, encounter_id)
 	raid_plan_changed.emit()
 	state_changed.emit()
 	return true
@@ -215,7 +207,7 @@ func set_selected_encounter(encounter_id: String) -> bool:
 
 func get_roster_members() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	var states: Dictionary = campaign.get("raider_states", {})
+	var states: Dictionary = _campaign.get("raider_states", {})
 
 	for raider_id in get_selected_cast_ids():
 		var state_value: Variant = states.get(raider_id, {})
@@ -238,7 +230,7 @@ func get_roster_by_id() -> Dictionary:
 
 
 func get_member(member_id: String) -> Dictionary:
-	var state_value: Variant = campaign.get("raider_states", {}).get(member_id, {})
+	var state_value: Variant = _campaign.get("raider_states", {}).get(member_id, {})
 
 	if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
 		return {}
@@ -247,7 +239,7 @@ func get_member(member_id: String) -> Dictionary:
 
 
 func set_raider_roles(raider_id: String, roles: Array[String]) -> bool:
-	var state_value: Variant = campaign.get("raider_states", {}).get(raider_id, {})
+	var state_value: Variant = _campaign.get("raider_states", {}).get(raider_id, {})
 
 	if not state_value is Dictionary:
 		return false
@@ -259,27 +251,26 @@ func set_raider_roles(raider_id: String, roles: Array[String]) -> bool:
 
 	var state: Dictionary = Dictionary(state_value)
 	state["assigned_roles"] = normalized_roles
-	campaign["raider_states"][raider_id] = state
-	save_campaign()
+	_campaign["raider_states"][raider_id] = state
 	roster_changed.emit()
 	state_changed.emit()
 	return true
 
 
 func get_selected_cast_ids() -> Array[String]:
-	return _string_array(campaign.get("campaign_cast", {}).get("selected_raider_ids", []))
+	return _string_array(_campaign.get("campaign_cast", {}).get("selected_raider_ids", []))
 
 
 func get_initial_cast_ids() -> Array[String]:
-	return _string_array(campaign.get("campaign_cast", {}).get("initial_raider_ids", []))
+	return _string_array(_campaign.get("campaign_cast", {}).get("initial_raider_ids", []))
 
 
 func get_future_recruit_ids() -> Array[String]:
-	return _string_array(campaign.get("campaign_cast", {}).get("future_raider_ids", []))
+	return _string_array(_campaign.get("campaign_cast", {}).get("future_raider_ids", []))
 
 
 func get_raider_campaign_state(raider_id: String) -> Dictionary:
-	var state_value: Variant = campaign.get("raider_states", {}).get(raider_id, {})
+	var state_value: Variant = _campaign.get("raider_states", {}).get(raider_id, {})
 	return Dictionary(state_value).duplicate(true) if state_value is Dictionary else {}
 
 
@@ -297,7 +288,7 @@ func get_raider_camp_position(raider_id: String) -> Dictionary:
 
 
 func set_raider_camp_position(raider_id: String, position: Vector2) -> bool:
-	var states_value: Variant = campaign.get("raider_states", {})
+	var states_value: Variant = _campaign.get("raider_states", {})
 	if not states_value is Dictionary:
 		return false
 
@@ -312,12 +303,12 @@ func set_raider_camp_position(raider_id: String, position: Vector2) -> bool:
 	var state: Dictionary = Dictionary(state_value).duplicate(true)
 	state["last_camp_position"] = [position.x, position.y]
 	states[raider_id] = state
-	campaign["raider_states"] = states
+	_campaign["raider_states"] = states
 	return true
 
 
 func clear_raider_camp_position(raider_id: String) -> bool:
-	var states_value: Variant = campaign.get("raider_states", {})
+	var states_value: Variant = _campaign.get("raider_states", {})
 	if not states_value is Dictionary:
 		return false
 
@@ -329,7 +320,7 @@ func clear_raider_camp_position(raider_id: String) -> bool:
 	var state: Dictionary = Dictionary(state_value).duplicate(true)
 	state["last_camp_position"] = []
 	states[raider_id] = state
-	campaign["raider_states"] = states
+	_campaign["raider_states"] = states
 	return true
 
 
@@ -339,27 +330,64 @@ func get_member_label(member_id: String) -> String:
 
 
 func format_member_label(member: Dictionary) -> String:
-	var member_name := String(member.get("display_name", "Unknown")).strip_edges()
-	var unit_class := String(member.get("unit_class", "")).strip_edges()
-
-	if unit_class.is_empty():
-		return member_name
-
-	var class_suffix := " (%s)" % unit_class
-
-	if member_name.ends_with(class_suffix):
-		return member_name
-
-	return member_name + class_suffix
+	return CampaignRosterServiceScript.format_member_label(member)
 
 
 func get_active_member_ids() -> Array[String]:
 	var result: Array[String] = []
 
-	for member_id in campaign.get("raid_plan", {}).get("active_member_ids", []):
+	for member_id in _campaign.get("raid_plan", {}).get("active_member_ids", []):
 		result.append(String(member_id))
 
 	return result
+
+
+func add_active_member(member_id: String) -> bool:
+	if not _roster_service.add_active_member(
+		_campaign, member_id, _string_array(get_roster_by_id().keys()), ACTIVE_RAID_SIZE
+	):
+		return false
+	_commit_active_roster_change(
+		member_id, "raider_added_to_active_roster", 58
+	)
+	return true
+
+
+func remove_active_member(member_id: String) -> bool:
+	if not _roster_service.remove_active_member(_campaign, member_id):
+		return false
+	_commit_active_roster_change(member_id, "raider_moved_to_reserve", 58)
+	return true
+
+
+func _commit_active_roster_change(
+	member_id: String, event_type: String, significance: int
+) -> void:
+	_sync_active_state_flags()
+	_ensure_formation()
+	var raid_plan: Dictionary = _campaign.get("raid_plan", {})
+	var saved_formations: Dictionary = Dictionary(
+		raid_plan.get("saved_formations", {})
+	).duplicate(true)
+	for formation_name in saved_formations:
+		if saved_formations[formation_name] is Dictionary:
+			saved_formations[formation_name] = _sanitize_formation_for_active(
+				Dictionary(saved_formations[formation_name])
+			)
+	raid_plan["saved_formations"] = saved_formations
+	_campaign["raid_plan"] = raid_plan
+	emit_notable_event({
+		"event_type": event_type,
+		"source_system": "roster",
+		"participants": [member_id],
+		"memory_category": "roster",
+		"subject_key": "roster_status",
+		"significance": significance,
+	}, false)
+	_augment_visit_reactions("roster_change", 1)
+	roster_changed.emit()
+	raid_plan_changed.emit()
+	state_changed.emit()
 
 
 func get_active_members() -> Array[Dictionary]:
@@ -375,7 +403,7 @@ func get_active_members() -> Array[Dictionary]:
 
 func get_active_members_for_roster() -> Array[Dictionary]:
 	var result := get_active_members()
-	var raid_plan: Dictionary = campaign.get("raid_plan", {})
+	var raid_plan: Dictionary = _campaign.get("raid_plan", {})
 
 	if String(raid_plan.get("roster_sort_mode", "class_name")) == "class_name":
 		_sort_members_by_class_then_name(result)
@@ -417,10 +445,10 @@ func swap_active_member(active_member_id: String, reserve_member_id: String) -> 
 
 	_ensure_formation()
 	active_ids[active_index] = reserve_member_id
-	campaign["raid_plan"]["active_member_ids"] = active_ids
+	_campaign["raid_plan"]["active_member_ids"] = active_ids
 	_sync_active_state_flags()
 
-	var raid_plan: Dictionary = campaign["raid_plan"]
+	var raid_plan: Dictionary = _campaign["raid_plan"]
 	var formation: Dictionary = raid_plan.get("formation", {})
 	raid_plan["formation"] = _formation_with_replaced_member(
 		formation, active_member_id, reserve_member_id
@@ -434,7 +462,7 @@ func swap_active_member(active_member_id: String, reserve_member_id: String) -> 
 		)
 
 	raid_plan["saved_formations"] = saved_formations
-	campaign["raid_plan"] = raid_plan
+	_campaign["raid_plan"] = raid_plan
 
 	_augment_visit_reactions("roster_change", 1)
 	emit_notable_event(
@@ -461,7 +489,6 @@ func swap_active_member(active_member_id: String, reserve_member_id: String) -> 
 		},
 		false
 	)
-	save_campaign()
 	roster_changed.emit()
 	raid_plan_changed.emit()
 	state_changed.emit()
@@ -471,7 +498,7 @@ func swap_active_member(active_member_id: String, reserve_member_id: String) -> 
 func reorder_active_member(
 	moving_member_id: String, target_member_id: String, place_after_target: bool = false
 ) -> bool:
-	var raid_plan: Dictionary = campaign.get("raid_plan", {})
+	var raid_plan: Dictionary = _campaign.get("raid_plan", {})
 	var active_ids := get_active_member_ids()
 
 	if String(raid_plan.get("roster_sort_mode", "class_name")) == "class_name":
@@ -493,10 +520,9 @@ func reorder_active_member(
 		target_index += 1
 
 	active_ids.insert(clampi(target_index, 0, active_ids.size()), moving_member_id)
-	campaign["raid_plan"]["active_member_ids"] = active_ids
+	_campaign["raid_plan"]["active_member_ids"] = active_ids
 	_sync_active_state_flags()
-	campaign["raid_plan"]["roster_sort_mode"] = "custom"
-	save_campaign()
+	_campaign["raid_plan"]["roster_sort_mode"] = "custom"
 	roster_changed.emit()
 	raid_plan_changed.emit()
 	state_changed.emit()
@@ -505,7 +531,7 @@ func reorder_active_member(
 
 func get_formation(_encounter_id: String = "") -> Dictionary:
 	_ensure_formation()
-	return Dictionary(campaign["raid_plan"]["formation"]).duplicate(true)
+	return Dictionary(_campaign["raid_plan"]["formation"]).duplicate(true)
 
 
 func set_member_placement(
@@ -525,12 +551,11 @@ func set_member_placement(
 		return false
 
 	_ensure_formation()
-	campaign["raid_plan"]["formation"]["placements"][member_id] = {
+	_campaign["raid_plan"]["formation"]["placements"][member_id] = {
 		"region": region, "range": range_name
 	}
 	if not preserve_preset_name:
-		campaign["raid_plan"]["formation"]["preset_name"] = "Custom"
-	save_campaign()
+		_campaign["raid_plan"]["formation"]["preset_name"] = "Custom"
 	raid_plan_changed.emit()
 	state_changed.emit()
 	return true
@@ -558,7 +583,7 @@ func move_formation_mini_region(
 	if source_region == destination_region and source_range == destination_range:
 		return false
 
-	var raid_plan_value: Variant = campaign.get("raid_plan", {})
+	var raid_plan_value: Variant = _campaign.get("raid_plan", {})
 	if not raid_plan_value is Dictionary:
 		return false
 
@@ -605,23 +630,21 @@ func move_formation_mini_region(
 	if not preserve_preset_name:
 		next_formation["preset_name"] = "Custom"
 
-	campaign["raid_plan"]["formation"] = next_formation
-	save_campaign()
+	_campaign["raid_plan"]["formation"] = next_formation
 	raid_plan_changed.emit()
 	state_changed.emit()
 	return true
 
 
 func apply_default_formation(_encounter_id: String = "") -> void:
-	campaign["raid_plan"]["formation"] = _build_default_formation()
-	save_campaign()
+	_campaign["raid_plan"]["formation"] = _build_default_formation()
 	raid_plan_changed.emit()
 	state_changed.emit()
 
 
 func replace_current_formation(source: Dictionary) -> void:
 	_ensure_formation()
-	campaign["raid_plan"]["formation"] = _sanitize_formation_for_active(source)
+	_campaign["raid_plan"]["formation"] = _sanitize_formation_for_active(source)
 	raid_plan_changed.emit()
 	state_changed.emit()
 
@@ -629,7 +652,7 @@ func replace_current_formation(source: Dictionary) -> void:
 func get_saved_formation_names() -> Array[String]:
 	_ensure_formation()
 	var names: Array[String] = []
-	var saved_formations: Dictionary = campaign["raid_plan"].get("saved_formations", {})
+	var saved_formations: Dictionary = _campaign["raid_plan"].get("saved_formations", {})
 
 	for formation_name in saved_formations.keys():
 		names.append(String(formation_name))
@@ -647,9 +670,8 @@ func save_current_formation(formation_name: String) -> bool:
 	_ensure_formation()
 	var current := get_formation()
 	current["preset_name"] = formation_name
-	campaign["raid_plan"]["formation"] = current.duplicate(true)
-	campaign["raid_plan"]["saved_formations"][formation_name] = current.duplicate(true)
-	save_campaign()
+	_campaign["raid_plan"]["formation"] = current.duplicate(true)
+	_campaign["raid_plan"]["saved_formations"][formation_name] = current.duplicate(true)
 	raid_plan_changed.emit()
 	state_changed.emit()
 	return true
@@ -662,7 +684,7 @@ func load_formation(formation_name: String) -> bool:
 		apply_default_formation()
 		return true
 
-	var saved_formations: Dictionary = campaign["raid_plan"].get("saved_formations", {})
+	var saved_formations: Dictionary = _campaign["raid_plan"].get("saved_formations", {})
 
 	if not saved_formations.has(formation_name):
 		return false
@@ -670,8 +692,7 @@ func load_formation(formation_name: String) -> bool:
 	var source: Dictionary = saved_formations[formation_name]
 	var loaded := _sanitize_formation_for_active(source)
 	loaded["preset_name"] = formation_name
-	campaign["raid_plan"]["formation"] = loaded
-	save_campaign()
+	_campaign["raid_plan"]["formation"] = loaded
 	raid_plan_changed.emit()
 	state_changed.emit()
 	return true
@@ -679,16 +700,15 @@ func load_formation(formation_name: String) -> bool:
 
 func delete_saved_formation(formation_name: String) -> bool:
 	_ensure_formation()
-	var saved_formations: Dictionary = campaign["raid_plan"].get("saved_formations", {})
+	var saved_formations: Dictionary = _campaign["raid_plan"].get("saved_formations", {})
 
 	if not saved_formations.has(formation_name):
 		return false
 
 	saved_formations.erase(formation_name)
-	campaign["raid_plan"]["saved_formations"] = saved_formations
-	if String(campaign["raid_plan"]["formation"].get("preset_name", "")) == formation_name:
-		campaign["raid_plan"]["formation"] = _build_default_formation()
-	save_campaign()
+	_campaign["raid_plan"]["saved_formations"] = saved_formations
+	if String(_campaign["raid_plan"]["formation"].get("preset_name", "")) == formation_name:
+		_campaign["raid_plan"]["formation"] = _build_default_formation()
 	raid_plan_changed.emit()
 	state_changed.emit()
 	return true
@@ -696,7 +716,7 @@ func delete_saved_formation(formation_name: String) -> bool:
 
 func validate_raid_plan() -> Dictionary:
 	return RaidPlanValidatorScript.validate(
-		campaign.get("raid_plan", {}), get_roster_by_id(), get_available_encounter_ids()
+		_campaign.get("raid_plan", {}), get_roster_by_id(), get_available_encounter_ids()
 	)
 
 
@@ -714,15 +734,15 @@ func emit_notable_event(raw_event: Dictionary, emit_change: bool = true) -> Dict
 	if raw_event.is_empty():
 		return {}
 
-	campaign["notable_event_sequence"] = int(campaign.get("notable_event_sequence", 0)) + 1
+	_campaign["notable_event_sequence"] = int(_campaign.get("notable_event_sequence", 0)) + 1
 	var prepared := raw_event.duplicate(true)
 	prepared["event_id"] = String(
-		prepared.get("event_id", "event_%08d" % int(campaign["notable_event_sequence"]))
+		prepared.get("event_id", "event_%08d" % int(_campaign["notable_event_sequence"]))
 	)
 	prepared["recorded_unix_time"] = int(
 		prepared.get("recorded_unix_time", Time.get_unix_time_from_system())
 	)
-	var result := CampV2EventSystemScript.process_event(campaign, prepared)
+	var result := CampV2EventSystemScript.process_event(_campaign, prepared)
 	var event: Dictionary = result.get("event", {})
 
 	if event.is_empty():
@@ -752,8 +772,6 @@ func emit_notable_event(raw_event: Dictionary, emit_change: bool = true) -> Dict
 
 	CampConversationStateScript.apply_event_pressure(_get_camp_conversation_store(), event)
 
-	save_campaign()
-
 	if emit_change:
 		state_changed.emit()
 
@@ -762,7 +780,7 @@ func emit_notable_event(raw_event: Dictionary, emit_change: bool = true) -> Dict
 
 func get_recent_notable_events(limit: int = 30) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	var records: Array = campaign.get("notable_event_records", [])
+	var records: Array = _campaign.get("notable_event_records", [])
 	var first_index := maxi(records.size() - maxi(limit, 0), 0)
 
 	for value in records.slice(first_index):
@@ -774,7 +792,7 @@ func get_recent_notable_events(limit: int = 30) -> Array[Dictionary]:
 
 func get_raid_chronicle(limit: int = 30) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	var entries: Array = campaign.get("raid_chronicle", [])
+	var entries: Array = _campaign.get("raid_chronicle", [])
 	var first_index := maxi(entries.size() - maxi(limit, 0), 0)
 
 	for value in entries.slice(first_index):
@@ -785,14 +803,12 @@ func get_raid_chronicle(limit: int = 30) -> Array[Dictionary]:
 
 
 func get_raider_memories(raider_id: String) -> Dictionary:
-	return RaiderMemoryStoreScript.get_raider_memory(
-		Dictionary(campaign.get("memory_store", {})), raider_id
-	)
+	return _social_memory_service.get_memories(_campaign, raider_id)
 
 
 func select_conversation_memory(raider_id: String, criteria: Dictionary) -> Dictionary:
 	return RaiderMemoryStoreScript.select_relevant_thread(
-		Dictionary(campaign.get("memory_store", {})),
+		Dictionary(_campaign.get("memory_store", {})),
 		raider_id,
 		criteria,
 		int(Time.get_unix_time_from_system())
@@ -800,9 +816,7 @@ func select_conversation_memory(raider_id: String, criteria: Dictionary) -> Dict
 
 
 func get_relationship(first_id: String, second_id: String) -> Dictionary:
-	return RaiderRelationshipStoreScript.get_pair(
-		Dictionary(campaign.get("relationship_store", {})), first_id, second_id
-	)
+	return _social_memory_service.get_relationship(_campaign, first_id, second_id)
 
 
 func get_relationship_label(viewer_id: String, other_id: String) -> String:
@@ -813,14 +827,12 @@ func get_relationship_label(viewer_id: String, other_id: String) -> String:
 
 
 func get_raider_lore_knowledge(raider_id: String) -> Dictionary:
-	return RaiderLoreKnowledgeStoreScript.get_raider_knowledge(
-		Dictionary(campaign.get("lore_knowledge_store", {})), raider_id
-	)
+	return _social_memory_service.get_lore(_campaign, raider_id)
 
 
 func get_room_options(for_raider_id: String = "") -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	var occupants_by_room := _room_occupants_by_id(campaign)
+	var occupants_by_room := _room_occupants_by_id(_campaign)
 
 	for room_number in range(1, QUARTERS_ROOM_COUNT + 1):
 		var room_id := _room_id(room_number)
@@ -859,7 +871,7 @@ func get_roommate_summary(raider_id: String) -> String:
 
 	var roommate_names: Array[String] = []
 
-	for occupant_id in _room_occupants_by_id(campaign).get(room_id, []):
+	for occupant_id in _room_occupants_by_id(_campaign).get(room_id, []):
 		if String(occupant_id) == raider_id:
 			continue
 		var roommate := get_member(String(occupant_id))
@@ -879,7 +891,7 @@ func has_unseen_profile_development(raider_id: String) -> bool:
 
 
 func get_unseen_profile_development_count(raider_id: String) -> int:
-	var quarters: Dictionary = campaign.get("member_quarters_state", {})
+	var quarters: Dictionary = _campaign.get("member_quarters_state", {})
 	var current := int(quarters.get("profile_revisions", {}).get(raider_id, 0))
 	var seen := int(quarters.get("seen_profile_revisions", {}).get(raider_id, 0))
 	return maxi(current - seen, 0)
@@ -893,7 +905,7 @@ func mark_raider_profile_seen(raider_id: String) -> bool:
 	var seen: Dictionary = quarters.get("seen_profile_revisions", {})
 	seen[raider_id] = current
 	quarters["seen_profile_revisions"] = seen
-	campaign["member_quarters_state"] = quarters
+	_campaign["member_quarters_state"] = quarters
 	return true
 
 
@@ -1073,7 +1085,7 @@ func adjust_conversation_pressure(amount: float, source: String = "debug_control
 
 
 func recruit_raider(raider_id: String, recruitment_source: String) -> bool:
-	var states: Dictionary = campaign.get("raider_states", {})
+	var states: Dictionary = _campaign.get("raider_states", {})
 	var state_value: Variant = states.get(raider_id, {})
 
 	if not state_value is Dictionary or bool(state_value.get("recruited", false)):
@@ -1083,7 +1095,7 @@ func recruit_raider(raider_id: String, recruitment_source: String) -> bool:
 	state["recruited"] = true
 	state["recruitment_source"] = recruitment_source
 	states[raider_id] = state
-	campaign["raider_states"] = states
+	_campaign["raider_states"] = states
 	_assign_room_automatically_internal(raider_id)
 	emit_notable_event(
 		{
@@ -1111,7 +1123,7 @@ func set_room_assignment(
 	if not _is_valid_room_id(room_assignment_id):
 		return false
 
-	var states: Dictionary = campaign.get("raider_states", {})
+	var states: Dictionary = _campaign.get("raider_states", {})
 	var state_value: Variant = states.get(raider_id, {})
 
 	if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
@@ -1124,7 +1136,7 @@ func set_room_assignment(
 			return false
 		participants.append(roommate_id)
 
-	var existing_occupants: Array = _room_occupants_by_id(campaign).get(room_assignment_id, [])
+	var existing_occupants: Array = _room_occupants_by_id(_campaign).get(room_assignment_id, [])
 	for participant_id in participants:
 		existing_occupants.erase(participant_id)
 	if existing_occupants.size() + participants.size() > QUARTERS_ROOM_CAPACITY:
@@ -1146,7 +1158,7 @@ func set_room_assignment(
 		if not participants.has(String(occupant_id)):
 			participants.append(String(occupant_id))
 
-	campaign["raider_states"] = states
+	_campaign["raider_states"] = states
 	emit_notable_event(
 		{
 			"event_type": "room_assignment_changed",
@@ -1172,7 +1184,7 @@ func assign_raider_room_automatically(raider_id: String) -> bool:
 	var state := get_raider_campaign_state(raider_id)
 	if state.is_empty() or not bool(state.get("recruited", false)):
 		return false
-	var occupants_by_room := _room_occupants_by_id(campaign)
+	var occupants_by_room := _room_occupants_by_id(_campaign)
 	var current_room := String(state.get("room_assignment_id", ""))
 	if _is_valid_room_id(current_room):
 		var current_occupants: Array = occupants_by_room.get(current_room, [])
@@ -1190,7 +1202,7 @@ func assign_raider_room_automatically(raider_id: String) -> bool:
 func advance_raider_class(
 	raider_id: String, advanced_class_id: String, specialization_id: String = ""
 ) -> bool:
-	var states: Dictionary = campaign.get("raider_states", {})
+	var states: Dictionary = _campaign.get("raider_states", {})
 	var state_value: Variant = states.get(raider_id, {})
 
 	if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
@@ -1201,7 +1213,7 @@ func advance_raider_class(
 	state["advanced_class_id"] = advanced_class_id
 	state["specialization_id"] = specialization_id
 	states[raider_id] = state
-	campaign["raider_states"] = states
+	_campaign["raider_states"] = states
 	emit_notable_event(
 		{
 			"event_type": "class_advanced",
@@ -1229,8 +1241,7 @@ func advance_raider_class(
 
 func advance_memory_lifecycle(now_unix_time: int = 0) -> void:
 	var now := now_unix_time if now_unix_time > 0 else int(Time.get_unix_time_from_system())
-	CampV2EventSystemScript.advance_lifecycle(campaign, now)
-	save_campaign()
+	CampV2EventSystemScript.advance_lifecycle(_campaign, now)
 	state_changed.emit()
 
 
@@ -1255,7 +1266,7 @@ func record_attempt(summary: Dictionary) -> void:
 
 	summary["newly_discovered_ability_ids"] = newly_observed_abilities
 	summary["newly_discovered_phase_ids"] = newly_observed_phases
-	var history: Dictionary = campaign.get("attempt_history", {})
+	var history: Dictionary = _campaign.get("attempt_history", {})
 	var encounter_history: Array = history.get(encounter_id, [])
 	encounter_history.append(summary.duplicate(true))
 
@@ -1265,8 +1276,8 @@ func record_attempt(summary: Dictionary) -> void:
 		)
 
 	history[encounter_id] = encounter_history
-	campaign["attempt_history"] = history
-	campaign["latest_attempt"] = summary.duplicate(true)
+	_campaign["attempt_history"] = history
+	_campaign["latest_attempt"] = summary.duplicate(true)
 	_update_discoveries_from_attempt(summary)
 
 	if String(summary.get("outcome", "")) == "victory":
@@ -1274,7 +1285,6 @@ func record_attempt(summary: Dictionary) -> void:
 
 	_record_active_raider_combat_history(String(summary.get("outcome", "")))
 	_emit_attempt_notable_events(summary)
-	save_campaign()
 	attempt_recorded.emit(summary.duplicate(true))
 	state_changed.emit()
 
@@ -1283,15 +1293,9 @@ func get_attempt_history(encounter_id: String = "") -> Array[Dictionary]:
 	if encounter_id.is_empty():
 		encounter_id = get_selected_encounter_id()
 
-	var result: Array[Dictionary] = []
-	var stored_history: Array = campaign.get("attempt_history", {}).get(encounter_id, [])
-	var first_index := maxi(stored_history.size() - ATTEMPT_HISTORY_LIMIT, 0)
-
-	for summary in stored_history.slice(first_index):
-		if summary is Dictionary:
-			result.append(Dictionary(summary).duplicate(true))
-
-	return result
+	return _progression_service.get_attempt_history(
+		_campaign, encounter_id, ATTEMPT_HISTORY_LIMIT
+	)
 
 
 func get_latest_attempt(encounter_id: String = "") -> Dictionary:
@@ -1303,15 +1307,15 @@ func get_discoveries(encounter_id: String = "") -> Dictionary:
 	if encounter_id.is_empty():
 		encounter_id = get_selected_encounter_id()
 
-	return Dictionary(campaign.get("discoveries", {}).get(encounter_id, {})).duplicate(true)
+	return Dictionary(_campaign.get("discoveries", {}).get(encounter_id, {})).duplicate(true)
 
 
 func get_latest_victory() -> Dictionary:
-	return Dictionary(campaign.get("latest_victory", {})).duplicate(true)
+	return Dictionary(_campaign.get("latest_victory", {})).duplicate(true)
 
 
 func get_victory_count(encounter_id: String) -> int:
-	return int(campaign.get("victories", {}).get(encounter_id, 0))
+	return _progression_service.get_victory_count(_campaign, encounter_id)
 
 
 func begin_visit(context_type: String = "normal", details: Dictionary = {}) -> void:
@@ -1330,7 +1334,7 @@ func begin_visit(context_type: String = "normal", details: Dictionary = {}) -> v
 		)
 	)
 
-	campaign["visit_context"] = {
+	_campaign["visit_context"] = {
 		"type": context_type,
 		"reaction_budget": int(base_budget),
 		"reactions_emitted": 0,
@@ -1340,17 +1344,16 @@ func begin_visit(context_type: String = "normal", details: Dictionary = {}) -> v
 	CampConversationStateScript.apply_visit_pressure(
 		_get_camp_conversation_store(), context_type
 	)
-	save_campaign()
 	visit_context_changed.emit(get_visit_context())
 	state_changed.emit()
 
 
 func get_visit_context() -> Dictionary:
-	return Dictionary(campaign.get("visit_context", {})).duplicate(true)
+	return Dictionary(_campaign.get("visit_context", {})).duplicate(true)
 
 
 func consume_visit_reaction() -> bool:
-	var context: Dictionary = campaign.get("visit_context", {})
+	var context: Dictionary = _campaign.get("visit_context", {})
 	var emitted := int(context.get("reactions_emitted", 0))
 	var budget := int(context.get("reaction_budget", 0))
 
@@ -1358,12 +1361,12 @@ func consume_visit_reaction() -> bool:
 		return false
 
 	context["reactions_emitted"] = emitted + 1
-	campaign["visit_context"] = context
+	_campaign["visit_context"] = context
 	return true
 
 
 func ensure_debug_reserves() -> int:
-	var states: Dictionary = campaign.get("raider_states", {})
+	var states: Dictionary = _campaign.get("raider_states", {})
 	var recruited_count := 0
 	var recruited_ids: Array[String] = []
 
@@ -1387,8 +1390,8 @@ func ensure_debug_reserves() -> int:
 	if recruited_count <= 0:
 		return 0
 
-	campaign["raider_states"] = states
-	_ensure_valid_room_assignments(campaign)
+	_campaign["raider_states"] = states
+	_ensure_valid_room_assignments(_campaign)
 	_augment_visit_reactions("recruitment", recruited_count)
 	emit_notable_event(
 		{
@@ -1406,7 +1409,6 @@ func ensure_debug_reserves() -> int:
 		},
 		false
 	)
-	save_campaign()
 	roster_changed.emit()
 	state_changed.emit()
 	return recruited_count
@@ -1415,8 +1417,8 @@ func ensure_debug_reserves() -> int:
 func mark_apex_victory_hook(region_id: String, unlocked_region_ids: Array[String]) -> void:
 	# No current encounter calls this. It is the narrow V1 seam for the later regional apex.
 	for unlocked_region_id in unlocked_region_ids:
-		if not campaign["unlocked_regions"].has(unlocked_region_id):
-			campaign["unlocked_regions"].append(unlocked_region_id)
+		if not _campaign["unlocked_regions"].has(unlocked_region_id):
+			_campaign["unlocked_regions"].append(unlocked_region_id)
 
 	begin_visit(
 		"apex_victory",
@@ -1426,7 +1428,7 @@ func mark_apex_victory_hook(region_id: String, unlocked_region_ids: Array[String
 
 func get_campaign_debug_summary() -> Dictionary:
 	return {
-		"schema_version": int(campaign.get("schema_version", 0)),
+		"schema_version": int(_campaign.get("schema_version", 0)),
 		"roster_size": get_roster_members().size(),
 		"active_size": get_active_member_ids().size(),
 		"selected_encounter": get_selected_encounter_id(),
@@ -1437,11 +1439,10 @@ func get_campaign_debug_summary() -> Dictionary:
 
 
 func get_campaign_cast_report() -> Dictionary:
-	var cast: Dictionary = campaign.get("campaign_cast", {})
-	var diagnostics: Dictionary = campaign.get("data_diagnostics", {})
+	var cast: Dictionary = _campaign.get("campaign_cast", {})
 	var class_distribution: Dictionary = {}
 	var role_distribution: Dictionary = {}
-	var states: Dictionary = campaign.get("raider_states", {})
+	var states: Dictionary = _campaign.get("raider_states", {})
 
 	for raider_id in get_selected_cast_ids():
 		var state_value: Variant = states.get(raider_id, {})
@@ -1451,7 +1452,7 @@ func get_campaign_cast_report() -> Dictionary:
 
 		var state: Dictionary = state_value
 		var unit_class := String(state.get("current_class", "Unknown"))
-		var definition := _get_definition_with_fallback(raider_id)
+		var definition := RaiderCatalogScript.get_definition(raider_id)
 		var role := String(definition.get("default_role", "unknown"))
 		class_distribution[unit_class] = int(class_distribution.get(unit_class, 0)) + 1
 		role_distribution[role] = int(role_distribution.get(role, 0)) + 1
@@ -1463,7 +1464,7 @@ func get_campaign_cast_report() -> Dictionary:
 			warnings.append(catalog_warning)
 
 	return {
-		"campaign_seed": int(campaign.get("campaign_seed", 0)),
+		"campaign_seed": int(_campaign.get("campaign_seed", 0)),
 		"catalog_version": int(cast.get("catalog_version", 0)),
 		"selected_40": get_selected_cast_ids(),
 		"initial_20": get_initial_cast_ids(),
@@ -1471,11 +1472,7 @@ func get_campaign_cast_report() -> Dictionary:
 		"class_distribution": class_distribution,
 		"role_distribution": role_distribution,
 		"generation_validation_warnings": warnings,
-		"migrated_raider_ids": _string_array(diagnostics.get("migrated_raider_ids", [])),
-		"missing_definition_ids": _string_array(
-			diagnostics.get("missing_definition_ids", [])
-		),
-		"migrated_from_schema": int(diagnostics.get("migrated_from_schema", SCHEMA_VERSION)),
+		"missing_definition_ids": [],
 	}
 
 
@@ -1484,7 +1481,7 @@ func print_campaign_cast_report() -> void:
 
 
 func get_camp_v2_event_debug_report() -> Dictionary:
-	return CampV2EventSystemScript.get_debug_report(campaign)
+	return CampV2EventSystemScript.get_debug_report(_campaign)
 
 
 func validate_master_raider_definitions() -> Dictionary:
@@ -1496,14 +1493,14 @@ func get_camp_v2_integration_debug_report() -> Dictionary:
 	for raider_id in get_selected_cast_ids():
 		raider_states[raider_id] = get_raider_campaign_state(raider_id)
 	return {
-		"save_schema_version": int(campaign.get("schema_version", 0)),
+		"save_schema_version": int(_campaign.get("schema_version", 0)),
 		"campaign_cast_and_seed": get_campaign_cast_report(),
 		"raider_campaign_states": raider_states,
 		"events_memories_chronicle_relationships_lore": get_camp_v2_event_debug_report(),
 		"conversation_pressure_and_cooldowns": get_camp_conversation_debug_report(),
 		"recent_member_quarters_summaries": get_conversation_summaries("", 30),
 		"member_quarters_state": Dictionary(
-			campaign.get("member_quarters_state", {})
+			_campaign.get("member_quarters_state", {})
 		).duplicate(true),
 		"master_raider_validation": validate_master_raider_definitions(),
 		"camp_content_validation": CampContentCatalogScript.get_validation_report(),
@@ -1701,13 +1698,6 @@ func _create_default_campaign(seed_override: int = 0) -> Dictionary:
 			"generation_warnings": _string_array(generation.get("warnings", [])),
 		},
 		"raider_states": states,
-		"fallback_raider_definitions": {},
-		"data_diagnostics":
-		{
-			"migrated_from_schema": SCHEMA_VERSION,
-			"migrated_raider_ids": [],
-			"missing_definition_ids": [],
-		},
 		"memory_store": CampV2EventSystemScript.create_memory_store(),
 		"relationship_store": CampV2EventSystemScript.create_relationship_store(),
 		"lore_knowledge_store": CampV2EventSystemScript.create_lore_store(),
@@ -1771,18 +1761,55 @@ func _sort_members_by_class_then_name(members: Array[Dictionary]) -> void:
 	)
 
 
-func _migrate_campaign(source: Dictionary) -> Dictionary:
-	var source_version := int(source.get("schema_version", 0))
+func _is_current_schema_compatible(source: Dictionary) -> bool:
+	if int(source.get("schema_version", -1)) != SCHEMA_VERSION:
+		return false
+	if not source.has("campaign_seed"):
+		return false
+	var defaults := _create_default_campaign(int(source["campaign_seed"]))
+	for required_key in defaults.keys():
+		if not source.has(required_key):
+			return false
+	for dictionary_key in [
+		"campaign_cast", "raider_states", "raid_plan", "memory_store",
+		"relationship_store", "lore_knowledge_store", "camp_conversation_state",
+		"member_quarters_state", "victories", "boss_resources", "discoveries",
+		"attempt_history", "latest_attempt", "latest_victory", "visit_context"
+	]:
+		if not source.get(dictionary_key) is Dictionary:
+			return false
+	for array_key in ["notable_event_records", "raid_chronicle", "unlocked_regions"]:
+		if not source.get(array_key) is Array:
+			return false
+	var raid_plan: Dictionary = source["raid_plan"]
+	var default_plan: Dictionary = defaults["raid_plan"]
+	for plan_key in default_plan.keys():
+		if not raid_plan.has(plan_key):
+			return false
+	for plan_dictionary_key in [
+		"formation", "saved_formations", "support_selections", "encounter_configuration"
+	]:
+		if not raid_plan.get(plan_dictionary_key) is Dictionary:
+			return false
+	if not raid_plan.get("active_member_ids") is Array:
+		return false
+	for raider_id in _string_array(source["campaign_cast"].get("selected_raider_ids", [])):
+		if RaiderCatalogScript.get_definition(raider_id).is_empty():
+			return false
+	return true
+
+
+func _sanitize_current_campaign(source: Dictionary) -> Dictionary:
 	var source_seed := int(source.get("campaign_seed", 20004))
 	var defaults := _create_default_campaign(source_seed)
-	var migrated := source.duplicate(true)
+	var sanitized := source.duplicate(true)
 
 	for key in defaults.keys():
-		if not migrated.has(key):
-			migrated[key] = defaults[key]
+		if not sanitized.has(key):
+			sanitized[key] = defaults[key]
 
 	var default_plan: Dictionary = defaults["raid_plan"]
-	var raid_plan_value: Variant = migrated.get("raid_plan", {})
+	var raid_plan_value: Variant = sanitized.get("raid_plan", {})
 	var raid_plan: Dictionary = (
 		Dictionary(raid_plan_value).duplicate(true)
 		if raid_plan_value is Dictionary
@@ -1797,19 +1824,6 @@ func _migrate_campaign(source: Dictionary) -> Dictionary:
 			raid_plan[plan_key] = default_plan[plan_key]
 
 	var formation_value: Variant = raid_plan.get("formation")
-	var legacy_formations: Dictionary = {}
-
-	if not formation_value is Dictionary:
-		var legacy_formations_value: Variant = raid_plan.get("formations", {})
-		legacy_formations = (
-			Dictionary(legacy_formations_value) if legacy_formations_value is Dictionary else {}
-		)
-		var selected_encounter := String(raid_plan.get("encounter_id", GameState.ENCOUNTER_OGRE))
-		formation_value = legacy_formations.get(selected_encounter, {})
-
-		if not formation_value is Dictionary or Dictionary(formation_value).is_empty():
-			formation_value = default_plan["formation"]
-
 	raid_plan["formation"] = Dictionary(formation_value).duplicate(true)
 
 	var saved_formations_value: Variant = raid_plan.get("saved_formations", {})
@@ -1819,207 +1833,41 @@ func _migrate_campaign(source: Dictionary) -> Dictionary:
 		else {}
 	)
 
-	for legacy_encounter_id in legacy_formations.keys():
-		var legacy_formation_value: Variant = legacy_formations[legacy_encounter_id]
-
-		if not legacy_formation_value is Dictionary:
-			continue
-
-		var imported_name := "Imported %s layout" % String(legacy_encounter_id).capitalize()
-
-		if saved_formations.has(imported_name):
-			continue
-
-		var imported_formation := Dictionary(legacy_formation_value).duplicate(true)
-		imported_formation["preset_name"] = imported_name
-		saved_formations[imported_name] = imported_formation
-
 	raid_plan["saved_formations"] = saved_formations
-	raid_plan.erase("formations")
-	migrated["raid_plan"] = raid_plan
+	sanitized["raid_plan"] = raid_plan
 
-	if not _has_layered_raider_data(migrated):
-		if not _migrate_legacy_raider_data(migrated, defaults, source_version):
-			return defaults
-	else:
-		_sanitize_layered_raider_data(migrated, defaults, source_version)
+	_sanitize_current_raider_data(sanitized, defaults)
 
 	CampV2EventSystemScript.sanitize_campaign_stores(
-		migrated,
-		_string_array(migrated.get("campaign_cast", {}).get("selected_raider_ids", []))
+		sanitized,
+		_string_array(sanitized.get("campaign_cast", {}).get("selected_raider_ids", []))
 	)
-	migrated["camp_conversation_state"] = CampConversationStateScript.sanitize_store(
-		migrated.get("camp_conversation_state", {}),
-		_string_array(migrated.get("campaign_cast", {}).get("selected_raider_ids", []))
+	sanitized["camp_conversation_state"] = CampConversationStateScript.sanitize_store(
+		sanitized.get("camp_conversation_state", {}),
+		_string_array(sanitized.get("campaign_cast", {}).get("selected_raider_ids", []))
 	)
-	migrated["member_quarters_state"] = _sanitize_member_quarters_state(
-		migrated.get("member_quarters_state", {}),
-		_string_array(migrated.get("campaign_cast", {}).get("selected_raider_ids", [])),
-		migrated
+	sanitized["member_quarters_state"] = _sanitize_member_quarters_state(
+		sanitized.get("member_quarters_state", {}),
+		_string_array(sanitized.get("campaign_cast", {}).get("selected_raider_ids", [])),
+		sanitized
 	)
-	_ensure_valid_room_assignments(migrated)
-	migrated.erase("roster")
-	migrated.erase("next_member_serial")
-	migrated["attempt_history"] = _normalize_attempt_history(
-		migrated.get("attempt_history", {})
+	_ensure_valid_room_assignments(sanitized)
+	sanitized["attempt_history"] = _normalize_attempt_history(
+		sanitized.get("attempt_history", {})
 	)
-	migrated["schema_version"] = SCHEMA_VERSION
-	campaign = migrated
+	sanitized["schema_version"] = SCHEMA_VERSION
+	_campaign = sanitized
 	_sync_active_state_flags()
 	_ensure_formation()
-	return campaign
+	return _campaign
 
 
-func _has_layered_raider_data(source: Dictionary) -> bool:
-	return source.get("campaign_cast") is Dictionary and source.get("raider_states") is Dictionary
-
-
-func _migrate_legacy_raider_data(
-	migrated: Dictionary, defaults: Dictionary, source_version: int
-) -> bool:
-	var legacy_roster: Array[Dictionary] = []
-
-	for member_value in migrated.get("roster", []):
-		if member_value is Dictionary:
-			legacy_roster.append(RaidMemberRecordScript.sanitize(member_value))
-
-	if legacy_roster.is_empty():
-		push_warning("Legacy campaign had no valid roster; a new campaign was created instead.")
-		return false
-
-	var selected_ids: Array[String] = []
-	var legacy_by_id: Dictionary = {}
-
-	for index in range(legacy_roster.size()):
-		var member := legacy_roster[index]
-		var raider_id := String(member.get("member_id", "")).strip_edges()
-
-		if raider_id.is_empty():
-			raider_id = "legacy_%03d" % (index + 1)
-			member["member_id"] = raider_id
-
-		if legacy_by_id.has(raider_id):
-			push_warning("Legacy roster contained duplicate member_id: " + raider_id)
-			continue
-
-		legacy_by_id[raider_id] = member
-		selected_ids.append(raider_id)
-
-	for generated_id in _string_array(
-		defaults.get("campaign_cast", {}).get("selected_raider_ids", [])
-	):
-		if selected_ids.size() >= CampaignCastGeneratorScript.CAST_SIZE:
-			break
-
-		_append_unique_id(selected_ids, generated_id)
-
-	var initial_ids: Array[String] = []
-
-	for member in legacy_roster:
-		if String(member.get("source_id", "")) == "starting_writ":
-			_append_unique_id(initial_ids, String(member.get("member_id", "")))
-
-	for generated_id in _string_array(
-		defaults.get("campaign_cast", {}).get("initial_raider_ids", [])
-	):
-		if initial_ids.size() >= CampaignCastGeneratorScript.INITIAL_SIZE:
-			break
-
-		if selected_ids.has(generated_id):
-			_append_unique_id(initial_ids, generated_id)
-
-	for raider_id in selected_ids:
-		if initial_ids.size() >= CampaignCastGeneratorScript.INITIAL_SIZE:
-			break
-		_append_unique_id(initial_ids, raider_id)
-
-	if initial_ids.size() > CampaignCastGeneratorScript.INITIAL_SIZE:
-		initial_ids = initial_ids.slice(0, CampaignCastGeneratorScript.INITIAL_SIZE)
-
-	var future_ids: Array[String] = []
-
-	for raider_id in selected_ids:
-		if not initial_ids.has(raider_id):
-			future_ids.append(raider_id)
-
-	var active_ids := _string_array(
-		migrated.get("raid_plan", {}).get("active_member_ids", [])
-	)
-	var states: Dictionary = {}
-	var fallback_definitions: Dictionary = {}
-	var missing_definition_ids: Array[String] = []
-
-	for raider_id in selected_ids:
-		var legacy_member: Dictionary = legacy_by_id.get(raider_id, {})
-		var definition := RaiderCatalogScript.get_definition(raider_id)
-
-		if definition.is_empty():
-			definition = MasterRaiderDefinitionScript.fallback(raider_id, legacy_member)
-			fallback_definitions[raider_id] = definition
-			missing_definition_ids.append(raider_id)
-
-		var is_legacy_member := not legacy_member.is_empty()
-		var is_initial := initial_ids.has(raider_id)
-		var recruitment: Dictionary = definition.get("recruitment", {})
-		var state := CampaignRaiderStateScript.create(
-			raider_id,
-			String(
-				legacy_member.get("unit_class", definition.get("default_class", "Mage"))
-			),
-			is_legacy_member or is_initial,
-			active_ids.has(raider_id),
-			String(
-				legacy_member.get(
-					"source_id",
-					recruitment.get("source_hint", "starting_writ" if is_initial else "unrecruited")
-				)
-			)
-		)
-
-		if is_legacy_member:
-			state["advanced_class_id"] = String(legacy_member.get("advanced_class_id", ""))
-			state["specialization_id"] = String(legacy_member.get("specialization_id", ""))
-			state["debug_member"] = bool(legacy_member.get("debug_member", false))
-
-		states[raider_id] = CampaignRaiderStateScript.sanitize(
-			state, raider_id, String(definition.get("default_class", "Mage"))
-		)
-
-	var warnings := _string_array(
-		defaults.get("campaign_cast", {}).get("generation_warnings", [])
-	)
-
-	if selected_ids.size() != CampaignCastGeneratorScript.CAST_SIZE:
-		warnings.append(
-			"Migrated cast contains %d raiders instead of %d so no legacy raider was discarded."
-			% [selected_ids.size(), CampaignCastGeneratorScript.CAST_SIZE]
-		)
-
-	migrated["campaign_cast"] = {
-		"catalog_version": RaiderCatalogScript.get_catalog_version(),
-		"selected_raider_ids": selected_ids,
-		"initial_raider_ids": initial_ids,
-		"future_raider_ids": future_ids,
-		"generation_warnings": warnings,
-	}
-	migrated["raider_states"] = states
-	migrated["fallback_raider_definitions"] = fallback_definitions
-	migrated["data_diagnostics"] = {
-		"migrated_from_schema": source_version,
-		"migrated_raider_ids": legacy_by_id.keys(),
-		"missing_definition_ids": missing_definition_ids,
-	}
-	return true
-
-
-func _sanitize_layered_raider_data(
-	migrated: Dictionary, defaults: Dictionary, source_version: int
-) -> void:
-	var cast_value: Variant = migrated.get("campaign_cast", {})
+func _sanitize_current_raider_data(sanitized: Dictionary, defaults: Dictionary) -> void:
+	var cast_value: Variant = sanitized.get("campaign_cast", {})
 	var cast: Dictionary = Dictionary(cast_value).duplicate(true) if cast_value is Dictionary else {}
 	var selected_ids := _unique_string_array(cast.get("selected_raider_ids", []))
 	var active_ids := _unique_string_array(
-		migrated.get("raid_plan", {}).get("active_member_ids", [])
+		sanitized.get("raid_plan", {}).get("active_member_ids", [])
 	)
 
 	for active_id in active_ids:
@@ -2065,30 +1913,14 @@ func _sanitize_layered_raider_data(
 		if not initial_ids.has(raider_id):
 			_append_unique_id(future_ids, raider_id)
 
-	var source_states_value: Variant = migrated.get("raider_states", {})
+	var source_states_value: Variant = sanitized.get("raider_states", {})
 	var source_states: Dictionary = (
 		Dictionary(source_states_value) if source_states_value is Dictionary else {}
 	)
-	var fallback_value: Variant = migrated.get("fallback_raider_definitions", {})
-	var stored_fallbacks: Dictionary = (
-		Dictionary(fallback_value).duplicate(true) if fallback_value is Dictionary else {}
-	)
-	var sanitized_fallbacks: Dictionary = {}
 	var states: Dictionary = {}
-	var missing_definition_ids: Array[String] = []
 
 	for raider_id in selected_ids:
 		var definition := RaiderCatalogScript.get_definition(raider_id)
-
-		if definition.is_empty():
-			var fallback_source: Dictionary = {}
-
-			if stored_fallbacks.get(raider_id) is Dictionary:
-				fallback_source = Dictionary(stored_fallbacks[raider_id])
-
-			definition = MasterRaiderDefinitionScript.fallback(raider_id, fallback_source)
-			sanitized_fallbacks[raider_id] = definition
-			missing_definition_ids.append(raider_id)
 
 		var state_source: Dictionary = {}
 
@@ -2122,7 +1954,7 @@ func _sanitize_layered_raider_data(
 		if selected_ids.has(raider_id) and states.has(raider_id):
 			_append_unique_id(valid_active_ids, raider_id)
 
-	migrated["raid_plan"]["active_member_ids"] = valid_active_ids
+	sanitized["raid_plan"]["active_member_ids"] = valid_active_ids
 	var warnings := _unique_string_array(cast.get("generation_warnings", []))
 
 	if selected_ids.size() != CampaignCastGeneratorScript.CAST_SIZE:
@@ -2131,27 +1963,14 @@ func _sanitize_layered_raider_data(
 			% [selected_ids.size(), CampaignCastGeneratorScript.CAST_SIZE]
 		)
 
-	migrated["campaign_cast"] = {
+	sanitized["campaign_cast"] = {
 		"catalog_version": RaiderCatalogScript.get_catalog_version(),
 		"selected_raider_ids": selected_ids,
 		"initial_raider_ids": initial_ids,
 		"future_raider_ids": future_ids,
 		"generation_warnings": warnings,
 	}
-	migrated["raider_states"] = states
-	migrated["fallback_raider_definitions"] = sanitized_fallbacks
-	var diagnostics_value: Variant = migrated.get("data_diagnostics", {})
-	var diagnostics: Dictionary = (
-		Dictionary(diagnostics_value).duplicate(true) if diagnostics_value is Dictionary else {}
-	)
-	diagnostics["migrated_from_schema"] = int(
-		diagnostics.get("migrated_from_schema", source_version)
-	)
-	diagnostics["migrated_raider_ids"] = _unique_string_array(
-		diagnostics.get("migrated_raider_ids", [])
-	)
-	diagnostics["missing_definition_ids"] = missing_definition_ids
-	migrated["data_diagnostics"] = diagnostics
+	sanitized["raider_states"] = states
 
 
 func _normalize_attempt_history(source: Variant) -> Dictionary:
@@ -2182,10 +2001,10 @@ func _normalize_attempt_history(source: Variant) -> Dictionary:
 
 
 func _ensure_formation() -> void:
-	if not campaign.has("raid_plan"):
+	if not _campaign.has("raid_plan"):
 		return
 
-	var raid_plan: Dictionary = campaign["raid_plan"]
+	var raid_plan: Dictionary = _campaign["raid_plan"]
 	var formation_value: Variant = raid_plan.get("formation", {})
 	var formation_source: Dictionary = (
 		Dictionary(formation_value) if formation_value is Dictionary else {}
@@ -2196,7 +2015,7 @@ func _ensure_formation() -> void:
 		raid_plan["saved_formations"] = {}
 
 	raid_plan.erase("formations")
-	campaign["raid_plan"] = raid_plan
+	_campaign["raid_plan"] = raid_plan
 
 
 func _build_default_formation() -> Dictionary:
@@ -2301,7 +2120,7 @@ func _build_default_formation_for_ids(active_ids: Array[String], roster: Array) 
 
 func _update_discoveries_from_attempt(summary: Dictionary) -> void:
 	var encounter_id := String(summary.get("encounter_id", ""))
-	var discoveries: Dictionary = campaign.get("discoveries", {})
+	var discoveries: Dictionary = _campaign.get("discoveries", {})
 	var encounter_discoveries: Dictionary = discoveries.get(
 		encounter_id,
 		{"ability_ids": [], "phase_ids": [], "phase_names": [], "reliable_failures": []}
@@ -2320,19 +2139,19 @@ func _update_discoveries_from_attempt(summary: Dictionary) -> void:
 		_append_unique_value(encounter_discoveries["reliable_failures"], failure)
 
 	discoveries[encounter_id] = encounter_discoveries
-	campaign["discoveries"] = discoveries
+	_campaign["discoveries"] = discoveries
 
 
 func _record_victory(encounter_id: String) -> void:
-	var victories: Dictionary = campaign.get("victories", {})
+	var victories: Dictionary = _campaign.get("victories", {})
 	var new_count := int(victories.get(encounter_id, 0)) + 1
 	victories[encounter_id] = new_count
-	campaign["victories"] = victories
-	var boss_resources: Dictionary = campaign.get("boss_resources", {})
+	_campaign["victories"] = victories
+	var boss_resources: Dictionary = _campaign.get("boss_resources", {})
 	boss_resources[encounter_id] = int(boss_resources.get(encounter_id, 0)) + 1
-	campaign["boss_resources"] = boss_resources
+	_campaign["boss_resources"] = boss_resources
 	var definition = GameState.get_encounter_definition(encounter_id)
-	campaign["latest_victory"] = {
+	_campaign["latest_victory"] = {
 		"encounter_id": encounter_id,
 		"display_name": encounter_id if definition == null else definition.display_name,
 		"victory_count": new_count,
@@ -2343,7 +2162,7 @@ func _record_victory(encounter_id: String) -> void:
 
 
 func _record_active_raider_combat_history(outcome: String) -> void:
-	var states: Dictionary = campaign.get("raider_states", {})
+	var states: Dictionary = _campaign.get("raider_states", {})
 
 	for raider_id in get_active_member_ids():
 		var state_value: Variant = states.get(raider_id, {})
@@ -2366,7 +2185,7 @@ func _record_active_raider_combat_history(outcome: String) -> void:
 		state["combat_history"] = history
 		states[raider_id] = state
 
-	campaign["raider_states"] = states
+	_campaign["raider_states"] = states
 
 
 func _emit_attempt_notable_events(summary: Dictionary) -> void:
@@ -2578,7 +2397,7 @@ func _emit_attempt_notable_events(summary: Dictionary) -> void:
 
 
 func _project_member(raider_id: String, state: Dictionary) -> Dictionary:
-	return _project_member_from(_get_definition_with_fallback(raider_id), state)
+	return _project_member_from(RaiderCatalogScript.get_definition(raider_id), state)
 
 
 func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictionary:
@@ -2629,38 +2448,14 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 	}
 
 
-func _get_definition_with_fallback(raider_id: String) -> Dictionary:
-	var definition := RaiderCatalogScript.get_definition(raider_id)
-
-	if not definition.is_empty():
-		return definition
-
-	var fallback_value: Variant = campaign.get("fallback_raider_definitions", {}).get(
-		raider_id, {}
-	)
-	var fallback_source: Dictionary = (
-		Dictionary(fallback_value) if fallback_value is Dictionary else {}
-	)
-	definition = MasterRaiderDefinitionScript.fallback(raider_id, fallback_source)
-
-	if not missing_definition_warnings_emitted.has(raider_id):
-		missing_definition_warnings_emitted[raider_id] = true
-		push_warning(
-			"Missing master raider definition for stable ID '%s'; using saved fallback identity."
-			% raider_id
-		)
-
-	return definition
-
-
 func _get_member_quarters_state() -> Dictionary:
-	var value: Variant = campaign.get("member_quarters_state", {})
+	var value: Variant = _campaign.get("member_quarters_state", {})
 	if not value is Dictionary:
-		campaign["member_quarters_state"] = {
+		_campaign["member_quarters_state"] = {
 			"profile_revisions": {},
 			"seen_profile_revisions": {},
 		}
-	return campaign["member_quarters_state"]
+	return _campaign["member_quarters_state"]
 
 
 func _mark_profile_updates(participant_ids_value: Variant) -> void:
@@ -2671,7 +2466,7 @@ func _mark_profile_updates(participant_ids_value: Variant) -> void:
 			continue
 		revisions[raider_id] = int(revisions.get(raider_id, 0)) + 1
 	quarters["profile_revisions"] = revisions
-	campaign["member_quarters_state"] = quarters
+	_campaign["member_quarters_state"] = quarters
 
 
 func _sanitize_member_quarters_state(
@@ -2760,12 +2555,12 @@ func _ensure_valid_room_assignments(target_campaign: Dictionary) -> void:
 
 
 func _assign_room_automatically_internal(raider_id: String) -> bool:
-	var state_value: Variant = campaign.get("raider_states", {}).get(raider_id, {})
+	var state_value: Variant = _campaign.get("raider_states", {}).get(raider_id, {})
 	if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
 		return false
 	var state: Dictionary = state_value
 	var current_room := String(state.get("room_assignment_id", ""))
-	var occupants_by_room := _room_occupants_by_id(campaign)
+	var occupants_by_room := _room_occupants_by_id(_campaign)
 	if _is_valid_room_id(current_room):
 		var current_occupants: Array = occupants_by_room.get(current_room, [])
 		if current_occupants.size() <= QUARTERS_ROOM_CAPACITY:
@@ -2776,7 +2571,7 @@ func _assign_room_automatically_internal(raider_id: String) -> bool:
 		if Array(occupants_by_room.get(room_id, [])).size() >= QUARTERS_ROOM_CAPACITY:
 			continue
 		state["room_assignment_id"] = room_id
-		campaign["raider_states"][raider_id] = state
+		_campaign["raider_states"][raider_id] = state
 		return true
 	return false
 
@@ -2812,7 +2607,7 @@ func _room_id(room_number: int) -> String:
 
 
 func _sync_active_state_flags() -> void:
-	var states_value: Variant = campaign.get("raider_states", {})
+	var states_value: Variant = _campaign.get("raider_states", {})
 
 	if not states_value is Dictionary:
 		return
@@ -2834,7 +2629,7 @@ func _sync_active_state_flags() -> void:
 
 		states[raider_id] = state
 
-	campaign["raider_states"] = states
+	_campaign["raider_states"] = states
 
 
 func _generate_campaign_seed() -> int:
@@ -2901,13 +2696,13 @@ func _append_unique_id(target: Array[String], raider_id: String) -> void:
 
 
 func _augment_visit_reactions(context_type: String, magnitude: int) -> void:
-	var context: Dictionary = campaign.get("visit_context", {})
+	var context: Dictionary = _campaign.get("visit_context", {})
 	context["type"] = context_type
 	context["reaction_budget"] = (
 		int(context.get("reaction_budget", 0)) + clampi(magnitude * 2, 3, 24)
 	)
 	context["details"] = {"magnitude": magnitude}
-	campaign["visit_context"] = context
+	_campaign["visit_context"] = context
 
 
 func _append_unique_value(target: Array, value: Variant) -> void:
@@ -2916,7 +2711,7 @@ func _append_unique_value(target: Array, value: Variant) -> void:
 
 
 func _get_camp_conversation_store() -> Dictionary:
-	var value: Variant = campaign.get("camp_conversation_state", {})
+	var value: Variant = _campaign.get("camp_conversation_state", {})
 	if not value is Dictionary:
-		campaign["camp_conversation_state"] = CampConversationStateScript.create_store()
-	return campaign["camp_conversation_state"]
+		_campaign["camp_conversation_state"] = CampConversationStateScript.create_store()
+	return _campaign["camp_conversation_state"]

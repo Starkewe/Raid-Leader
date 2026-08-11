@@ -4,6 +4,9 @@ class_name RaiderCatalog
 const MasterRaiderDefinitionScript := preload(
 	"res://scripts/data/master_raider_definition.gd"
 )
+const RaiderClassCatalogScript := preload(
+	"res://scripts/data/raider_class_catalog.gd"
+)
 const CATALOG_PATH := "res://data/raiders/master_raiders.json"
 
 static var _loaded: bool = false
@@ -139,9 +142,7 @@ static func _build_validation_report(catalog: Dictionary, entries: Array) -> Dic
 			]
 		)
 	)
-	var valid_class_paths := _string_array(
-		schema.get("valid_class_paths", ["Warrior", "Priest", "Rogue", "Mage"])
-	)
+	var valid_class_paths := RaiderClassCatalogScript.get_base_class_names()
 	var valid_activity_ids := _string_array(schema.get("valid_activity_ids", []))
 	var valid_lore_tags := _string_array(schema.get("valid_lore_tags", []))
 	var errors: Array[String] = []

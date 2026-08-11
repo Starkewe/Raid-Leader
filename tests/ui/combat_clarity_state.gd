@@ -91,7 +91,7 @@ func _run() -> void:
 		_fail("Boss target rotation did not use the shortest path across 0/360 degrees.")
 		return
 
-	print("Combat clarity state regression test passed.")
+	print("RAID_TEST_PASS:combat_clarity_state | Combat clarity state regression test passed.")
 	quit(0)
 
 

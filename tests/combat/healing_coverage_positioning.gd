@@ -44,7 +44,7 @@ func _run() -> void:
 	if not _test_broad_scope_distinct_stable_coverage():
 		return
 
-	print("Healing coverage positioning regressions passed.")
+	print("RAID_TEST_PASS:healing_coverage_positioning | Healing coverage positioning regressions passed.")
 	get_tree().quit(0)
 
 

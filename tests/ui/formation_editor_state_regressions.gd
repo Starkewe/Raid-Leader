@@ -99,7 +99,7 @@ func _finish() -> void:
 		get_tree().quit(1)
 		return
 
-	print("Formation editor state regressions passed.")
+	print("RAID_TEST_PASS:formation_editor_state | Formation editor state regressions passed.")
 	get_tree().quit(0)
 
 

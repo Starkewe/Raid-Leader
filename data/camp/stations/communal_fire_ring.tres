@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="CampStationDefinition" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/data/camp_station_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+station_id = "communal_fire_ring"
+facility_id = "communal_fire"
+supported_activity_ids = Array[String](["socialize"])
+participant_offsets = Array[Vector2]([Vector2(-180, -80), Vector2(-185, 20), Vector2(-145, 120), Vector2(-45, 175), Vector2(55, 175), Vector2(150, 120), Vector2(185, 20), Vector2(180, -80)])
+facing = Vector2(0, 0)
+capacity = 8
+participant_arrangement = "inward_circle"
+animation_profile = "fire_social"
+prop_references = Array[String](["res://assets/camp/camp_facilities_atlas.png"])
+conversation_compatible = true
+allowed_conversation_tones = Array[String](["neutral", "positive", "teasing", "reflective", "reconciliatory"])
+allowed_conversation_categories = Array[String](["social", "relationship", "story", "combat_memory", "lore"])
+station_tags = Array[String](["social", "shared"])

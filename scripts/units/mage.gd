@@ -2,6 +2,10 @@ extends BaseCombatUnit
 
 class_name Mage
 
+const DirectionalSpriteControllerScript := preload(
+	"res://scripts/units/directional_sprite_controller.gd"
+)
+
 enum FacingDirection {
 	EAST,
 	SOUTHEAST,
@@ -13,13 +17,6 @@ enum FacingDirection {
 	NORTHEAST,
 }
 
-const DIRECTION_STEP_RADIANS := PI / 4.0
-const DIRECTION_HALF_STEP_RADIANS := DIRECTION_STEP_RADIANS / 2.0
-const DIRECTION_HYSTERESIS_RADIANS := 4.0 * PI / 180.0
-const MIN_MOVEMENT_DISPLACEMENT := 0.1
-const MIN_MOVEMENT_DISPLACEMENT_SQUARED := (
-	MIN_MOVEMENT_DISPLACEMENT * MIN_MOVEMENT_DISPLACEMENT
-)
 const FACING_TEXTURES := {
 	FacingDirection.NORTH: preload("res://assets/units/mage/mage_north.png"),
 	FacingDirection.NORTHEAST: preload("res://assets/units/mage/mage_northeast.png"),
@@ -49,6 +46,7 @@ var cast_timer: float = 0.0
 var is_casting: bool = false
 var spell_ability_id: String = "fireball"
 var spell_display_name: String = "Fireball"
+var facing_controller: DirectionalSpriteController = DirectionalSpriteControllerScript.new()
 var current_facing_direction: int = FacingDirection.SOUTH
 var last_movement_direction: int = FacingDirection.SOUTH
 var was_moving_last_frame: bool = false
@@ -72,6 +70,9 @@ func configure_from_definition(definition: UnitDefinition) -> void:
 
 func _ready():
 	super._ready()
+	facing_controller.configure_textures(
+		combat_sprite, FACING_TEXTURES, FacingDirection.SOUTH
+	)
 	_set_facing_direction(FacingDirection.SOUTH)
 	update_cast_bar()
 	print("Mage ready. HP:", health)
@@ -124,37 +125,10 @@ func set_combat_facing_target(new_target: Node2D) -> void:
 
 
 func _update_combat_facing_from_displacement(displacement: Vector2) -> void:
-	if displacement.length_squared() >= MIN_MOVEMENT_DISPLACEMENT_SQUARED:
-		var movement_direction := _resolve_facing_direction(
-			displacement,
-			last_movement_direction,
-			true
-		)
-		last_movement_direction = movement_direction
-		was_moving_last_frame = true
-		_set_facing_direction(movement_direction)
-		return
-
-	if not is_valid_node(combat_facing_target):
-		was_moving_last_frame = false
-		return
-
-	var boss_direction := (
-		combat_facing_target.global_position
-		- global_position
-	)
-
-	if boss_direction.is_zero_approx():
-		was_moving_last_frame = false
-		return
-
-	var idle_direction := _resolve_facing_direction(
-		boss_direction,
-		current_facing_direction,
-		not was_moving_last_frame
-	)
-	was_moving_last_frame = false
-	_set_facing_direction(idle_direction)
+	facing_controller.update(global_position, combat_facing_target, displacement)
+	current_facing_direction = facing_controller.current_direction
+	last_movement_direction = facing_controller.last_movement_direction
+	was_moving_last_frame = facing_controller.was_moving_last_frame
 
 
 func _resolve_facing_direction(
@@ -162,52 +136,18 @@ func _resolve_facing_direction(
 	previous_direction: int,
 	apply_hysteresis: bool
 ) -> int:
-	if direction_vector.is_zero_approx():
-		return previous_direction
-
-	var vector_angle := direction_vector.angle()
-	var direction := wrapi(
-		floori(
-			(vector_angle + DIRECTION_HALF_STEP_RADIANS)
-			/ DIRECTION_STEP_RADIANS
-		),
-		0,
-		FacingDirection.size()
+	return DirectionalSpriteControllerScript.resolve_direction(
+		direction_vector, previous_direction, apply_hysteresis
 	)
-
-	if apply_hysteresis and direction != previous_direction:
-		var previous_angle := float(previous_direction) * DIRECTION_STEP_RADIANS
-		var angle_from_previous := absf(
-			wrapf(vector_angle - previous_angle, -PI, PI)
-		)
-
-		if angle_from_previous <= (
-			DIRECTION_HALF_STEP_RADIANS
-			+ DIRECTION_HYSTERESIS_RADIANS
-		):
-			return previous_direction
-
-	return direction
 
 
 func _set_facing_direction(direction: int) -> void:
-	if combat_sprite == null:
-		return
-
-	var next_texture := FACING_TEXTURES.get(direction) as Texture2D
-
-	if next_texture == null:
-		return
-
-	if current_facing_direction == direction and combat_sprite.texture == next_texture:
-		return
-
-	current_facing_direction = direction
-	combat_sprite.texture = next_texture
+	facing_controller.set_direction(direction)
+	current_facing_direction = facing_controller.current_direction
 
 
 func get_facing_direction() -> int:
-	return current_facing_direction
+	return facing_controller.current_direction
 
 
 func finish_forced_movement() -> void:
@@ -246,6 +186,13 @@ func command_attack(new_target: Node2D):
 	target = new_target
 
 	print(get_display_name(), "ordered to cast at:", get_node_display_name(target))
+
+
+func get_active_attack_target() -> Node:
+	if not is_attack_action_active() or not can_damage_target(target):
+		return null
+
+	return target
 
 
 func update_cooldown(delta: float):

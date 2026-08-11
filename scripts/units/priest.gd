@@ -2,6 +2,10 @@ extends BaseCombatUnit
 
 class_name Priest
 
+const DirectionalSpriteControllerScript := preload(
+	"res://scripts/units/directional_sprite_controller.gd"
+)
+
 enum FacingDirection {
 	EAST,
 	SOUTHEAST,
@@ -13,13 +17,6 @@ enum FacingDirection {
 	NORTHEAST,
 }
 
-const DIRECTION_STEP_RADIANS := PI / 4.0
-const DIRECTION_HALF_STEP_RADIANS := DIRECTION_STEP_RADIANS / 2.0
-const DIRECTION_HYSTERESIS_RADIANS := 4.0 * PI / 180.0
-const MIN_MOVEMENT_DISPLACEMENT := 0.1
-const MIN_MOVEMENT_DISPLACEMENT_SQUARED := (
-	MIN_MOVEMENT_DISPLACEMENT * MIN_MOVEMENT_DISPLACEMENT
-)
 const FACING_TEXTURE_PATHS := {
 	FacingDirection.NORTH: "res://assets/units/priest/priest_north.png",
 	FacingDirection.NORTHEAST: "res://assets/units/priest/priest_northeast.png",
@@ -82,6 +79,7 @@ var heal_display_name: String = "Heal"
 var cure_ability_id: String = CURE_ABILITY_ID
 var cure_display_name: String = "Cure"
 var facing_textures: Dictionary = {}
+var facing_controller: DirectionalSpriteController = DirectionalSpriteControllerScript.new()
 var current_facing_direction: int = FacingDirection.SOUTH
 var last_movement_direction: int = FacingDirection.SOUTH
 var was_moving_last_frame: bool = false
@@ -237,37 +235,10 @@ func set_combat_facing_target(new_target: Node2D) -> void:
 
 
 func _update_combat_facing_from_displacement(displacement: Vector2) -> void:
-	if displacement.length_squared() >= MIN_MOVEMENT_DISPLACEMENT_SQUARED:
-		var movement_direction := _resolve_facing_direction(
-			displacement,
-			last_movement_direction,
-			true
-		)
-		last_movement_direction = movement_direction
-		was_moving_last_frame = true
-		_set_facing_direction(movement_direction)
-		return
-
-	if not is_valid_node(combat_facing_target):
-		was_moving_last_frame = false
-		return
-
-	var boss_direction := (
-		combat_facing_target.global_position
-		- global_position
-	)
-
-	if boss_direction.is_zero_approx():
-		was_moving_last_frame = false
-		return
-
-	var idle_direction := _resolve_facing_direction(
-		boss_direction,
-		current_facing_direction,
-		not was_moving_last_frame
-	)
-	was_moving_last_frame = false
-	_set_facing_direction(idle_direction)
+	facing_controller.update(global_position, combat_facing_target, displacement)
+	current_facing_direction = facing_controller.current_direction
+	last_movement_direction = facing_controller.last_movement_direction
+	was_moving_last_frame = facing_controller.was_moving_last_frame
 
 
 func _resolve_facing_direction(
@@ -275,75 +246,29 @@ func _resolve_facing_direction(
 	previous_direction: int,
 	apply_hysteresis: bool
 ) -> int:
-	if direction_vector.is_zero_approx():
-		return previous_direction
-
-	var vector_angle := direction_vector.angle()
-	var direction := wrapi(
-		floori(
-			(vector_angle + DIRECTION_HALF_STEP_RADIANS)
-			/ DIRECTION_STEP_RADIANS
-		),
-		0,
-		FacingDirection.size()
+	return DirectionalSpriteControllerScript.resolve_direction(
+		direction_vector, previous_direction, apply_hysteresis
 	)
-
-	if apply_hysteresis and direction != previous_direction:
-		var previous_angle := float(previous_direction) * DIRECTION_STEP_RADIANS
-		var angle_from_previous := absf(
-			wrapf(vector_angle - previous_angle, -PI, PI)
-		)
-
-		if angle_from_previous <= (
-			DIRECTION_HALF_STEP_RADIANS
-			+ DIRECTION_HYSTERESIS_RADIANS
-		):
-			return previous_direction
-
-	return direction
 
 
 func _load_facing_textures() -> void:
-	facing_textures.clear()
-
-	for direction in FACING_TEXTURE_PATHS:
-		var texture_path: String = FACING_TEXTURE_PATHS[direction]
-
-		if not ResourceLoader.exists(texture_path, "Texture2D"):
-			push_warning("Priest directional sprite is missing: " + texture_path)
-			continue
-
-		var texture := ResourceLoader.load(texture_path, "Texture2D") as Texture2D
-
-		if texture == null:
-			push_warning("Priest directional sprite could not be loaded: " + texture_path)
-			continue
-
-		facing_textures[direction] = texture
+	facing_controller.configure_texture_paths(
+		combat_sprite, FACING_TEXTURE_PATHS, "Priest", FacingDirection.SOUTH
+	)
+	facing_textures = facing_controller.textures
 
 
 func _set_facing_direction(direction: int) -> void:
-	if combat_sprite == null:
-		return
-
-	var next_texture := facing_textures.get(direction) as Texture2D
-
-	if next_texture == null:
-		return
-
-	if current_facing_direction == direction and combat_sprite.texture == next_texture:
-		return
-
-	current_facing_direction = direction
-	combat_sprite.texture = next_texture
+	facing_controller.set_direction(direction)
+	current_facing_direction = facing_controller.current_direction
 
 
 func get_facing_direction() -> int:
-	return current_facing_direction
+	return facing_controller.current_direction
 
 
 func get_facing_texture(direction: int) -> Texture2D:
-	return facing_textures.get(direction) as Texture2D
+	return facing_controller.get_texture(direction)
 
 
 func finish_forced_movement() -> void:

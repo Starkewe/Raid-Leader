@@ -1,10 +1,12 @@
 extends RefCounted
 class_name CampaignCastGenerator
 
+const RaiderClassCatalogScript := preload(
+	"res://scripts/data/raider_class_catalog.gd"
+)
 const CAST_SIZE := 60
 const INITIAL_SIZE := 20
 const RESERVE_SIZE := CAST_SIZE - INITIAL_SIZE
-const INITIAL_CLASS_ORDER := ["Warrior", "Priest", "Rogue", "Mage"]
 const INITIAL_CLASS_REQUIREMENTS := {
 	"Warrior": 2,
 	"Priest": 5,
@@ -29,7 +31,7 @@ static func generate(campaign_seed: int, definitions: Array[Dictionary]) -> Dict
 	var tag_counts: Dictionary = {}
 	var class_counts: Dictionary = {}
 
-	for unit_class in INITIAL_CLASS_ORDER:
+	for unit_class in RaiderClassCatalogScript.get_campaign_generation_class_names():
 		var required := int(INITIAL_CLASS_REQUIREMENTS[unit_class])
 
 		for _slot in range(required):
@@ -46,7 +48,7 @@ static func generate(campaign_seed: int, definitions: Array[Dictionary]) -> Dict
 			remaining.erase(selected)
 			_record_diversity(selected, tag_counts, class_counts)
 
-	for unit_class in INITIAL_CLASS_ORDER:
+	for unit_class in RaiderClassCatalogScript.get_campaign_generation_class_names():
 		var future_required := (
 			int(WRIT_CLASS_REQUIREMENTS[unit_class])
 			- int(INITIAL_CLASS_REQUIREMENTS[unit_class])
@@ -217,7 +219,7 @@ static func _validate_result(
 		var unit_class := String(definition.get("default_class", ""))
 		counts[unit_class] = int(counts.get(unit_class, 0)) + 1
 
-	for unit_class in INITIAL_CLASS_ORDER:
+	for unit_class in RaiderClassCatalogScript.get_campaign_generation_class_names():
 		if int(counts.get(unit_class, 0)) != int(INITIAL_CLASS_REQUIREMENTS[unit_class]):
 			warnings.append(
 				"Initial %s count is %d; expected %d."
@@ -234,7 +236,7 @@ static func _validate_result(
 		var unit_class := String(definition.get("default_class", ""))
 		writ_counts[unit_class] = int(writ_counts.get(unit_class, 0)) + 1
 
-	for unit_class in INITIAL_CLASS_ORDER:
+	for unit_class in RaiderClassCatalogScript.get_campaign_generation_class_names():
 		if int(writ_counts.get(unit_class, 0)) != int(WRIT_CLASS_REQUIREMENTS[unit_class]):
 			warnings.append(
 				"Writ %s count is %d; expected %d."

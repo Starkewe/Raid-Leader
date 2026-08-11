@@ -9,10 +9,21 @@ const BossDebugVisualsScript := preload("res://scripts/effects/boss_debug_visual
 const HealingCoverageCoordinatorScript := preload(
 	"res://scripts/combat/healing_coverage_coordinator.gd"
 )
+const BossBasicAttackControllerScript := preload(
+	"res://scripts/combat/boss_basic_attack_controller.gd"
+)
+const BossAbilitySchedulingControllerScript := preload(
+	"res://scripts/combat/boss_ability_scheduling_controller.gd"
+)
+const BossPositioningCheckpointControllerScript := preload(
+	"res://scripts/combat/boss_positioning_checkpoint_controller.gd"
+)
 
 signal defeated
 signal combat_event(event: Dictionary)
 signal phase_changed(phase_id: String, display_name: String)
+signal encounter_object_registered(encounter_object: Node)
+signal mechanic_state_changed(state: Dictionary)
 
 var show_debug_region_guides: bool = true
 var show_debug_range_rings: bool = true
@@ -60,24 +71,43 @@ var ability_random_seed: int = 0
 
 var health: int
 var encounter_definition: EncounterDefinition = null
+var encounter_runtime: EncounterRuntime = null
+var encounter_session: EncounterSession = null
 var target_controller: BossTargetController = null
 
 var boss_display_name: String = "Boss"
 var ability_definitions: Array[BossAbilityDefinition] = []
 var phase_definitions: Array[BossPhaseDefinition] = []
 var current_phase: BossPhaseDefinition = null
-var next_ability_index: int = 0
+var basic_attack_controller = BossBasicAttackControllerScript.new()
+var ability_scheduling_controller = BossAbilitySchedulingControllerScript.new()
+var positioning_checkpoint_controller = BossPositioningCheckpointControllerScript.new()
+var next_ability_index: int:
+	get: return ability_scheduling_controller.next_ability_index
+	set(value): ability_scheduling_controller.next_ability_index = value
 
 var party_members: Array = []
 var current_ability: BossAbility = null
 var next_ability: BossAbility = null
 
-var attack_timer: float = 0.0
-var special_timer: float = 0.0
-var ability_cooldown_remaining: Dictionary = {}
-var ability_rng: RandomNumberGenerator = RandomNumberGenerator.new()
-var ability_rng_initialized: bool = false
-var last_ability_id: String = ""
+var attack_timer: float:
+	get: return basic_attack_controller.attack_timer
+	set(value): basic_attack_controller.attack_timer = value
+var special_timer: float:
+	get: return ability_scheduling_controller.special_timer
+	set(value): ability_scheduling_controller.special_timer = value
+var ability_cooldown_remaining: Dictionary:
+	get: return ability_scheduling_controller.cooldown_remaining
+	set(value): ability_scheduling_controller.cooldown_remaining = value
+var ability_rng: RandomNumberGenerator:
+	get: return ability_scheduling_controller.rng
+	set(value): ability_scheduling_controller.rng = value
+var ability_rng_initialized: bool:
+	get: return ability_scheduling_controller.rng_initialized
+	set(value): ability_scheduling_controller.rng_initialized = value
+var last_ability_id: String:
+	get: return ability_scheduling_controller.last_ability_id
+	set(value): ability_scheduling_controller.last_ability_id = value
 var cast_timer: float = 0.0
 var current_cast_elapsed: float = 0.0
 var current_cast_speed_multiplier: float = 1.0
@@ -87,9 +117,15 @@ var encounter_active: bool = false
 var encounter_objects: Array[Node] = []
 var mechanic_state: Dictionary = {}
 var encounter_origin_position: Vector2 = Vector2.ZERO
-var basic_attack_sequence_count: int = 0
-var basic_attack_trigger_count: int = 0
-var pending_basic_raidwide_timer: float = -1.0
+var basic_attack_sequence_count: int:
+	get: return basic_attack_controller.sequence_count
+	set(value): basic_attack_controller.sequence_count = value
+var basic_attack_trigger_count: int:
+	get: return basic_attack_controller.trigger_count
+	set(value): basic_attack_controller.trigger_count = value
+var pending_basic_raidwide_timer: float:
+	get: return basic_attack_controller.pending_raidwide_timer
+	set(value): basic_attack_controller.pending_raidwide_timer = value
 var pending_phase_transition_definition: BossAbilityDefinition = null
 ## The phase whose effects will be applied when the deferred transition resolves.
 var pending_phase: BossPhaseDefinition = null
@@ -98,8 +134,12 @@ var pending_phase_definition: BossPhaseDefinition = null
 var phase_transition_pending: bool = false
 var current_ability_is_phase_transition: bool = false
 var current_ability_is_basic_attack_trigger: bool = false
-var active_positioning_checkpoint: Dictionary = {}
-var next_positioning_checkpoint_token: int = 1
+var active_positioning_checkpoint: Dictionary:
+	get: return positioning_checkpoint_controller.active_checkpoint
+	set(value): positioning_checkpoint_controller.active_checkpoint = value
+var next_positioning_checkpoint_token: int:
+	get: return positioning_checkpoint_controller.next_token
+	set(value): positioning_checkpoint_controller.next_token = value
 var healing_coverage_coordinator: HealingCoverageCoordinator = (
 	HealingCoverageCoordinatorScript.new()
 )
@@ -206,6 +246,30 @@ func apply_selected_boss_profile() -> void:
 	last_ability_id = ""
 	ability_rng_initialized = false
 	next_ability_index = 0
+	_setup_encounter_runtime()
+
+
+func _setup_encounter_runtime() -> void:
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		encounter_runtime.queue_free()
+	encounter_runtime = null
+
+	if encounter_definition == null or encounter_definition.runtime_script == null:
+		return
+
+	var runtime_instance = encounter_definition.runtime_script.new()
+	if not runtime_instance is EncounterRuntime:
+		push_warning(
+			"Encounter runtime script must extend EncounterRuntime: "
+			+ encounter_definition.encounter_id
+		)
+		return
+
+	encounter_runtime = runtime_instance as EncounterRuntime
+	encounter_runtime.name = "EncounterRuntime"
+	add_child(encounter_runtime)
+	encounter_runtime.configure(self, encounter_definition, encounter_session)
+
 func _physics_process(delta):
 	if is_dead:
 		return
@@ -217,6 +281,16 @@ func _physics_process(delta):
 
 	if not encounter_active:
 		velocity = Vector2.ZERO
+		return
+
+	if (
+		encounter_runtime != null
+		and is_instance_valid(encounter_runtime)
+		and encounter_runtime.uses_custom_combat_loop()
+	):
+		encounter_runtime.tick(delta)
+		velocity = Vector2.ZERO
+		enforce_movement_mode()
 		return
 
 	_advance_ability_cooldowns(delta)
@@ -441,6 +515,9 @@ func set_party_members(new_party_members: Array) -> void:
 
 	target_controller.setup(party_members)
 
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		encounter_runtime.set_party_members(party_members)
+
 
 func taunt(new_target: Node) -> bool:
 	if (
@@ -462,6 +539,11 @@ func taunt(new_target: Node) -> bool:
 
 func set_encounter_active(active: bool) -> void:
 	encounter_active = active and not is_dead
+
+	if encounter_session != null:
+		encounter_session.set_active(encounter_active)
+	elif encounter_runtime != null and is_instance_valid(encounter_runtime):
+		encounter_runtime.set_encounter_active(encounter_active)
 
 	if not encounter_active:
 		clear_positioning_checkpoint("encounter_stopped")
@@ -1240,8 +1322,23 @@ func take_damage(
 	if is_dead:
 		return
 
+	var incoming_multiplier := 1.0
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		incoming_multiplier = maxf(float(encounter_runtime.get_boss_damage_multiplier()), 0.0)
+
+	var resolved_amount := int(round(float(maxi(amount, 0)) * incoming_multiplier))
+	var event_metadata := metadata.duplicate(true)
+	if not is_equal_approx(incoming_multiplier, 1.0):
+		event_metadata["base_amount"] = maxi(amount, 0)
+		event_metadata["incoming_damage_multiplier"] = incoming_multiplier
+
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		encounter_runtime.before_boss_damage(
+			resolved_amount, source, ability_id, event_metadata
+		)
+
 	var previous_health := health
-	health -= maxi(amount, 0)
+	health -= resolved_amount
 	health = max(health, 0)
 	var actual_amount := previous_health - health
 
@@ -1249,7 +1346,12 @@ func take_damage(
 		target_controller.record_damage_threat(source, actual_amount)
 
 	update_health_bar()
-	emit_combat_event("damage", source, ability_id, actual_amount, metadata)
+	emit_combat_event("damage", source, ability_id, actual_amount, event_metadata)
+
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		encounter_runtime.after_boss_damage(
+			actual_amount, source, ability_id, event_metadata
+		)
 	update_current_phase()
 
 	print("Boss took", actual_amount, "damage. HP:", health)
@@ -1265,6 +1367,10 @@ func die():
 	clear_positioning_checkpoint("boss_defeated")
 	healing_coverage_coordinator.clear()
 	encounter_active = false
+	if encounter_session != null:
+		encounter_session.set_active(false)
+	elif encounter_runtime != null and is_instance_valid(encounter_runtime):
+		encounter_runtime.set_encounter_active(false)
 	health = 0
 	update_health_bar()
 
@@ -1331,6 +1437,11 @@ func reset_boss(new_position: Vector2):
 	healing_coverage_coordinator.clear()
 	clear_encounter_objects()
 	mechanic_state.clear()
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		if encounter_session != null:
+			encounter_session.reset_attempt()
+		else:
+			encounter_runtime.reset_attempt()
 	is_dead = false
 	encounter_active = false
 	health = max_health
@@ -1396,6 +1507,11 @@ func get_status_text() -> String:
 	if is_dead:
 		return "Defeated"
 
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		var runtime_status := String(encounter_runtime.get_status_text())
+		if not runtime_status.is_empty():
+			return runtime_status
+
 	if is_casting and current_ability != null:
 		return current_ability.get_status_text()
 
@@ -1436,9 +1552,15 @@ func get_max_health() -> int:
 	return max_health
 
 func is_casting_ability() -> bool:
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		return encounter_runtime.is_casting()
+
 	return is_casting
 
 func get_cast_progress_percent() -> float:
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		return encounter_runtime.get_cast_progress_percent()
+
 	if not is_casting:
 		return 0.0
 
@@ -1450,6 +1572,11 @@ func get_cast_progress_percent() -> float:
 	return clamp((get_current_cast_bar_value() / active_cast_time) * 100.0, 0.0, 100.0)
 
 func get_cast_name() -> String:
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		var runtime_cast_name := String(encounter_runtime.get_cast_name())
+		if not runtime_cast_name.is_empty():
+			return runtime_cast_name
+
 	if is_casting and current_ability != null:
 		return current_ability.get_cast_name()
 
@@ -1515,6 +1642,9 @@ func get_display_name() -> String:
 	return boss_display_name
 
 func get_current_cast_time() -> float:
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		return encounter_runtime.get_current_cast_time()
+
 	if current_ability != null:
 		return current_ability.get_cast_bar_max_time(
 			current_cast_elapsed,
@@ -1523,6 +1653,9 @@ func get_current_cast_time() -> float:
 
 	return special_cast_time
 func get_current_cast_bar_value() -> float:
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		return encounter_runtime.get_current_cast_bar_value()
+
 	if current_ability != null:
 		return current_ability.get_cast_bar_value(
 			current_cast_elapsed,
@@ -1959,6 +2092,11 @@ func register_encounter_object(encounter_object: Node) -> void:
 
 	if not encounter_objects.has(encounter_object):
 		encounter_objects.append(encounter_object)
+		if encounter_object.has_signal("combat_event"):
+			var event_callback := Callable(self, "_relay_encounter_object_combat_event")
+			if not encounter_object.is_connected("combat_event", event_callback):
+				encounter_object.connect("combat_event", event_callback)
+		encounter_object_registered.emit(encounter_object)
 
 
 func clear_encounter_objects() -> void:
@@ -1973,9 +2111,16 @@ func clear_encounter_objects() -> void:
 		else:
 			encounter_object.queue_free()
 
+		if encounter_object.has_signal("combat_event"):
+			var event_callback := Callable(self, "_relay_encounter_object_combat_event")
+			if encounter_object.is_connected("combat_event", event_callback):
+				encounter_object.disconnect("combat_event", event_callback)
+
 		cleaned_count += 1
 
 	encounter_objects.clear()
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		encounter_runtime.cleanup_encounter()
 	mechanic_state.clear()
 
 	if cleaned_count > 0:
@@ -1988,6 +2133,43 @@ func get_mechanic_state(state_key: String, default_value: Variant = null) -> Var
 
 func set_mechanic_state(state_key: String, value: Variant) -> void:
 	mechanic_state[state_key] = value
+	mechanic_state_changed.emit(mechanic_state.duplicate(true))
+
+
+func record_encounter_command(command_data: Dictionary) -> void:
+	if encounter_session != null:
+		encounter_session.record_command(command_data)
+	elif encounter_runtime != null and is_instance_valid(encounter_runtime):
+		encounter_runtime.on_command_issued(command_data)
+
+
+func get_encounter_target_registry() -> EncounterTargetRegistry:
+	if encounter_session != null:
+		return encounter_session.target_registry
+	return null if encounter_runtime == null else encounter_runtime.get_target_registry()
+
+
+func get_primary_encounter_targets(include_defeated: bool = false) -> Array[Node]:
+	if encounter_session != null:
+		return encounter_session.get_primary_targets(include_defeated)
+	if encounter_runtime != null and is_instance_valid(encounter_runtime):
+		return encounter_runtime.get_primary_encounter_targets(include_defeated)
+
+	return []
+
+
+func set_encounter_session(new_session: EncounterSession) -> void:
+	encounter_session = new_session
+	if encounter_session == null:
+		return
+	encounter_session.configure(self, encounter_definition, encounter_runtime)
+
+
+func _relay_encounter_object_combat_event(event: Dictionary) -> void:
+	if event.is_empty():
+		return
+
+	combat_event.emit(event.duplicate(true))
 
 
 func debug_log(message: String) -> void:
