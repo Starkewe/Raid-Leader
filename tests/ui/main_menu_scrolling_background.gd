@@ -200,7 +200,7 @@ func _run() -> void:
 		_fail("A background fade changed the menu panel opacity.")
 		return
 
-	print("Main-menu scrolling background regression test passed.")
+	print("RAID_TEST_PASS:main_menu_scrolling_background | Main-menu scrolling background regression test passed.")
 	quit(0)
 
 

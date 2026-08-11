@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="CampStationDefinition" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/data/camp_station_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+station_id = "quarters_reflection_bench"
+facility_id = "quarters"
+supported_activity_ids = Array[String](["reflect"])
+participant_offsets = Array[Vector2]([Vector2(-205, -125), Vector2(205, -125)])
+capacity = 2
+participant_arrangement = "shared_quiet_bench"
+animation_profile = "reflection"
+conversation_compatible = true
+allowed_conversation_tones = Array[String](["neutral", "reflective", "encouraging", "reconciliatory"])
+allowed_conversation_categories = Array[String](["reflection", "relationship", "combat_memory"])
+station_tags = Array[String](["reflection", "quiet", "shared"])

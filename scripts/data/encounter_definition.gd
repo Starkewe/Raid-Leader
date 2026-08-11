@@ -5,6 +5,9 @@ class_name EncounterDefinition
 @export var display_name: String = "Encounter"
 @export_multiline var description: String = ""
 @export_file("*.tscn") var scene_path: String = "res://scenes/combat_scene.tscn"
+## Optional encounter-owned runtime. Runtime scripts are responsible for
+## mechanics that do not fit the generic boss scheduler.
+@export var runtime_script: Script = null
 
 @export_group("Boss")
 @export var boss_display_name: String = "Boss"
@@ -84,3 +87,30 @@ func get_ability_ids() -> Array[String]:
 		ids.append(basic_attack_triggered_ability.ability_id)
 
 	return ids
+
+
+func get_ability_definition(ability_id: String) -> BossAbilityDefinition:
+	var normalized_id := ability_id.strip_edges()
+
+	if normalized_id.is_empty():
+		return null
+
+	if (
+		basic_attack_triggered_ability != null
+		and basic_attack_triggered_ability.ability_id == normalized_id
+	):
+		return basic_attack_triggered_ability
+
+	for ability in abilities:
+		if ability != null and ability.ability_id == normalized_id:
+			return ability
+
+	for phase in phases:
+		if (
+			phase != null
+			and phase.transition_ability != null
+			and phase.transition_ability.ability_id == normalized_id
+		):
+			return phase.transition_ability
+
+	return null

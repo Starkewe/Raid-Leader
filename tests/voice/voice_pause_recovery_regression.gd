@@ -33,7 +33,7 @@ func _run() -> void:
 	if not _test_whisper_process_arguments():
 		return
 
-	print("Voice pause recovery regression test passed.")
+	print("RAID_TEST_PASS:voice_pause_recovery | Voice pause recovery regression test passed.")
 	get_tree().quit(0)
 
 

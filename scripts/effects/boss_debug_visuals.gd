@@ -11,6 +11,12 @@ var show_regions: bool = false
 var show_ranges: bool = false
 
 
+func _ready() -> void:
+	# Combat regression scenes may instantiate this content without SceneFlow.
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_COMBAT)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
+
+
 func setup(
 	new_boss: Node,
 	new_combat_radius: float,

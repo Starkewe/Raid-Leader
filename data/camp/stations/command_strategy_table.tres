@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CampStationDefinition" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/data/camp_station_definition.gd" id="1"]
+[resource]
+script = ExtResource("1")
+station_id = "command_strategy_table"
+facility_id = "command_tent"
+supported_activity_ids = Array[String](["prepare_plan"])
+participant_offsets = Array[Vector2]([Vector2(-190, 170), Vector2(-125, 185), Vector2(125, 185), Vector2(190, 170)])
+facing = Vector2(0, -1)
+capacity = 4
+participant_arrangement = "around_shared_table"
+animation_profile = "study_table"
+conversation_compatible = true
+allowed_conversation_tones = Array[String](["neutral", "reflective", "competitive"])
+allowed_conversation_categories = Array[String](["planning", "combat_memory", "relationship"])
+station_tags = Array[String](["study", "planning"])

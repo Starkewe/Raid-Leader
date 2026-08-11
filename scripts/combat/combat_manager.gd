@@ -7,6 +7,7 @@ const CommandDebugFormatterScript := preload("res://scripts/ui/command_debug_for
 const VoiceCommandCoordinatorScript := preload("res://scripts/voice/voice_command_coordinator.gd")
 const AttemptRecorderScript := preload("res://scripts/combat/attempt_recorder.gd")
 const CombatClarityEffectsScript := preload("res://scripts/effects/combat_clarity_effects.gd")
+const EncounterSessionScript := preload("res://scripts/combat/encounter_session.gd")
 
 @onready var raid_spawner: RaidSpawner = get_node_or_null("../RaidSpawner")
 @onready var boss = get_node_or_null("../Boss")
@@ -28,6 +29,7 @@ var encounter_state: String = "idle"
 var party_members: Array = []
 
 var command_controller: RaidCommandController = null
+var encounter_session: EncounterSession = null
 var combat_event_queue = null
 var status_presenter = null
 var combat_clarity_effects: Node2D = null
@@ -92,6 +94,8 @@ func submit_command_data(
 
 		return false
 
+	command_data = CommandSchemaScript.normalize(command_data)
+
 	var validation_result := validate_command_data(command_data)
 
 	if not bool(validation_result.get("ok", false)):
@@ -109,6 +113,9 @@ func submit_command_data(
 	print("CombatManager executing command from ", source, ": ", command_data)
 
 	var command_issued: bool = command_controller.execute_panel_command(command_data, boss_alive)
+
+	if command_issued and encounter_session != null:
+		encounter_session.record_command(command_data)
 
 	if command_issued and should_command_start_fight(command_data):
 		if not fight_active:
@@ -177,12 +184,15 @@ func initialize_combat():
 		if boss.has_method("set_party_members"):
 			boss.set_party_members(party_members)
 
+	setup_encounter_session()
+
 	if command_controller != null:
 		command_controller.setup(
 			party_members,
 			boss,
 			player,
-			get_enemy_threat_sources()
+			get_enemy_threat_sources(),
+			encounter_session
 		)
 
 	if (
@@ -203,7 +213,7 @@ func initialize_combat():
 			ui.setup_raid_frames(party_members)
 
 		if ui.has_method("setup_boss_frame"):
-			ui.setup_boss_frame(boss)
+			ui.setup_boss_frame(boss, encounter_session)
 
 		if ui.has_method("setup_command_panel"):
 			ui.setup_command_panel(party_members)
@@ -295,6 +305,15 @@ func connect_boss_signals():
 			boss.connect("defeated", callback)
 
 	connect_combat_event_signal(boss)
+
+	if boss.has_signal("mechanic_state_changed"):
+		var mechanic_callback := Callable(self, "_on_boss_mechanic_state_changed")
+		if not boss.is_connected("mechanic_state_changed", mechanic_callback):
+			boss.connect("mechanic_state_changed", mechanic_callback)
+
+
+func _on_boss_mechanic_state_changed(_state: Dictionary) -> void:
+	refresh_all_statuses()
 
 
 func connect_combat_event_signal(combatant: Node) -> void:
@@ -615,6 +634,16 @@ func command_party_attack() -> void:
 func set_boss_encounter_active(active: bool) -> void:
 	if boss != null and is_instance_valid(boss) and boss.has_method("set_encounter_active"):
 		boss.set_encounter_active(active)
+	elif encounter_session != null:
+		encounter_session.set_active(active)
+
+
+func setup_encounter_session() -> void:
+	encounter_session = EncounterSessionScript.new()
+	if boss == null or not is_instance_valid(boss):
+		return
+	if boss.has_method("set_encounter_session"):
+		boss.set_encounter_session(encounter_session)
 
 
 func command_healers_to_heal_boss_target() -> void:
@@ -682,7 +711,7 @@ func display_parsed_command(parsed_result: Dictionary) -> void:
 
 func setup_attempt_recorder() -> void:
 	attempt_recorder = AttemptRecorderScript.new()
-	attempt_recorder.setup(GameState.get_selected_tutorial_boss_id())
+	attempt_recorder.setup(GameState.get_selected_tutorial_boss_id(), encounter_session)
 
 
 func finalize_attempt(outcome: String) -> void:

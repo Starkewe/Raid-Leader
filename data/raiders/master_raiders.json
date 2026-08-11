@@ -13,7 +13,6 @@
 			"default_role",
 			"catalog_order"
 		],
-		"valid_class_paths": ["Warrior", "Priest", "Rogue", "Mage"],
 		"valid_activity_ids": [
 			"apothecary_work",
 			"prepare_plan",

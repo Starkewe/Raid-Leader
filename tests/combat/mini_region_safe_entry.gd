@@ -90,7 +90,7 @@ func _run() -> void:
 	if not _test_bounded_local_destination_allocation(boss):
 		return
 
-	print("Mini-region safe entry regression test passed.")
+	print("RAID_TEST_PASS:mini_region_safe_entry | Mini-region safe entry regression test passed.")
 	quit(0)
 
 

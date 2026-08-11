@@ -18,7 +18,7 @@ signal command_panel_submitted(command_data: Dictionary)
 @export var raid_group_separation: int = 2
 @export var raid_frame_separation: int = 0
 
-@export var boss_overlay_size: Vector2 = Vector2(360.0, 92.0)
+@export var boss_overlay_size: Vector2 = Vector2(360.0, 118.0)
 @export var boss_overlay_offset: Vector2 = Vector2(0.0, -176.0)
 @export var show_command_debug_in_development: bool = true
 @export var show_legacy_command_panel_in_development: bool = false
@@ -31,6 +31,10 @@ signal command_panel_submitted(command_data: Dictionary)
 @onready var boss_frame_panel: Control = get_node_or_null("BossFramePanel")
 @onready var boss_name_label: Label = get_node_or_null("BossFramePanel/VBoxContainer/BossNameLabel")
 @onready var boss_health_bar: ProgressBar = get_node_or_null("BossFramePanel/VBoxContainer/BossHealthBar")
+@onready var boss_rage_bar: ProgressBar = get_node_or_null("BossFramePanel/VBoxContainer/BossRageBar")
+@onready var boss_rage_label: Label = get_node_or_null(
+	"BossFramePanel/VBoxContainer/BossRageBar/BossRageLabel"
+)
 @onready var boss_cast_bar: ProgressBar = get_node_or_null("BossFramePanel/VBoxContainer/BossCastBar")
 @onready var boss_cast_label: Label = get_node_or_null(
 	"BossFramePanel/VBoxContainer/BossCastBar/BossCastLabel"
@@ -42,8 +46,15 @@ signal command_panel_submitted(command_data: Dictionary)
 var command_debug_panel: Control = null
 var frame_by_unit: Dictionary = {}
 var boss: Node = null
+var encounter_session = null
+var boss_frame_targets: Array[Node] = []
+var extra_boss_frames: Array[Control] = []
 
 func _ready():
+	# This UI is combat-only; establish the context for direct scene regression
+	# instantiation before registering its command debug panel.
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_COMBAT)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	configure_command_interfaces()
 	connect_command_panel_signals()
 	setup_command_debug_panel()
@@ -88,17 +99,35 @@ func position_boss_frame_panel():
 	if boss_frame_panel == null:
 		return
 
-	if boss == null or not is_instance_valid(boss) or not boss is Node2D:
+	_refresh_boss_frame_targets()
+	if boss_frame_targets.is_empty():
 		boss_frame_panel.visible = false
+		for extra_frame in extra_boss_frames:
+			if extra_frame != null and is_instance_valid(extra_frame):
+				extra_frame.visible = false
 		return
 
-	var boss_world_position := (boss as Node2D).global_position
-	var boss_screen_position := get_viewport().get_canvas_transform() * boss_world_position
-	boss_frame_panel.size = boss_overlay_size
-	boss_frame_panel.position = (
-		boss_screen_position + boss_overlay_offset - boss_overlay_size * 0.5
-	).round()
-	boss_frame_panel.visible = true
+	for target_index in range(boss_frame_targets.size()):
+		var target := boss_frame_targets[target_index]
+		var frame := _get_frame_for_index(target_index)
+		if frame == null or not is_instance_valid(frame):
+			continue
+
+		if target == null or not is_instance_valid(target) or not target is Node2D:
+			frame.visible = false
+			continue
+
+		var target_world_position := (target as Node2D).global_position
+		var target_screen_position := get_viewport().get_canvas_transform() * target_world_position
+		frame.size = boss_overlay_size
+		frame.position = (
+			target_screen_position + boss_overlay_offset - boss_overlay_size * 0.5
+		).round()
+		frame.visible = true
+
+	for extra_index in range(boss_frame_targets.size() - 1, extra_boss_frames.size()):
+		if extra_boss_frames[extra_index] != null and is_instance_valid(extra_boss_frames[extra_index]):
+			extra_boss_frames[extra_index].visible = false
 
 func setup_raid_frames(units: Array):
 	clear_raid_frames()
@@ -223,11 +252,39 @@ func set_unit_status(unit: Node, text: String):
 	if frame.has_method("set_status_text"):
 		frame.set_status_text(text)
 
-func setup_boss_frame(new_boss: Node):
+func setup_boss_frame(new_boss: Node, new_encounter_session = null):
 	boss = new_boss
+	encounter_session = new_encounter_session
 	set_boss_target(get_boss_target())
 	refresh_boss_frame()
 	position_boss_frame_panel()
+
+
+func _refresh_boss_frame_targets() -> void:
+	var next_targets: Array[Node] = []
+	if encounter_session != null:
+		next_targets = encounter_session.get_primary_targets(true)
+	if next_targets.is_empty() and boss != null and is_instance_valid(boss):
+		next_targets.append(boss)
+
+	boss_frame_targets = next_targets
+	while extra_boss_frames.size() < maxi(boss_frame_targets.size() - 1, 0):
+		var extra_frame := boss_frame_panel.duplicate() as Control
+		extra_frame.name = "BossFramePanelExtra%d" % extra_boss_frames.size()
+		extra_frame.visible = false
+		add_child(extra_frame)
+		extra_boss_frames.append(extra_frame)
+
+
+func _get_frame_for_index(index: int) -> Control:
+	if index == 0:
+		return boss_frame_panel
+
+	var extra_index := index - 1
+	if extra_index < 0 or extra_index >= extra_boss_frames.size():
+		return null
+
+	return extra_boss_frames[extra_index]
 
 
 func set_boss_target(target: Node) -> void:
@@ -248,82 +305,174 @@ func get_boss_target() -> Node:
 	return null
 
 func refresh_boss_frame(update_status: bool = true):
-	if boss == null or not is_instance_valid(boss):
-		if boss_name_label != null:
-			boss_name_label.text = "Boss"
-
-		if boss_health_bar != null:
-			boss_health_bar.value = 0
-
-		if boss_cast_bar != null:
-			boss_cast_bar.visible = false
-
-		if boss_cast_label != null:
-			boss_cast_label.text = ""
-
-		if boss_status_label != null and update_status:
-			boss_status_label.text = "Missing"
-
+	_refresh_boss_frame_targets()
+	if boss_frame_targets.is_empty():
+		_set_frame_missing(boss_frame_panel, update_status)
 		return
 
-	update_boss_health_bar()
-	update_boss_cast_bar()
+	for target_index in range(boss_frame_targets.size()):
+		_update_frame_for_target(
+			_get_frame_for_index(target_index),
+			boss_frame_targets[target_index],
+			update_status
+		)
 
-	if boss_status_label != null and update_status:
-		if boss.has_method("get_status_text"):
-			boss_status_label.text = boss.get_status_text()
-		else:
-			boss_status_label.text = "Idle"
+
+func _update_frame_for_target(frame: Control, target: Node, update_status: bool) -> void:
+	if frame == null or not is_instance_valid(frame):
+		return
+
+	var name_label := frame.get_node_or_null("VBoxContainer/BossNameLabel") as Label
+	var health_bar := frame.get_node_or_null("VBoxContainer/BossHealthBar") as ProgressBar
+	var rage_bar := frame.get_node_or_null("VBoxContainer/BossRageBar") as ProgressBar
+	var rage_label := frame.get_node_or_null("VBoxContainer/BossRageBar/BossRageLabel") as Label
+	var cast_bar := frame.get_node_or_null("VBoxContainer/BossCastBar") as ProgressBar
+	var cast_label := frame.get_node_or_null("VBoxContainer/BossCastBar/BossCastLabel") as Label
+	var status_label := frame.get_node_or_null("VBoxContainer/BossStatusLabel") as Label
+
+	if target == null or not is_instance_valid(target):
+		_set_frame_missing(frame, update_status)
+		return
+
+	var current_health := _get_target_current_health(target)
+	var max_health := _get_target_max_health(target)
+	if health_bar != null:
+		health_bar.max_value = max(max_health, 1)
+		health_bar.value = clamp(current_health, 0, max_health)
+	if name_label != null:
+		name_label.text = _get_target_display_name(target) + "  " + str(current_health) + "/" + str(max_health)
+
+	_update_frame_resource(rage_bar, rage_label, target)
+	_update_frame_cast(cast_bar, cast_label, target)
+	if status_label != null and update_status:
+		status_label.text = target.get_status_text() if target.has_method("get_status_text") else "Idle"
+
+
+func _set_frame_missing(frame: Control, update_status: bool) -> void:
+	if frame == null or not is_instance_valid(frame):
+		return
+
+	var name_label := frame.get_node_or_null("VBoxContainer/BossNameLabel") as Label
+	var health_bar := frame.get_node_or_null("VBoxContainer/BossHealthBar") as ProgressBar
+	var rage_bar := frame.get_node_or_null("VBoxContainer/BossRageBar") as ProgressBar
+	var rage_label := frame.get_node_or_null("VBoxContainer/BossRageBar/BossRageLabel") as Label
+	var cast_bar := frame.get_node_or_null("VBoxContainer/BossCastBar") as ProgressBar
+	var cast_label := frame.get_node_or_null("VBoxContainer/BossCastBar/BossCastLabel") as Label
+	var status_label := frame.get_node_or_null("VBoxContainer/BossStatusLabel") as Label
+	if name_label != null:
+		name_label.text = "Boss"
+	if health_bar != null:
+		health_bar.value = 0
+	if rage_bar != null:
+		rage_bar.visible = false
+	if rage_label != null:
+		rage_label.text = ""
+	if cast_bar != null:
+		cast_bar.visible = false
+	if cast_label != null:
+		cast_label.text = ""
+	if status_label != null and update_status:
+		status_label.text = "Missing"
+
+
+func _update_frame_resource(rage_bar: ProgressBar, rage_label: Label, target: Node) -> void:
+	if rage_bar == null:
+		return
+
+	if target == null or not is_instance_valid(target) or not target.has_method("get_resource_state"):
+		rage_bar.visible = false
+		if rage_label != null:
+			rage_label.text = ""
+		return
+
+	var resource_state: Dictionary = target.get_resource_state()
+	var maximum := maxf(float(resource_state.get("max_value", 1.0)), 1.0)
+	var value := clampf(float(resource_state.get("value", 0.0)), 0.0, maximum)
+	var floor_value := clampf(float(resource_state.get("floor", 0.0)), 0.0, maximum)
+	rage_bar.visible = true
+	rage_bar.max_value = maximum
+	rage_bar.value = value
+	var color_value: Variant = resource_state.get("color", Color(0.8, 0.2, 0.1, 1.0))
+	if color_value is Color:
+		rage_bar.modulate = color_value
+	if rage_label != null:
+		rage_label.text = "%s %d/%d | Floor %d | %+.1f/s | %d attackers" % [
+		String(resource_state.get("label", "Rage")),
+		int(round(value)),
+		int(round(maximum)),
+		int(round(floor_value)),
+		float(resource_state.get("rate", 0.0)),
+		int(resource_state.get("attacker_count", 0))
+	]
+
+
+func _update_frame_cast(cast_bar: ProgressBar, cast_label: Label, target: Node) -> void:
+	if cast_bar == null:
+		return
+
+	if target == null or not is_instance_valid(target) or not target.has_method("is_casting_ability") or not target.is_casting_ability():
+		cast_bar.visible = false
+		cast_bar.value = 0
+		if cast_label != null:
+			cast_label.text = ""
+		return
+
+	cast_bar.visible = true
+	cast_bar.max_value = 100.0
+	cast_bar.value = target.get_cast_progress_percent() if target.has_method("get_cast_progress_percent") else 0.0
+	if cast_label != null:
+		cast_label.text = target.get_cast_name() if target.has_method("get_cast_name") else "Casting"
 
 func update_boss_health_bar():
-	if boss_health_bar == null:
+	_refresh_boss_frame_targets()
+	if boss_frame_targets.is_empty():
 		return
 
-	var current_health := get_boss_current_health()
-	var max_health := get_boss_max_health()
-
-	boss_health_bar.max_value = max(max_health, 1)
-	boss_health_bar.value = clamp(current_health, 0, max_health)
-
-	if boss_name_label != null:
-		boss_name_label.text = get_boss_display_name() + "  " + str(current_health) + "/" + str(max_health)
+	_update_frame_for_target(boss_frame_panel, boss_frame_targets[0], false)
 
 func update_boss_cast_bar():
-	if boss_cast_bar == null:
+	_refresh_boss_frame_targets()
+	if boss_frame_targets.is_empty():
 		return
 
-	if boss == null or not is_instance_valid(boss):
-		boss_cast_bar.visible = false
-
-		if boss_cast_label != null:
-			boss_cast_label.text = ""
-
-		return
-
-	if boss.has_method("is_casting_ability") and boss.is_casting_ability():
-		boss_cast_bar.visible = true
-		boss_cast_bar.max_value = 100
-
-		if boss.has_method("get_cast_progress_percent"):
-			boss_cast_bar.value = boss.get_cast_progress_percent()
-		else:
-			boss_cast_bar.value = 0
-
-		if boss_cast_label != null:
-			var cast_name := (
-				String(boss.get_cast_name()) if boss.has_method("get_cast_name") else ""
-			)
-			boss_cast_label.text = cast_name if not cast_name.is_empty() else "Casting"
-	else:
-		boss_cast_bar.visible = false
-		boss_cast_bar.value = 0
-
-		if boss_cast_label != null:
-			boss_cast_label.text = ""
+	_update_frame_cast(
+		boss_frame_panel.get_node_or_null("VBoxContainer/BossCastBar") as ProgressBar,
+		boss_frame_panel.get_node_or_null("VBoxContainer/BossCastBar/BossCastLabel") as Label,
+		boss_frame_targets[0]
+	)
 
 func set_boss_status(text: String):
-	if boss_status_label != null:
-		boss_status_label.text = text
+	var frames: Array[Control] = [boss_frame_panel]
+	frames.append_array(extra_boss_frames)
+	for frame in frames:
+		if frame == null or not is_instance_valid(frame):
+			continue
+		var status_label := frame.get_node_or_null("VBoxContainer/BossStatusLabel") as Label
+		if status_label != null:
+			status_label.text = text
+
+
+func _get_target_display_name(target: Node) -> String:
+	if target != null and is_instance_valid(target) and target.has_method("get_display_name"):
+		return String(target.get_display_name())
+
+	return target.name if target != null else "Boss"
+
+
+func _get_target_current_health(target: Node) -> int:
+	if target == null or not is_instance_valid(target):
+		return 0
+	if target.has_method("get_current_health"):
+		return int(target.get_current_health())
+	return int(target.get("health"))
+
+
+func _get_target_max_health(target: Node) -> int:
+	if target == null or not is_instance_valid(target):
+		return 1
+	if target.has_method("get_max_health"):
+		return maxi(int(target.get_max_health()), 1)
+	return maxi(int(target.get("max_health")), 1)
 
 func get_boss_display_name() -> String:
 	if boss == null or not is_instance_valid(boss):

@@ -6,6 +6,8 @@ const JointCommandDecoderScript := preload("res://scripts/voice/joint_command_de
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 const VocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
 const WhoTargetResolverScript := preload("res://scripts/voice/who_target_resolver.gd")
+const EncounterCatalogScript := preload("res://scripts/data/encounter_catalog.gd")
+const VoiceTextSimilarityScript := preload("res://scripts/voice/voice_text_similarity.gd")
 
 const ACTION_ALIASES := VocabularyScript.ACTION_ALIASES
 
@@ -242,7 +244,7 @@ func _get_component_where_label(command_data: Dictionary) -> String:
 func _strip_class_suffix(value: String) -> String:
 	var stripped := value.strip_edges()
 
-	for unit_class in ["Warrior", "Priest", "Rogue", "Mage"]:
+	for unit_class in GameState.get_available_classes():
 		var suffix := " (%s)" % unit_class
 
 		if stripped.ends_with(suffix):
@@ -445,16 +447,7 @@ func _parse_deterministic(
 
 
 func _normalize_text(text: String) -> String:
-	var normalized := text.to_lower().strip_edges()
-	var punctuation: Array[String] = [
-		".", ",", "!", "?", ":", ";", "\"", "'", "(", ")", "[", "]",
-		"-", "‐", "‑", "‒", "–", "—"
-	]
-
-	for character in punctuation:
-		normalized = normalized.replace(character, " ")
-
-	return _collapse_spaces(normalized)
+	return VoiceTextSimilarityScript.normalize(text)
 
 
 func _extract_healing_scope_suffix(text: String) -> Dictionary:
@@ -631,13 +624,63 @@ func _parse_action(text: String) -> Dictionary:
 	var matched_alias := String(match_data.get("alias", ""))
 
 	match action:
-		CommandSchemaScript.ACTION_ATTACK, CommandSchemaScript.ACTION_INTERRUPT, CommandSchemaScript.ACTION_TAUNT:
+		CommandSchemaScript.ACTION_ATTACK:
+			var attack_destination := _text_after_alias(text, matched_alias)
+			if attack_destination.ends_with(" now"):
+				attack_destination = attack_destination.trim_suffix(" now").strip_edges()
+
+			if attack_destination.is_empty() or attack_destination in ["now", "boss", "the boss"]:
+				return _action(action, CommandSchemaScript.DESTINATION_BOSS, {}, matched_alias)
+
+			var encounter_target := _parse_encounter_target(attack_destination)
+			if bool(encounter_target.get("ok", false)):
+				return _action(
+					action,
+					CommandSchemaScript.DESTINATION_ENCOUNTER_TARGET,
+					Dictionary(encounter_target.get("extra", {})),
+					matched_alias
+				)
+
+			return {
+				"ok": false,
+				"reason": String(encounter_target.get(
+					"reason",
+					"The attack destination is not supported."
+				))
+			}
+
+		CommandSchemaScript.ACTION_INTERRUPT:
 			if not _has_only_supported_when_after_action(text, matched_alias):
 				return {
 					"ok": false,
 					"reason": "The action contains an unsupported destination or trailing phrase."
 				}
 			return _action(action, CommandSchemaScript.DESTINATION_BOSS, {}, matched_alias)
+
+		CommandSchemaScript.ACTION_TAUNT:
+			var taunt_destination := _text_after_alias(text, matched_alias)
+			if taunt_destination.ends_with(" now"):
+				taunt_destination = taunt_destination.trim_suffix(" now").strip_edges()
+
+			if taunt_destination.is_empty() or taunt_destination in ["now", "boss", "the boss"]:
+				return _action(action, CommandSchemaScript.DESTINATION_BOSS, {}, matched_alias)
+
+			var taunt_target := _parse_encounter_target(taunt_destination)
+			if bool(taunt_target.get("ok", false)):
+				return _action(
+					action,
+					CommandSchemaScript.DESTINATION_ENCOUNTER_TARGET,
+					Dictionary(taunt_target.get("extra", {})),
+					matched_alias
+				)
+
+			return {
+				"ok": false,
+				"reason": String(taunt_target.get(
+					"reason",
+					"The taunt destination is not supported."
+				))
+			}
 
 		CommandSchemaScript.ACTION_HEAL:
 			if not _has_only_supported_when_after_action(text, matched_alias):
@@ -738,6 +781,20 @@ func _parse_movement_action(
 		return _action(movement_action, "movement_range", {"movement_range": range_name}, matched_alias)
 
 	return {"ok": false, "reason": "Movement command is missing a destination."}
+
+
+func _parse_encounter_target(destination_text: String) -> Dictionary:
+	var normalized := destination_text.strip_edges()
+	var tokens := normalized.split(" ", false)
+	var target_selector := EncounterCatalogScript.resolve_target_alias(normalized)
+	if target_selector.is_empty():
+		return {"ok": false, "reason": "The encounter destination is not supported."}
+
+	return {
+		"ok": true,
+		"extra": {"encounter_target": target_selector},
+		"tokens": tokens
+	}
 
 
 func _get_subject_text(text: String, matched_alias: String) -> String:
@@ -1033,38 +1090,11 @@ func _remove_phrase(text: String, phrase: String) -> String:
 
 
 func _collapse_spaces(text: String) -> String:
-	var output := text.strip_edges()
-
-	while output.contains("  "):
-		output = output.replace("  ", " ")
-
-	return output
+	return VoiceTextSimilarityScript.collapse_spaces(text)
 
 
 func _levenshtein_distance(a: String, b: String) -> int:
-	var previous_row: Array[int] = []
-	var current_row: Array[int] = []
-
-	for column in range(b.length() + 1):
-		previous_row.append(column)
-
-	for row in range(1, a.length() + 1):
-		current_row.clear()
-		current_row.append(row)
-
-		for column in range(1, b.length() + 1):
-			var insertion := current_row[column - 1] + 1
-			var deletion := previous_row[column] + 1
-			var substitution := previous_row[column - 1]
-
-			if a[row - 1] != b[column - 1]:
-				substitution += 1
-
-			current_row.append(mini(insertion, mini(deletion, substitution)))
-
-		previous_row = current_row.duplicate()
-
-	return previous_row[b.length()]
+	return VoiceTextSimilarityScript.levenshtein_distance(a, b)
 
 
 func _action(

@@ -69,7 +69,7 @@ func _run() -> void:
 	if not _test_sprite_alignment(priest):
 		return
 
-	print("Priest directional combat sprite regression test passed.")
+	print("RAID_TEST_PASS:priest_directional_sprite | Priest directional combat sprite regression test passed.")
 	get_tree().quit(0)
 
 

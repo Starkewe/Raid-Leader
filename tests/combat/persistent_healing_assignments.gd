@@ -193,7 +193,7 @@ func _run() -> void:
 			node.queue_free()
 
 	if failures.is_empty():
-		print("Persistent healing assignment regressions passed.")
+		print("RAID_TEST_PASS:persistent_healing_assignments | Persistent healing assignment regressions passed.")
 		get_tree().quit(0)
 		return
 

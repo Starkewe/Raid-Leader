@@ -346,7 +346,7 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 
-	print("Complete command decoder corpus and direct regressions passed.")
+	print("RAID_TEST_PASS:command_decoder_corpus | Complete command decoder corpus and direct regressions passed.")
 	get_tree().quit(0)
 
 

@@ -1,17 +1,45 @@
 extends Node
 
+const RaiderClassCatalogScript := preload(
+	"res://scripts/data/raider_class_catalog.gd"
+)
+const EncounterCatalogScript := preload("res://scripts/data/encounter_catalog.gd")
+
 signal raid_debug_visibility_changed(is_visible: bool)
+signal raid_debug_mode_changed(mode: String)
+signal raid_debug_context_changed(context: String)
+
+const RAID_TEST_ARGUMENT := "--raid-test"
+const RAID_TEST_RUN_ENVIRONMENT := "RAID_TEST_RUN_ID"
 
 const MAX_RAID_SIZE: int = 20
 const SETTINGS_PATH := "user://raid_leader_settings.cfg"
 const RAID_DEBUG_CONTENT_GROUP: StringName = &"raid_debug_content"
 const RAID_DEBUG_AVAILABLE_META: StringName = &"raid_debug_available"
 
+const RAID_DEBUG_MODE_OFF: String = "off"
+const RAID_DEBUG_MODE_ALL: String = "all"
+const RAID_DEBUG_MODE_GEOMETRY: String = "geometry"
+const RAID_DEBUG_MODE_LABELS: String = "labels"
+const RAID_DEBUG_CONTEXT_CAMP: String = "camp"
+const RAID_DEBUG_CONTEXT_COMBAT: String = "combat"
+
+# Short aliases keep the mode/context values convenient for callers while the
+# RAID_DEBUG_* names make their scope explicit at call sites.
+const OFF: String = RAID_DEBUG_MODE_OFF
+const ALL: String = RAID_DEBUG_MODE_ALL
+const GEOMETRY: String = RAID_DEBUG_MODE_GEOMETRY
+const LABELS: String = RAID_DEBUG_MODE_LABELS
+const CAMP: String = RAID_DEBUG_CONTEXT_CAMP
+const COMBAT: String = RAID_DEBUG_CONTEXT_COMBAT
+
 const TUTORIAL_BOSS_CLEAVE_CLOSE_REGION := "cleave_close_region"
 const TUTORIAL_BOSS_LONG_REGION_CONE := "long_region_cone"
 const TUTORIAL_BOSS_TWIN_SWEEPING_PULL := "twin_sweeping_pull"
 const ENCOUNTER_OGRE := "ogre"
 const ENCOUNTER_CHAINMASTER := "chainmaster"
+const ENCOUNTER_CARRION_ROC := "carrion_roc"
+const ENCOUNTER_TWIN_MAULERS := "twin_maulers"
 const DEFAULT_ENCOUNTER_ID := ENCOUNTER_OGRE
 
 const ABILITY_TARGET_REGION_CLOSE_CLEAVE := "target_region_close_cleave"
@@ -22,53 +50,11 @@ const SPEECH_TO_TEXT_MODEL_BASE_EN := "base_en"
 const SPEECH_TO_TEXT_MODEL_SMALL_EN := "small_en"
 const SPEECH_TO_TEXT_MODEL_SMALL_EN_Q4_0 := "small_en_q4_0"
 
-const UNIT_WARRIOR: UnitDefinition = preload("res://data/units/warrior.tres")
-const UNIT_ROGUE: UnitDefinition = preload("res://data/units/rogue.tres")
-const UNIT_MAGE: UnitDefinition = preload("res://data/units/mage.tres")
-const UNIT_PRIEST: UnitDefinition = preload("res://data/units/priest.tres")
-
-const ENCOUNTER_CLEAVE: EncounterDefinition = preload("res://data/encounters/cleave_close_region.tres")
-const ENCOUNTER_CONE: EncounterDefinition = preload("res://data/encounters/full_region_cone.tres")
-const ENCOUNTER_TWIN_SWEEP: EncounterDefinition = preload("res://data/encounters/twin_sweeping_pull.tres")
-const ENCOUNTER_OGRE_DEFINITION: EncounterDefinition = preload("res://data/encounters/ogre.tres")
-const ENCOUNTER_CHAINMASTER_DEFINITION: EncounterDefinition = preload("res://data/encounters/chainmaster.tres")
-
 var selected_tutorial_boss_id: String = DEFAULT_ENCOUNTER_ID
 var selected_normal_encounter_id: String = DEFAULT_ENCOUNTER_ID
 var raid_debug_visible: bool = false
-
-var normal_encounter_order: Array[String] = [
-	ENCOUNTER_OGRE,
-	ENCOUNTER_CHAINMASTER
-]
-
-var encounter_order: Array[String] = [
-	TUTORIAL_BOSS_CLEAVE_CLOSE_REGION,
-	TUTORIAL_BOSS_LONG_REGION_CONE,
-	TUTORIAL_BOSS_TWIN_SWEEPING_PULL
-]
-
-var encounter_catalog: Dictionary = {
-	ENCOUNTER_OGRE: ENCOUNTER_OGRE_DEFINITION,
-	ENCOUNTER_CHAINMASTER: ENCOUNTER_CHAINMASTER_DEFINITION,
-	TUTORIAL_BOSS_CLEAVE_CLOSE_REGION: ENCOUNTER_CLEAVE,
-	TUTORIAL_BOSS_LONG_REGION_CONE: ENCOUNTER_CONE,
-	TUTORIAL_BOSS_TWIN_SWEEPING_PULL: ENCOUNTER_TWIN_SWEEP
-}
-
-var unit_class_order: Array[String] = [
-	"Warrior",
-	"Rogue",
-	"Mage",
-	"Priest"
-]
-
-var unit_catalog: Dictionary = {
-	"Warrior": UNIT_WARRIOR,
-	"Rogue": UNIT_ROGUE,
-	"Mage": UNIT_MAGE,
-	"Priest": UNIT_PRIEST
-}
+var raid_debug_mode: String = RAID_DEBUG_MODE_OFF
+var raid_debug_context: String = RAID_DEBUG_CONTEXT_CAMP
 
 var role_catalog: Dictionary = {
 	"tank": {
@@ -127,12 +113,7 @@ var role_catalog: Dictionary = {
 	}
 }
 
-var raid_roster: Dictionary = {
-	"Warrior": 1,
-	"Rogue": 1,
-	"Mage": 1,
-	"Priest": 1
-}
+var raid_roster: Dictionary = {}
 
 var speech_to_text_model_catalog: Dictionary = {
 	SPEECH_TO_TEXT_MODEL_BASE_EN: {
@@ -162,10 +143,35 @@ var voice_settings: Dictionary = {
 }
 
 
+func _enter_tree() -> void:
+	if not is_raid_test_mode():
+		return
+
+	var run_id := OS.get_environment(RAID_TEST_RUN_ENVIRONMENT).strip_edges()
+	if run_id.is_empty():
+		run_id = "local"
+	run_id = run_id.validate_filename().replace(" ", "_").to_lower()
+	ProjectSettings.set_setting("application/config/use_custom_user_dir", true)
+	ProjectSettings.set_setting(
+		"application/config/custom_user_dir_name",
+		"raid_leader_tests_" + run_id
+	)
+	var isolated_user_directory := ProjectSettings.globalize_path("user://")
+	var directory_error := DirAccess.make_dir_recursive_absolute(isolated_user_directory)
+	if directory_error != OK and directory_error != ERR_ALREADY_EXISTS:
+		push_error("Could not create isolated raid-test user directory: " + isolated_user_directory)
+
+
+func is_raid_test_mode() -> bool:
+	return OS.get_cmdline_user_args().has(RAID_TEST_ARGUMENT)
+
+
 func _ready() -> void:
 	# The debug toggle must remain available while a gameplay scene is paused.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	set_process_unhandled_input(true)
+	if raid_roster.is_empty():
+		raid_roster = _create_default_roster()
 	load_persistent_settings()
 
 
@@ -173,7 +179,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("toggle_raid_debug"):
 		return
 
-	toggle_raid_debug_visibility()
+	cycle_raid_debug_mode()
 
 	var viewport := get_viewport()
 	if viewport != null:
@@ -198,13 +204,93 @@ func toggle_raid_debug_visibility() -> bool:
 
 
 func set_raid_debug_visibility(is_visible: bool) -> void:
-	if raid_debug_visible == is_visible:
-		_apply_raid_debug_visibility()
+	# This is the compatibility API for callers that only understand the old
+	# binary toggle. A visible state always means the complete debug overlay.
+	set_raid_debug_mode(RAID_DEBUG_MODE_ALL if is_visible else RAID_DEBUG_MODE_OFF)
+
+
+func set_raid_debug_mode(mode: String) -> void:
+	var requested_mode := mode.to_lower().strip_edges()
+	if requested_mode not in [
+		RAID_DEBUG_MODE_OFF,
+		RAID_DEBUG_MODE_ALL,
+		RAID_DEBUG_MODE_GEOMETRY,
+		RAID_DEBUG_MODE_LABELS,
+	]:
+		push_warning("Unknown raid debug mode: " + mode)
 		return
 
-	raid_debug_visible = is_visible
+	# Combat intentionally exposes only the old binary state. Keep the state
+	# valid even when a caller uses the generalized mode setter directly.
+	if raid_debug_context == RAID_DEBUG_CONTEXT_COMBAT and requested_mode != RAID_DEBUG_MODE_OFF:
+		requested_mode = RAID_DEBUG_MODE_ALL
+
+	var mode_changed := raid_debug_mode != requested_mode
+	var next_visible := requested_mode != RAID_DEBUG_MODE_OFF
+	var visibility_changed := raid_debug_visible != next_visible
+	raid_debug_mode = requested_mode
+	raid_debug_visible = next_visible
 	_apply_raid_debug_visibility()
-	raid_debug_visibility_changed.emit(raid_debug_visible)
+
+	if visibility_changed:
+		raid_debug_visibility_changed.emit(raid_debug_visible)
+	if mode_changed:
+		raid_debug_mode_changed.emit(raid_debug_mode)
+
+
+func get_raid_debug_mode() -> String:
+	return raid_debug_mode
+
+
+func set_raid_debug_context(context: String) -> void:
+	var requested_context := context.to_lower().strip_edges()
+	if requested_context not in [RAID_DEBUG_CONTEXT_CAMP, RAID_DEBUG_CONTEXT_COMBAT]:
+		push_warning("Unknown raid debug context: " + context)
+		return
+
+	var context_changed := raid_debug_context != requested_context
+	raid_debug_context = requested_context
+	if context_changed:
+		raid_debug_context_changed.emit(raid_debug_context)
+
+	# Do not allow a camp-only mode to leak into combat when a caller changes
+	# context directly. SceneFlow also explicitly resets every scene entry.
+	if (
+		raid_debug_context == RAID_DEBUG_CONTEXT_COMBAT
+		and raid_debug_mode in [RAID_DEBUG_MODE_GEOMETRY, RAID_DEBUG_MODE_LABELS]
+	):
+		set_raid_debug_mode(RAID_DEBUG_MODE_OFF)
+	else:
+		_apply_raid_debug_visibility()
+
+
+func get_raid_debug_context() -> String:
+	return raid_debug_context
+
+
+func cycle_raid_debug_mode() -> String:
+	var next_mode := RAID_DEBUG_MODE_OFF
+	if raid_debug_context == RAID_DEBUG_CONTEXT_COMBAT:
+		next_mode = (
+			RAID_DEBUG_MODE_ALL
+			if raid_debug_mode == RAID_DEBUG_MODE_OFF
+			else RAID_DEBUG_MODE_OFF
+		)
+	else:
+		match raid_debug_mode:
+			RAID_DEBUG_MODE_OFF:
+				next_mode = RAID_DEBUG_MODE_ALL
+			RAID_DEBUG_MODE_ALL:
+				next_mode = RAID_DEBUG_MODE_GEOMETRY
+			RAID_DEBUG_MODE_GEOMETRY:
+				next_mode = RAID_DEBUG_MODE_LABELS
+			RAID_DEBUG_MODE_LABELS:
+				next_mode = RAID_DEBUG_MODE_OFF
+			_:
+				next_mode = RAID_DEBUG_MODE_OFF
+
+	set_raid_debug_mode(next_mode)
+	return raid_debug_mode
 
 
 func _apply_raid_debug_visibility() -> void:
@@ -219,11 +305,11 @@ func _apply_raid_debug_visibility_to(content: CanvasItem) -> void:
 
 
 func get_available_classes() -> Array[String]:
-	return unit_class_order.duplicate()
+	return RaiderClassCatalogScript.get_base_class_names()
 
 
 func get_unit_definition(unit_class: String) -> UnitDefinition:
-	return unit_catalog.get(unit_class) as UnitDefinition
+	return RaiderClassCatalogScript.get_unit_definition(unit_class)
 
 
 func get_unit_scene_path(unit_class: String) -> String:
@@ -242,20 +328,7 @@ func get_display_name_for_class(unit_class: String) -> String:
 
 
 func get_voice_class_entries() -> Array[Dictionary]:
-	var entries: Array[Dictionary] = []
-
-	for unit_class in unit_class_order:
-		var definition := get_unit_definition(unit_class)
-
-		if definition == null:
-			continue
-
-		entries.append({
-			"unit_class": definition.unit_class,
-			"aliases": definition.get_all_voice_aliases()
-		})
-
-	return entries
+	return RaiderClassCatalogScript.get_voice_entries(false)
 
 
 func get_role_data(role_name: String) -> Dictionary:
@@ -309,7 +382,7 @@ func get_class_count(unit_class: String) -> int:
 
 
 func set_class_count(unit_class: String, count: int) -> void:
-	if not unit_catalog.has(unit_class):
+	if get_unit_definition(unit_class) == null:
 		push_warning("Cannot set count for unknown unit class: " + unit_class)
 		return
 
@@ -344,25 +417,20 @@ func has_valid_team() -> bool:
 
 
 func reset_default_roster() -> void:
-	raid_roster = {
-		"Warrior": 1,
-		"Rogue": 1,
-		"Mage": 1,
-		"Priest": 1
-	}
+	raid_roster = _create_default_roster()
 	save_persistent_settings()
 
 
 func get_tutorial_boss_ids() -> Array[String]:
-	return encounter_order.duplicate()
+	return EncounterCatalogScript.get_tutorial_ids()
 
 
 func get_normal_encounter_ids() -> Array[String]:
-	return normal_encounter_order.duplicate()
+	return EncounterCatalogScript.get_normal_ids()
 
 
 func get_encounter_definition(encounter_id: String) -> EncounterDefinition:
-	return encounter_catalog.get(encounter_id) as EncounterDefinition
+	return EncounterCatalogScript.get_definition(encounter_id)
 
 
 func get_encounter_data(encounter_id: String) -> Dictionary:
@@ -405,7 +473,7 @@ func select_default_encounter() -> void:
 
 
 func set_selected_normal_encounter(encounter_id: String) -> void:
-	if not normal_encounter_order.has(encounter_id):
+	if not EncounterCatalogScript.is_normal(encounter_id):
 		push_warning("Unknown normal encounter id: " + encounter_id)
 		return
 
@@ -544,7 +612,7 @@ func load_persistent_settings() -> void:
 			voice_settings[setting_name]
 		))
 
-	for unit_class in unit_class_order:
+	for unit_class in get_available_classes():
 		raid_roster[unit_class] = clampi(
 			int(config.get_value("roster", unit_class, raid_roster.get(unit_class, 0))),
 			0,
@@ -561,7 +629,7 @@ func save_persistent_settings() -> void:
 	for setting_name in voice_settings.keys():
 		config.set_value("voice", setting_name, voice_settings[setting_name])
 
-	for unit_class in unit_class_order:
+	for unit_class in get_available_classes():
 		config.set_value("roster", unit_class, get_class_count(unit_class))
 
 	var error := config.save(SETTINGS_PATH)
@@ -573,7 +641,14 @@ func save_persistent_settings() -> void:
 func trim_roster_to_maximum() -> void:
 	var remaining := MAX_RAID_SIZE
 
-	for unit_class in unit_class_order:
+	for unit_class in get_available_classes():
 		var count := mini(get_class_count(unit_class), remaining)
 		raid_roster[unit_class] = count
 		remaining -= count
+
+
+func _create_default_roster() -> Dictionary:
+	var result: Dictionary = {}
+	for unit_class in get_available_classes():
+		result[unit_class] = 1
+	return result

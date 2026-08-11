@@ -203,7 +203,7 @@ func _finish() -> void:
 		get_tree().quit(1)
 		return
 
-	print("Formation group state regressions passed.")
+	print("RAID_TEST_PASS:formation_group_state | Formation group state regressions passed.")
 	get_tree().quit(0)
 
 

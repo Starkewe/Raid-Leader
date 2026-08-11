@@ -6,10 +6,12 @@ const AttemptSummaryBuilderScript := preload("res://scripts/combat/attempt_summa
 var encounter_id: String = ""
 var events: Array[Dictionary] = []
 var finalized: bool = false
+var encounter_session = null
 
 
-func setup(new_encounter_id: String) -> void:
+func setup(new_encounter_id: String, new_encounter_session = null) -> void:
 	encounter_id = new_encounter_id
+	encounter_session = new_encounter_session
 	events.clear()
 	finalized = false
 
@@ -33,9 +35,14 @@ func finalize(
 		return {}
 
 	finalized = true
-	return AttemptSummaryBuilderScript.build(
+	var summary := AttemptSummaryBuilderScript.build(
 		encounter_id, outcome, events, boss_health, boss_max_health, phase_id, phase_name
 	)
+	if encounter_session != null:
+		var metrics: Dictionary = encounter_session.build_attempt_metrics(events)
+		if not metrics.is_empty():
+			summary["encounter_metrics"] = metrics
+	return summary
 
 
 func _normalize_value(value: Variant) -> Variant:

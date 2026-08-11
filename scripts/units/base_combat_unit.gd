@@ -9,6 +9,16 @@ const DodgeTuningScript := preload("res://scripts/combat/dodge_tuning.gd")
 const ForcedMovementControllerScript := preload("res://scripts/combat/forced_movement_controller.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 const StatusEffectControllerScript := preload("res://scripts/combat/status_effect_controller.gd")
+const CommandMovementControllerScript := preload(
+	"res://scripts/combat/command_movement_controller.gd"
+)
+const DodgeControllerScript := preload("res://scripts/combat/dodge_controller.gd")
+const RaiderClassCatalogScript := preload(
+	"res://scripts/data/raider_class_catalog.gd"
+)
+const CampaignRosterServiceScript := preload(
+	"res://scripts/core/campaign_roster_service.gd"
+)
 
 signal defeated(unit)
 signal combat_event(event: Dictionary)
@@ -38,52 +48,132 @@ var taunt_cooldown_remaining: float = 0.0
 
 var unit_class: String = ""
 var advanced_class_id: String = ""
+var advanced_class_runtime: AdvancedClassRuntime = null
 var unit_number: int = 0
 var display_name: String = ""
 var member_id: String = ""
 var member_description: String = ""
 
-var has_manual_move_order: bool = false
-var manual_move_destination: Vector2 = Vector2.ZERO
-var manual_move_waypoints: Array[Vector2] = []
-var movement_command_id: int = 0
+var command_movement_controller = CommandMovementControllerScript.new()
+var dodge_controller = DodgeControllerScript.new()
 
-var active_action_kind: String = ACTION_NONE
-var action_command_id: int = 0
-var forced_movement_action_kind: String = ACTION_NONE
-var forced_movement_action_command_id: int = -1
-var command_destination_boss: Node = null
-var command_destination_region: String = ""
-var command_destination_range: String = ""
-var command_destination_key: String = ""
-var command_destination_flag_position: Vector2 = Vector2.ZERO
-var command_path_active: bool = false
-var positioning_checkpoint_boss: Node = null
-var positioning_checkpoint_token: int = 0
-var positioning_checkpoint_ability_id: String = ""
-var positioning_checkpoint_ability_name: String = ""
-var positioning_checkpoint_destination: Vector2 = Vector2.ZERO
+# Compatibility properties preserve the command/ability-facing unit facade;
+# backing state is owned by the focused controllers above.
+var has_manual_move_order: bool:
+	get: return command_movement_controller.has_manual_move_order
+	set(value): command_movement_controller.has_manual_move_order = value
+var manual_move_destination: Vector2:
+	get: return command_movement_controller.manual_move_destination
+	set(value): command_movement_controller.manual_move_destination = value
+var manual_move_waypoints: Array[Vector2]:
+	get: return command_movement_controller.manual_move_waypoints
+	set(value): command_movement_controller.manual_move_waypoints = value
+var movement_command_id: int:
+	get: return command_movement_controller.movement_command_id
+	set(value): command_movement_controller.movement_command_id = value
+var active_action_kind: String:
+	get: return command_movement_controller.active_action_kind
+	set(value): command_movement_controller.active_action_kind = value
+var action_command_id: int:
+	get: return command_movement_controller.action_command_id
+	set(value): command_movement_controller.action_command_id = value
+var forced_movement_action_kind: String:
+	get: return command_movement_controller.forced_movement_action_kind
+	set(value): command_movement_controller.forced_movement_action_kind = value
+var forced_movement_action_command_id: int:
+	get: return command_movement_controller.forced_movement_action_command_id
+	set(value): command_movement_controller.forced_movement_action_command_id = value
+var command_destination_boss: Node:
+	get: return command_movement_controller.command_destination_boss
+	set(value): command_movement_controller.command_destination_boss = value
+var command_destination_region: String:
+	get: return command_movement_controller.command_destination_region
+	set(value): command_movement_controller.command_destination_region = value
+var command_destination_range: String:
+	get: return command_movement_controller.command_destination_range
+	set(value): command_movement_controller.command_destination_range = value
+var command_destination_key: String:
+	get: return command_movement_controller.command_destination_key
+	set(value): command_movement_controller.command_destination_key = value
+var command_destination_flag_position: Vector2:
+	get: return command_movement_controller.command_destination_flag_position
+	set(value): command_movement_controller.command_destination_flag_position = value
+var command_path_active: bool:
+	get: return command_movement_controller.command_path_active
+	set(value): command_movement_controller.command_path_active = value
+var positioning_checkpoint_boss: Node:
+	get: return command_movement_controller.positioning_checkpoint_boss
+	set(value): command_movement_controller.positioning_checkpoint_boss = value
+var positioning_checkpoint_token: int:
+	get: return command_movement_controller.positioning_checkpoint_token
+	set(value): command_movement_controller.positioning_checkpoint_token = value
+var positioning_checkpoint_ability_id: String:
+	get: return command_movement_controller.positioning_checkpoint_ability_id
+	set(value): command_movement_controller.positioning_checkpoint_ability_id = value
+var positioning_checkpoint_ability_name: String:
+	get: return command_movement_controller.positioning_checkpoint_ability_name
+	set(value): command_movement_controller.positioning_checkpoint_ability_name = value
+var positioning_checkpoint_destination: Vector2:
+	get: return command_movement_controller.positioning_checkpoint_destination
+	set(value): command_movement_controller.positioning_checkpoint_destination = value
 
-var dodge_profile: Dictionary = {}
-var dodge_base_class: String = ""
-var dodge_charge_capacity: int = 0
-var dodge_available_charges: int = 0
-var dodge_recharge_remaining: float = 0.0
-var dodge_flash_remaining: float = 0.0
-var dodge_flash_segment: int = -1
-
-var dodge_active: bool = false
-var dodge_kind: String = ""
-var dodge_elapsed: float = 0.0
-var dodge_duration: float = 0.0
-var dodge_start_position: Vector2 = Vector2.ZERO
-var dodge_end_position: Vector2 = Vector2.ZERO
-var dodge_source_command_id: int = -1
-var dodge_pending_second_burst: bool = false
-var dodge_trail: Line2D = null
-var dodge_visual_node: CanvasItem = null
-var dodge_visual_original_modulate: Color = Color.WHITE
-var automatic_hazard_escape_active: bool = false
+var dodge_profile: Dictionary:
+	get: return dodge_controller.profile
+	set(value): dodge_controller.profile = value
+var dodge_base_class: String:
+	get: return dodge_controller.base_class
+	set(value): dodge_controller.base_class = value
+var dodge_charge_capacity: int:
+	get: return dodge_controller.charge_capacity
+	set(value): dodge_controller.charge_capacity = value
+var dodge_available_charges: int:
+	get: return dodge_controller.available_charges
+	set(value): dodge_controller.available_charges = value
+var dodge_recharge_remaining: float:
+	get: return dodge_controller.recharge_remaining
+	set(value): dodge_controller.recharge_remaining = value
+var dodge_flash_remaining: float:
+	get: return dodge_controller.flash_remaining
+	set(value): dodge_controller.flash_remaining = value
+var dodge_flash_segment: int:
+	get: return dodge_controller.flash_segment
+	set(value): dodge_controller.flash_segment = value
+var dodge_active: bool:
+	get: return dodge_controller.active
+	set(value): dodge_controller.active = value
+var dodge_kind: String:
+	get: return dodge_controller.kind
+	set(value): dodge_controller.kind = value
+var dodge_elapsed: float:
+	get: return dodge_controller.elapsed
+	set(value): dodge_controller.elapsed = value
+var dodge_duration: float:
+	get: return dodge_controller.duration
+	set(value): dodge_controller.duration = value
+var dodge_start_position: Vector2:
+	get: return dodge_controller.start_position
+	set(value): dodge_controller.start_position = value
+var dodge_end_position: Vector2:
+	get: return dodge_controller.end_position
+	set(value): dodge_controller.end_position = value
+var dodge_source_command_id: int:
+	get: return dodge_controller.source_command_id
+	set(value): dodge_controller.source_command_id = value
+var dodge_pending_second_burst: bool:
+	get: return dodge_controller.pending_second_burst
+	set(value): dodge_controller.pending_second_burst = value
+var dodge_trail: Line2D:
+	get: return dodge_controller.trail
+	set(value): dodge_controller.trail = value
+var dodge_visual_node: CanvasItem:
+	get: return dodge_controller.visual_node
+	set(value): dodge_controller.visual_node = value
+var dodge_visual_original_modulate: Color:
+	get: return dodge_controller.visual_original_modulate
+	set(value): dodge_controller.visual_original_modulate = value
+var automatic_hazard_escape_active: bool:
+	get: return dodge_controller.automatic_hazard_escape_active
+	set(value): dodge_controller.automatic_hazard_escape_active = value
 
 var forced_movement_controller: ForcedMovementController = ForcedMovementControllerScript.new()
 var status_effect_controller: StatusEffectController = StatusEffectControllerScript.new()
@@ -107,6 +197,12 @@ func _process(delta: float) -> void:
 
 	if not is_dead:
 		update_dodge_recharge(delta)
+		if advanced_class_runtime != null and is_instance_valid(advanced_class_runtime):
+			advanced_class_runtime.tick(delta)
+
+
+func _exit_tree() -> void:
+	_cleanup_advanced_class_runtime()
 
 
 func configure_from_definition(definition: UnitDefinition) -> void:
@@ -248,6 +344,8 @@ func reset_unit(new_position: Vector2):
 	clear_commanded_hold()
 	reset_dodge_state()
 	cancel_automatic_positioning()
+	if advanced_class_runtime != null and is_instance_valid(advanced_class_runtime):
+		advanced_class_runtime.reset()
 	on_reset_unit()
 	update_health_bar()
 
@@ -284,6 +382,13 @@ func is_attack_action_active() -> bool:
 	return active_action_kind == ACTION_ATTACK
 
 
+## Returns the living combat target currently held by this unit's attack
+## action. Encounter runtimes use this assignment-level signal for mechanics
+## that intentionally should not depend on raw damage or crit variance.
+func get_active_attack_target() -> Node:
+	return null
+
+
 func clear_attack_action() -> void:
 	if is_attack_action_active():
 		action_command_id += 1
@@ -305,6 +410,7 @@ func command_move_to_position(
 		return
 
 	replace_manual_move_order([destination], command_context)
+	_notify_advanced_class_command("move", command_context)
 	print(get_display_name(), "moving to position:", destination)
 
 
@@ -319,6 +425,7 @@ func command_move_through_positions(
 		return
 
 	replace_manual_move_order(destinations, command_context)
+	_notify_advanced_class_command("move", command_context)
 	print(get_display_name(), "moving through", manual_move_waypoints.size(), "waypoints.")
 
 
@@ -330,6 +437,7 @@ func command_dodge_to_position(
 		return
 
 	replace_manual_move_order([destination], command_context)
+	_notify_advanced_class_command("dodge", command_context)
 	try_start_commanded_dodge()
 
 
@@ -341,6 +449,7 @@ func command_dodge_through_positions(
 		return
 
 	replace_manual_move_order(destinations, command_context)
+	_notify_advanced_class_command("dodge", command_context)
 	try_start_commanded_dodge()
 
 
@@ -1331,7 +1440,7 @@ func setup_campaign_identity(member_data: Dictionary, class_ordinal: int) -> voi
 	setup_unit_identity(String(member_data.get("unit_class", "")), class_ordinal)
 	set_advanced_class_id(String(member_data.get("advanced_class_id", "")))
 	member_id = String(member_data.get("member_id", ""))
-	display_name = CampaignState.format_member_label(member_data)
+	display_name = CampaignRosterServiceScript.format_member_label(member_data)
 	member_description = String(member_data.get("description", ""))
 	configure_runtime_roles(member_data.get("roles", [member_data.get("role", "dps")]))
 
@@ -1364,12 +1473,23 @@ func get_class_ordinal() -> int:
 
 
 func set_advanced_class_id(new_advanced_class_id: String) -> void:
-	var normalized_id := new_advanced_class_id.strip_edges()
+	var normalized_id := RaiderClassCatalogScript.normalize_class_id(new_advanced_class_id)
+	if not normalized_id.is_empty():
+		var definition := RaiderClassCatalogScript.get_definition(normalized_id)
+		var base_id := RaiderClassCatalogScript.normalize_class_id(get_base_class())
+		if (
+			definition.is_empty()
+			or not bool(definition.get("advanced", false))
+			or String(definition.get("parent_class_id", "")) != base_id
+		):
+			normalized_id = ""
 
 	if advanced_class_id == normalized_id:
 		return
 
+	_cleanup_advanced_class_runtime()
 	advanced_class_id = normalized_id
+	_setup_advanced_class_runtime()
 	visual_class_changed.emit(get_active_visual_class_id())
 
 
@@ -1379,6 +1499,47 @@ func get_advanced_class_id() -> String:
 
 func get_active_visual_class_id() -> String:
 	return advanced_class_id if not advanced_class_id.is_empty() else unit_class
+
+
+func get_advanced_class_capabilities() -> Array[String]:
+	if advanced_class_runtime == null or not is_instance_valid(advanced_class_runtime):
+		return []
+	return advanced_class_runtime.get_capabilities()
+
+
+func _setup_advanced_class_runtime() -> void:
+	if advanced_class_id.is_empty():
+		return
+	var runtime_script := RaiderClassCatalogScript.get_runtime_script(advanced_class_id)
+	if runtime_script == null:
+		return
+	var runtime_instance = runtime_script.new()
+	if not runtime_instance is AdvancedClassRuntime:
+		push_warning("Advanced class runtime must extend AdvancedClassRuntime: " + advanced_class_id)
+		return
+	advanced_class_runtime = runtime_instance as AdvancedClassRuntime
+	advanced_class_runtime.name = "AdvancedClassRuntime"
+	advanced_class_runtime.configure(
+		self, RaiderClassCatalogScript.get_definition(advanced_class_id)
+	)
+	add_child(advanced_class_runtime)
+
+
+func _cleanup_advanced_class_runtime() -> void:
+	if advanced_class_runtime == null or not is_instance_valid(advanced_class_runtime):
+		advanced_class_runtime = null
+		return
+	advanced_class_runtime.cleanup()
+	advanced_class_runtime.queue_free()
+	advanced_class_runtime = null
+
+
+func _notify_advanced_class_command(action: String, context: Dictionary) -> void:
+	if advanced_class_runtime == null or not is_instance_valid(advanced_class_runtime):
+		return
+	var command := context.duplicate(true)
+	command["what"] = action
+	advanced_class_runtime.on_command(command)
 
 
 func has_role(role_name: String) -> bool:
@@ -1782,11 +1943,14 @@ func emit_combat_event(
 	amount: int,
 	metadata: Dictionary = {}
 ) -> void:
-	combat_event.emit({
+	var event := {
 		"type": event_type,
 		"source": source,
 		"target": self,
 		"ability_id": ability_id,
 		"amount": amount,
 		"metadata": metadata.duplicate(true)
-	})
+	}
+	if advanced_class_runtime != null and is_instance_valid(advanced_class_runtime):
+		advanced_class_runtime.on_combat_event(event)
+	combat_event.emit(event)

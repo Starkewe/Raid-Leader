@@ -6,6 +6,14 @@ const RosterMemberCardScript := preload("res://scripts/ui/roster_member_card.gd"
 const RosterDropZoneScript := preload("res://scripts/ui/roster_drop_zone.gd")
 const CampaignRosterActionsScript := preload("res://scripts/core/campaign_roster_actions.gd")
 const MemberQuartersPanelScript := preload("res://scripts/ui/member_quarters_panel.gd")
+const CommandTentPagePresenterScript := preload(
+	"res://scripts/ui/command_tent_page_presenter.gd"
+)
+const FormationYardPagePresenterScript := preload(
+	"res://scripts/ui/formation_yard_page_presenter.gd"
+)
+const ArchivePagePresenterScript := preload("res://scripts/ui/archive_page_presenter.gd")
+const QuartersPagePresenterScript := preload("res://scripts/ui/quarters_page_presenter.gd")
 
 const COMMAND_CLASS_COLUMN_WIDTH := 170.0
 const COMMAND_NAME_COLUMN_WIDTH := 300.0
@@ -23,9 +31,16 @@ var archive_view_encounter_id: String = ""
 var member_quarters_panel: MemberQuartersPanel = null
 var formation_editor: FormationEditorPanel = null
 var formation_preset_dropdown: OptionButton = null
+var page_presenters: Dictionary = {}
 
 
 func _ready() -> void:
+	page_presenters = {
+		"command_tent": CommandTentPagePresenterScript.new(),
+		"formation_yard": FormationYardPagePresenterScript.new(),
+		"archive": ArchivePagePresenterScript.new(),
+		"quarters": QuartersPagePresenterScript.new(),
+	}
 	add_to_group("escape_modal")
 	_build_shell()
 	visible = false
@@ -33,7 +48,7 @@ func _ready() -> void:
 
 
 func open_facility(facility_id: String) -> void:
-	if facility_id not in ["command_tent", "formation_yard", "archive", "quarters"]:
+	if not page_presenters.has(facility_id):
 		return
 
 	current_facility_id = facility_id
@@ -143,15 +158,9 @@ func _refresh_current_facility() -> void:
 	formation_editor = null
 	formation_preset_dropdown = null
 
-	match current_facility_id:
-		"command_tent":
-			_build_command_tent()
-		"formation_yard":
-			_build_formation_yard()
-		"archive":
-			_build_archive()
-		"quarters":
-			_build_member_quarters()
+	var presenter = page_presenters.get(current_facility_id)
+	if presenter != null:
+		presenter.present(self)
 
 
 func _begin_scrolling_page() -> VBoxContainer:
@@ -170,7 +179,7 @@ func _begin_scrolling_page() -> VBoxContainer:
 	return result
 
 
-func _build_command_tent() -> void:
+func build_command_tent_page() -> void:
 	header_title.text = "Command Tent — Assemble the Raid Plan"
 	var command_page := _begin_scrolling_page()
 	_add_muted_label_to(
@@ -448,7 +457,7 @@ func _make_command_header_label(label_text: String, width: float) -> Label:
 	return label
 
 
-func _build_formation_yard() -> void:
+func build_formation_yard_page() -> void:
 	header_title.text = "Formation Yard — Raid Formation"
 	var formation_page := _begin_scrolling_page()
 	_add_muted_label_to(
@@ -527,7 +536,7 @@ func _formation_dropdown_index(formation_name: String) -> int:
 	return -1
 
 
-func _build_member_quarters() -> void:
+func build_quarters_page() -> void:
 	header_title.text = "Member Quarters — Raider Profiles"
 	member_quarters_panel = MemberQuartersPanelScript.new() as MemberQuartersPanel
 	member_quarters_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -571,7 +580,7 @@ func _build_formation_name_controls(preset_dropdown: OptionButton) -> Control:
 	return center
 
 
-func _build_archive() -> void:
+func build_archive_page() -> void:
 	header_title.text = "Archive — Observed Intelligence and Attempts"
 	page = body
 	_add_muted_label_to(

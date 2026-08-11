@@ -6,6 +6,7 @@ const GameStateScript := preload("res://scripts/core/game_state.gd")
 const ClassVisualCatalogScript := preload("res://scripts/ui/class_visual_catalog.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 const VoiceCommandVocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
+const EncounterCatalogScript := preload("res://scripts/data/encounter_catalog.gd")
 
 const ACTION_ORDER: Array[String] = [
 	CommandSchemaScript.ACTION_ATTACK,
@@ -166,6 +167,7 @@ static func get_where_entries_for_action(
 				{"where": CommandSchemaScript.DESTINATION_BOSS},
 				section
 			))
+			entries.append_array(_get_encounter_targets_for_action(action, game_state, section))
 
 		CommandSchemaScript.ACTION_MOVE, CommandSchemaScript.ACTION_DODGE:
 			entries.append(_entry(
@@ -190,12 +192,20 @@ static func get_where_entries_for_action(
 		CommandSchemaScript.ACTION_ROTATE:
 			entries.append_array(_get_rotation_entries(section))
 
-		CommandSchemaScript.ACTION_INTERRUPT, CommandSchemaScript.ACTION_TAUNT:
+		CommandSchemaScript.ACTION_INTERRUPT:
 			entries.append(_entry(
 				"Boss",
 				{"where": CommandSchemaScript.DESTINATION_BOSS},
 				section
 			))
+
+		CommandSchemaScript.ACTION_TAUNT:
+			entries.append(_entry(
+				"Boss",
+				{"where": CommandSchemaScript.DESTINATION_BOSS},
+				section
+			))
+			entries.append_array(_get_encounter_targets_for_action(action, game_state, section))
 
 		CommandSchemaScript.ACTION_HEAL:
 			entries.append_array(_get_healing_entries(party_members, game_state, section))
@@ -267,6 +277,12 @@ static func get_where_display_label(command_data: Dictionary) -> String:
 			return "Boss"
 		CommandSchemaScript.DESTINATION_BOSS_TARGET:
 			return "Boss Target"
+		CommandSchemaScript.DESTINATION_ENCOUNTER_TARGET:
+			var target_data: Dictionary = Dictionary(command_data.get("encounter_target", {}))
+			var target_side := String(target_data.get("side", "")).capitalize()
+			if String(target_data.get("kind", "")) == "twin_mauler":
+				return target_side + " Mauler" if not target_side.is_empty() else "The Mauler"
+			return target_side + " Growth" if not target_side.is_empty() else "The Growth"
 		CommandSchemaScript.DESTINATION_HEALING_SCOPE:
 			return _healing_scope_label(Dictionary(command_data.get("healing_scope", {})))
 		CommandSchemaScript.DESTINATION_CURABLE_ALLIES:
@@ -344,6 +360,36 @@ static func _get_rotation_entries(section: String) -> Array[Dictionary]:
 			section
 		))
 
+	return entries
+
+
+static func _get_selected_encounter_id(game_state: Node) -> String:
+	if game_state == null or not is_instance_valid(game_state):
+		return ""
+
+	if not game_state.has_method("get_selected_encounter_definition"):
+		return ""
+
+	var definition = game_state.get_selected_encounter_definition()
+	return "" if definition == null else String(definition.encounter_id)
+
+
+static func _get_encounter_targets_for_action(
+	action: String, game_state: Node, section: String
+) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	var encounter_id := _get_selected_encounter_id(game_state)
+	for target in EncounterCatalogScript.get_target_definitions(encounter_id):
+		if not Array(target.get("actions", [])).has(action):
+			continue
+		entries.append(_entry(
+			String(target.get("display_name", "Encounter Target")),
+			{
+				"where": CommandSchemaScript.DESTINATION_ENCOUNTER_TARGET,
+				"encounter_target": Dictionary(target.get("selector", {})).duplicate(true)
+			},
+			section
+		))
 	return entries
 
 

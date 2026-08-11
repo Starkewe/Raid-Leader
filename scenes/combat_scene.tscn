@@ -152,6 +152,30 @@ theme_override_styles/fill = SubResource("StyleBoxFlat_boss_health_fill")
 value = 100.0
 show_percentage = false
 
+[node name="BossRageBar" type="ProgressBar" parent="UI/BossFramePanel/VBoxContainer" unique_id=1193399840]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_boss_cast_background")
+theme_override_styles/fill = SubResource("StyleBoxFlat_boss_cast_fill")
+value = 0.0
+show_percentage = false
+
+[node name="BossRageLabel" type="Label" parent="UI/BossFramePanel/VBoxContainer/BossRageBar" unique_id=1193399841]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.929412, 0.905882, 0.831373, 1)
+theme_override_colors/font_outline_color = Color(0.0196078, 0.0196078, 0.0196078, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 10
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="BossCastBar" type="ProgressBar" parent="UI/BossFramePanel/VBoxContainer" unique_id=2095933114]
 custom_minimum_size = Vector2(0, 16)
 layout_mode = 2

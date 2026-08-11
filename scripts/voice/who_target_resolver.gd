@@ -4,6 +4,7 @@ class_name WhoTargetResolver
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 const TuningScript := preload("res://scripts/voice/who_resolver_tuning.gd")
 const VocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
+const VoiceTextSimilarityScript := preload("res://scripts/voice/voice_text_similarity.gd")
 
 const GROUP_SIZE: int = 5
 const FILLER_WORDS: Array[String] = [
@@ -1225,100 +1226,23 @@ func _get_unit_target_id(unit: Node) -> String:
 
 
 func _normalize_text(text: String) -> String:
-	var normalized := text.to_lower().strip_edges()
-	var punctuation: Array[String] = [
-		".", ",", "!", "?", ":", ";", "\"", "'", "(", ")", "[", "]",
-		"-", "‐", "‑", "‒", "–", "—"
-	]
-
-	for character in punctuation:
-		normalized = normalized.replace(character, " ")
-
-	while normalized.contains("  "):
-		normalized = normalized.replace("  ", " ")
-
-	return normalized.strip_edges()
+	return VoiceTextSimilarityScript.normalize(text)
 
 
 func _letters_only(text: String) -> String:
-	var output := ""
-
-	for index in range(text.length()):
-		var character := text.substr(index, 1)
-
-		if character >= "a" and character <= "z":
-			output += character
-
-	return output
+	return VoiceTextSimilarityScript.letters_only(text)
 
 
 func _phonetic_code(text: String) -> String:
-	var letters := _letters_only(text)
-
-	if letters.is_empty():
-		return ""
-
-	var output := letters.substr(0, 1).to_upper()
-	var previous_code := _phonetic_digit(letters.substr(0, 1))
-
-	for index in range(1, letters.length()):
-		var code := _phonetic_digit(letters.substr(index, 1))
-
-		if code != "0" and code != previous_code:
-			output += code
-
-		previous_code = code
-
-		if output.length() >= 6:
-			break
-
-	return output
+	return VoiceTextSimilarityScript.phonetic_code(text, 6, false)
 
 
 func _phonetic_similarity(left_code: String, right_code: String) -> float:
-	if left_code.is_empty() or right_code.is_empty():
-		return 0.0
-
-	if left_code == right_code:
-		return 1.0
-
-	var initial_similarity := (
-		1.0
-		if left_code.substr(0, 1) == right_code.substr(0, 1)
-		else 0.0
-	)
-	var left_digits := left_code.substr(1)
-	var right_digits := right_code.substr(1)
-	var digit_similarity := 0.0
-
-	if left_digits.is_empty() and right_digits.is_empty():
-		digit_similarity = 1.0
-	elif not left_digits.is_empty() and not right_digits.is_empty():
-		digit_similarity = _normalized_similarity(left_digits, right_digits)
-
-	return initial_similarity * 0.35 + digit_similarity * 0.65
+	return VoiceTextSimilarityScript.phonetic_similarity(left_code, right_code)
 
 
 func _phonetic_digit(character: String) -> String:
-	if character in ["b", "f", "p", "v"]:
-		return "1"
-
-	if character in ["c", "g", "j", "k", "q", "s", "x", "z"]:
-		return "2"
-
-	if character in ["d", "t"]:
-		return "3"
-
-	if character == "l":
-		return "4"
-
-	if character in ["m", "n"]:
-		return "5"
-
-	if character == "r":
-		return "6"
-
-	return "0"
+	return VoiceTextSimilarityScript.phonetic_digit(character)
 
 
 func _token_similarity(left_tokens: Array, right_tokens: Array) -> float:
@@ -1347,41 +1271,11 @@ func _token_similarity(left_tokens: Array, right_tokens: Array) -> float:
 
 
 func _normalized_similarity(left: String, right: String) -> float:
-	if left == right:
-		return 1.0
-
-	var maximum_length := maxi(left.length(), right.length())
-
-	if maximum_length <= 0:
-		return 0.0
-
-	return 1.0 - float(_levenshtein_distance(left, right)) / float(maximum_length)
+	return VoiceTextSimilarityScript.normalized_similarity(left, right)
 
 
 func _levenshtein_distance(left: String, right: String) -> int:
-	var previous_row: Array[int] = []
-	var current_row: Array[int] = []
-
-	for column in range(right.length() + 1):
-		previous_row.append(column)
-
-	for row in range(1, left.length() + 1):
-		current_row.clear()
-		current_row.append(row)
-
-		for column in range(1, right.length() + 1):
-			var insertion := current_row[column - 1] + 1
-			var deletion := previous_row[column] + 1
-			var substitution := previous_row[column - 1]
-
-			if left[row - 1] != right[column - 1]:
-				substitution += 1
-
-			current_row.append(mini(insertion, mini(deletion, substitution)))
-
-		previous_row = current_row.duplicate()
-
-	return previous_row[right.length()]
+	return VoiceTextSimilarityScript.levenshtein_distance(left, right)
 
 
 func _failure_result(

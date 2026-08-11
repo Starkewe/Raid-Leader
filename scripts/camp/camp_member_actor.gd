@@ -6,12 +6,10 @@ signal activity_completed(member_id: String, activity_id: String)
 signal navigation_failed(member_id: String, activity_id: String)
 signal bubble_visibility_changed(visible_now: bool)
 
-const CLASS_COLORS := {
-	"Warrior": Color("9c5650"),
-	"Priest": Color("d6c9a2"),
-	"Rogue": Color("677d55"),
-	"Mage": Color("5c6f9d")
-}
+const RaiderClassCatalogScript := preload(
+	"res://scripts/data/raider_class_catalog.gd"
+)
+const WAYPOINT_ARRIVAL_DISTANCE := 5.0
 
 var member: Dictionary = {}
 var member_id: String = ""
@@ -292,7 +290,7 @@ func _update_walking(delta: float) -> void:
 	var destination := path[0]
 	var distance := global_position.distance_to(destination)
 
-	if distance <= 5.0:
+	if distance <= WAYPOINT_ARRIVAL_DISTANCE:
 		global_position = destination.round()
 		path.remove_at(0)
 		return
@@ -316,7 +314,7 @@ func _update_conversation_approach(delta: float) -> void:
 
 	var destination := path[0]
 	var distance := global_position.distance_to(destination)
-	if distance <= 5.0:
+	if distance <= WAYPOINT_ARRIVAL_DISTANCE:
 		global_position = destination.round()
 		path.clear()
 		state = "focused_conversation"
@@ -384,7 +382,7 @@ func _create_labels() -> void:
 
 func _draw() -> void:
 	var unit_class := String(member.get("unit_class", "Mage"))
-	var accent: Color = CLASS_COLORS.get(unit_class, Color("79818a"))
+	var accent := RaiderClassCatalogScript.get_camp_color(unit_class)
 	var leg_offset := 0
 
 	if state == "walking":

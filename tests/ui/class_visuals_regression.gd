@@ -103,7 +103,7 @@ func _run() -> void:
 
 	unit.queue_free()
 	frame.queue_free()
-	print("Class visual catalog and raid-frame regressions passed.")
+	print("RAID_TEST_PASS:class_visuals | Class visual catalog and raid-frame regressions passed.")
 	get_tree().quit(0)
 
 

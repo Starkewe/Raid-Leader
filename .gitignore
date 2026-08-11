@@ -17,6 +17,9 @@
 # Local voice assets and native tools
 /models/
 /tools/
+!/tools/
+/tools/*
+!/tools/*.ps1
 *.wav
 *.bin
 

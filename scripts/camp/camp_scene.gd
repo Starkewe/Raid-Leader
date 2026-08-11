@@ -1,6 +1,8 @@
 extends Node2D
 
 const GamePauseMenuScript := preload("res://scripts/ui/game_pause_menu.gd")
+const CampDefinitionCatalogScript := preload("res://scripts/core/camp_definition_catalog.gd")
+const CampNavigationServiceScript := preload("res://scripts/camp/camp_navigation_service.gd")
 const CAMP_WORLD_RECT := Rect2(0, 0, 3000, 2100)
 const POPULATION_COLLISION_MARGIN := 26.0
 
@@ -12,9 +14,17 @@ const POPULATION_COLLISION_MARGIN := 26.0
 
 var facilities_by_id: Dictionary = {}
 var nearest_facility: CampFacility = null
+var navigation_service = CampNavigationServiceScript.new()
 
 
 func _ready() -> void:
+	navigation_service.setup(
+		CampDefinitionCatalogScript.get_route_node_definitions(),
+		CampDefinitionCatalogScript.get_route_edges()
+	)
+	# Keep direct scene instantiation consistent with SceneFlow scene entry.
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_CAMP)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	_build_facility_catalog()
 	journal.journal_visibility_changed.connect(_on_journal_visibility_changed)
 	journal.embark_requested.connect(_on_embark_requested)
@@ -65,10 +75,31 @@ func get_population_collision_margin() -> float:
 	return POPULATION_COLLISION_MARGIN
 
 
-func is_valid_population_position(population_position: Vector2) -> bool:
-	if not CAMP_WORLD_RECT.grow(-POPULATION_COLLISION_MARGIN).has_point(population_position):
-		return false
+func get_camp_route_node_catalog() -> Dictionary:
+	return navigation_service.get_node_catalog()
 
+
+func get_route_node_catalog() -> Dictionary:
+	return get_camp_route_node_catalog()
+
+
+func get_camp_route_node_position(node_id: String) -> Vector2:
+	return navigation_service.get_node_position(node_id)
+
+
+func get_camp_route_approach_node_id(facility_id: String) -> String:
+	return navigation_service.get_approach_node_id(facility_id)
+
+
+func get_camp_route_segments() -> Array[Dictionary]:
+	return navigation_service.get_segments()
+
+
+func get_route_segments() -> Array[Dictionary]:
+	return get_camp_route_segments()
+
+
+func is_population_clearance_blocked(population_position: Vector2) -> bool:
 	for facility_value in facilities_by_id.values():
 		var facility := facility_value as CampFacility
 		if facility == null:
@@ -81,41 +112,22 @@ func is_valid_population_position(population_position: Vector2) -> bool:
 			continue
 
 		if blocking_rect.has_point(population_position):
-			return false
+			return true
 
-	return true
+	return false
+
+
+func is_valid_population_position(population_position: Vector2) -> bool:
+	if not CAMP_WORLD_RECT.grow(-POPULATION_COLLISION_MARGIN).has_point(population_position):
+		return false
+
+	return not is_population_clearance_blocked(population_position)
 
 
 func build_camp_path(
 	from_position: Vector2, destination: Vector2, facility_id: String
 ) -> Array[Vector2]:
-	var path: Array[Vector2] = []
-	var approaches := {
-		"command_tent": Vector2(1500, 690),
-		"formation_yard": Vector2(1030, 1080),
-		"archive": Vector2(2010, 1080),
-		"smith": Vector2(760, 1160),
-		"apothecary": Vector2(2250, 1160),
-		"communal_fire": Vector2(1500, 1310),
-		"quarters": Vector2(850, 1570),
-		"training": Vector2(1110, 1280),
-		"liaison": Vector2(2230, 1500)
-	}
-
-	if from_position.y > 1420.0 and destination.y < 1380.0:
-		path.append(Vector2(1500, 1410))
-
-	if (
-		facility_id != "communal_fire"
-		and (absf(from_position.x - destination.x) > 760.0 or destination.y < 1150.0)
-	):
-		path.append(Vector2(1500, 1125))
-
-	if approaches.has(facility_id):
-		path.append(approaches[facility_id])
-
-	path.append(destination)
-	return _remove_redundant_waypoints(from_position, path)
+	return navigation_service.build_route(from_position, destination, facility_id)
 
 
 func _build_facility_catalog() -> void:
@@ -202,18 +214,6 @@ func _update_victory_spike() -> void:
 				if String(latest.get("encounter_id", "")) == GameState.ENCOUNTER_OGRE
 				else Color("93a2aa")
 			)
-
-
-func _remove_redundant_waypoints(from_position: Vector2, source: Array[Vector2]) -> Array[Vector2]:
-	var result: Array[Vector2] = []
-	var previous := from_position
-
-	for waypoint in source:
-		if previous.distance_to(waypoint) > 18.0:
-			result.append(waypoint)
-			previous = waypoint
-
-	return result
 
 
 func _run_travel_budget_audit() -> void:

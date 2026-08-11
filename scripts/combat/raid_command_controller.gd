@@ -19,17 +19,22 @@ var hovered_unit: Node = null
 var target_resolver = null
 var healing_target_selector = null
 var movement_executor = null
+var encounter_target_registry = null
+var encounter_session: EncounterSession = null
+var encounter_attack_assignments: Dictionary = {}
 
 
 func setup(
 	new_party_members: Array,
 	new_boss: Node,
 	new_player: Node,
-	enemy_threat_sources: Array = []
+	enemy_threat_sources: Array = [],
+	new_encounter_session: EncounterSession = null
 ) -> void:
 	party_members = new_party_members
 	boss = new_boss
 	player = new_player
+	encounter_session = new_encounter_session
 
 	target_resolver = CommandTargetResolverScript.new()
 	target_resolver.setup(party_members)
@@ -50,6 +55,7 @@ func setup(
 	)
 
 	connect_movement_executor_signals()
+	setup_encounter_target_registry()
 
 
 func connect_movement_executor_signals() -> void:
@@ -77,6 +83,30 @@ func _on_movement_temporary_status_requested(unit: Node, text: String, duration:
 
 func reset_commands() -> void:
 	hovered_unit = null
+	encounter_attack_assignments.clear()
+
+
+func setup_encounter_target_registry() -> void:
+	encounter_target_registry = null
+	if encounter_session != null:
+		encounter_target_registry = encounter_session.target_registry
+	elif is_valid_node(boss) and boss.has_method("get_encounter_target_registry"):
+		encounter_target_registry = boss.get_encounter_target_registry()
+
+	if encounter_target_registry == null:
+		return
+
+	var callback := Callable(self, "_on_encounter_target_defeated")
+	if encounter_target_registry.has_signal("target_defeated") and not encounter_target_registry.is_connected("target_defeated", callback):
+		encounter_target_registry.connect("target_defeated", callback)
+
+	var targets_changed_callback := Callable(self, "_on_encounter_targets_changed")
+	if encounter_target_registry.has_signal("targets_changed") and not encounter_target_registry.is_connected("targets_changed", targets_changed_callback):
+		encounter_target_registry.connect("targets_changed", targets_changed_callback)
+
+
+func _on_encounter_targets_changed() -> void:
+	refresh_requested.emit()
 
 
 func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
@@ -88,7 +118,12 @@ func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
 
 	match what:
 		"attack":
-			return execute_panel_attack(selected_units, where, boss_alive)
+			return execute_panel_attack(
+				selected_units,
+				where,
+				boss_alive,
+				Dictionary(command_data.get("encounter_target", {}))
+			)
 
 		"move":
 			return execute_panel_move(selected_units, command_data)
@@ -106,7 +141,12 @@ func execute_panel_command(command_data: Dictionary, boss_alive: bool) -> bool:
 			return execute_panel_heal(selected_units, command_data)
 
 		"taunt":
-			return execute_panel_taunt(selected_units, where, boss_alive)
+			return execute_panel_taunt(
+				selected_units,
+				where,
+				boss_alive,
+				Dictionary(command_data.get("encounter_target", {}))
+			)
 
 		"cure":
 			return execute_panel_cure(selected_units, where)
@@ -123,9 +163,17 @@ func get_units_for_command(command_data: Dictionary) -> Array:
 	return target_resolver.get_units_for_command(command_data)
 
 
-func execute_panel_attack(selected_units: Array, where: String, boss_alive: bool) -> bool:
+func execute_panel_attack(
+	selected_units: Array,
+	where: String,
+	boss_alive: bool,
+	encounter_target: Dictionary = {}
+) -> bool:
+	if where == "encounter_target":
+		return execute_panel_encounter_target_attack(selected_units, encounter_target)
+
 	if where != "boss":
-		print("Attack command only supports Where = Boss right now.")
+		print("Attack command requires a supported target.")
 		return false
 
 	if not boss_alive:
@@ -136,11 +184,30 @@ func execute_panel_attack(selected_units: Array, where: String, boss_alive: bool
 		print("Boss is invalid.")
 		return false
 
+	var primary_targets := get_primary_encounter_targets()
+	if primary_targets.size() > 1:
+		print("The encounter target is ambiguous; specify west or east Mauler.")
+		refresh_requested.emit()
+		return false
+
+	if primary_targets.size() == 1:
+		var primary_descriptor: Dictionary = encounter_target_registry.get_target_descriptor(primary_targets[0])
+		return execute_panel_encounter_target_attack(
+			selected_units,
+			{
+				"kind": String(primary_descriptor.get("kind", "")),
+				"side": String(primary_descriptor.get("side", "")),
+				"target_id": String(primary_descriptor.get("target_id", ""))
+			}
+		)
+
 	var issued_command: bool = false
 
 	for unit in selected_units:
 		if not is_unit_alive(unit):
 			continue
+
+		clear_encounter_attack_assignment(unit)
 
 		if unit.has_method("command_attack"):
 			unit.command_attack(boss)
@@ -156,11 +223,55 @@ func execute_panel_attack(selected_units: Array, where: String, boss_alive: bool
 	return true
 
 
+func execute_panel_encounter_target_attack(selected_units: Array, selector: Dictionary) -> bool:
+	if encounter_target_registry == null:
+		print("Encounter targets are unavailable.")
+		return false
+
+	var resolution: Dictionary = encounter_target_registry.resolve_selector(selector)
+	if not bool(resolution.get("ok", false)):
+		print(String(resolution.get("reason", "Encounter target is unavailable.")))
+		refresh_requested.emit()
+		return false
+
+	var target = resolution.get("target", null)
+	if not target is Node or not is_unit_alive(target):
+		print("Encounter target is no longer living.")
+		return false
+
+	var assignment_selector := selector.duplicate(true)
+	if String(assignment_selector.get("side", "")).is_empty():
+		var target_descriptor: Dictionary = encounter_target_registry.get_target_descriptor(target)
+		var resolved_side := String(target_descriptor.get("side", ""))
+		if not resolved_side.is_empty():
+			assignment_selector["side"] = resolved_side
+
+	var issued_command := false
+	for unit in selected_units:
+		if not is_unit_alive(unit) or not unit.has_method("command_attack"):
+			continue
+
+		unit.command_attack(target)
+		encounter_attack_assignments[unit.get_instance_id()] = {
+			"selector": assignment_selector.duplicate(true),
+			"target": target
+		}
+		issued_command = true
+
+	if not issued_command:
+		print("No selected units can attack the encounter target.")
+		return false
+
+	refresh_requested.emit()
+	return true
+
+
 func execute_panel_move(selected_units: Array, command_data: Dictionary) -> bool:
 	if movement_executor == null:
 		print("Movement executor is missing.")
 		return false
 
+	_clear_encounter_attack_assignments(selected_units)
 	return movement_executor.execute_move(selected_units, command_data)
 
 
@@ -169,6 +280,7 @@ func execute_panel_dodge(selected_units: Array, command_data: Dictionary) -> boo
 		print("Movement executor is missing.")
 		return false
 
+	_clear_encounter_attack_assignments(selected_units)
 	return movement_executor.execute_dodge(selected_units, command_data)
 
 
@@ -193,6 +305,7 @@ func execute_panel_interrupt(selected_units: Array, where: String, boss_alive: b
 		print("No selected living interrupter available.")
 		return false
 
+	clear_encounter_attack_assignment(interrupter)
 	interrupter.command_interrupt(boss)
 	temporary_status_requested.emit(interrupter, "Interrupt Command", 0.5)
 	refresh_requested.emit()
@@ -229,6 +342,7 @@ func execute_panel_heal(selected_units: Array, command_data: Dictionary) -> bool
 			return false
 
 	for healer in selected_healers:
+		clear_encounter_attack_assignment(healer)
 		healer.command_heal_scope(healing_scope, healing_target_selector)
 
 	refresh_requested.emit()
@@ -236,17 +350,47 @@ func execute_panel_heal(selected_units: Array, command_data: Dictionary) -> bool
 	return true
 
 
-func execute_panel_taunt(selected_units: Array, where: String, boss_alive: bool) -> bool:
-	if where != "boss" or not boss_alive or not is_valid_node(boss):
+func execute_panel_taunt(
+	selected_units: Array,
+	where: String,
+	boss_alive: bool,
+	encounter_target: Dictionary = {}
+) -> bool:
+	var taunt_target: Node = null
+	if where == "encounter_target":
+		if encounter_target_registry == null:
+			print("Encounter targets are unavailable.")
+			return false
+
+		var resolution: Dictionary = encounter_target_registry.resolve_selector(encounter_target)
+		if not bool(resolution.get("ok", false)):
+			print(String(resolution.get("reason", "Encounter target is unavailable.")))
+			refresh_requested.emit()
+			return false
+
+		taunt_target = resolution.get("target", null) as Node
+	else:
+		if get_primary_encounter_targets().size() > 1:
+			print("The encounter target is ambiguous; specify west or east Mauler.")
+			refresh_requested.emit()
+			return false
+
+		if get_primary_encounter_targets().size() == 1:
+			taunt_target = get_primary_encounter_targets()[0]
+		else:
+			taunt_target = boss
+
+	if not boss_alive or not is_valid_node(taunt_target):
 		print("Taunt requires a living boss target.")
 		return false
 
 	for unit in selected_units:
+		clear_encounter_attack_assignment(unit)
 		if not is_unit_alive(unit) or not unit.has_method("command_taunt"):
 			continue
 
-		if bool(unit.command_taunt(boss)):
-			temporary_status_requested.emit(unit, "Taunted Boss", 0.75)
+		if bool(unit.command_taunt(taunt_target)):
+			temporary_status_requested.emit(unit, "Taunted " + get_unit_debug_name(taunt_target), 0.75)
 			refresh_requested.emit()
 			return true
 
@@ -288,6 +432,7 @@ func execute_panel_cure(selected_units: Array, where: String) -> bool:
 	for curer_index in range(mini(curers.size(), curable_targets.size())):
 		var curer = curers[curer_index]
 		var cure_target = curable_targets[curer_index]
+		clear_encounter_attack_assignment(curer)
 
 		if bool(curer.command_cure(cure_target)):
 			temporary_status_requested.emit(curer, "Curing " + get_unit_debug_name(cure_target), 0.75)
@@ -307,6 +452,23 @@ func command_party_attack(boss_alive: bool) -> bool:
 		print("Boss is invalid.")
 		return false
 
+	var primary_targets := get_primary_encounter_targets()
+	if primary_targets.size() > 1:
+		print("The encounter target is ambiguous; specify west or east Mauler.")
+		refresh_requested.emit()
+		return false
+
+	if primary_targets.size() == 1:
+		var primary_descriptor: Dictionary = encounter_target_registry.get_target_descriptor(primary_targets[0])
+		return execute_panel_encounter_target_attack(
+			party_members,
+			{
+				"kind": String(primary_descriptor.get("kind", "")),
+				"side": String(primary_descriptor.get("side", "")),
+				"target_id": String(primary_descriptor.get("target_id", ""))
+			}
+		)
+
 	print("Command: Party attack")
 
 	var issued_command: bool = false
@@ -314,6 +476,8 @@ func command_party_attack(boss_alive: bool) -> bool:
 	for unit in party_members:
 		if not is_unit_alive(unit):
 			continue
+
+		clear_encounter_attack_assignment(unit)
 
 		if unit.has_method("command_attack"):
 			unit.command_attack(boss)
@@ -327,6 +491,69 @@ func command_party_attack(boss_alive: bool) -> bool:
 	assign_boss_target(target)
 
 	return true
+
+
+func get_encounter_target_entries() -> Array[Dictionary]:
+	if encounter_target_registry == null:
+		return []
+
+	return encounter_target_registry.get_target_entries()
+
+
+func get_primary_encounter_targets() -> Array[Node]:
+	if encounter_target_registry == null:
+		return []
+
+	return encounter_target_registry.get_primary_targets()
+
+
+func clear_encounter_attack_assignment(unit: Node) -> void:
+	if unit == null or not is_instance_valid(unit):
+		return
+
+	encounter_attack_assignments.erase(unit.get_instance_id())
+
+
+func _clear_encounter_attack_assignments(units: Array) -> void:
+	for unit in units:
+		clear_encounter_attack_assignment(unit)
+
+
+func _on_encounter_target_defeated(defeated_target: Node) -> void:
+	var assignments_to_remove: Array[int] = []
+
+	for assignment_key in encounter_attack_assignments.keys():
+		var unit_id := int(assignment_key)
+		var assignment: Dictionary = encounter_attack_assignments[assignment_key]
+		var assigned_target = assignment.get("target", null)
+
+		if assigned_target != defeated_target:
+			continue
+
+		var unit := instance_from_id(unit_id) as Node
+		if not is_unit_alive(unit):
+			assignments_to_remove.append(unit_id)
+			continue
+
+		var selector: Dictionary = Dictionary(assignment.get("selector", {}))
+		var next_target = encounter_target_registry.get_next_target(selector, defeated_target)
+		if next_target != null and is_instance_valid(next_target):
+			if unit.has_method("command_attack"):
+				unit.command_attack(next_target)
+			assignment["target"] = next_target
+			encounter_attack_assignments[unit_id] = assignment
+			continue
+
+		if unit.has_method("stop_attack_only"):
+			unit.stop_attack_only()
+		elif unit.has_method("stop_action"):
+			unit.stop_action()
+		assignments_to_remove.append(unit_id)
+
+	for unit_id in assignments_to_remove:
+		encounter_attack_assignments.erase(unit_id)
+
+	refresh_requested.emit()
 
 
 func command_healers_to_heal_boss_target() -> void:
@@ -427,6 +654,7 @@ func clear_boss_target() -> void:
 
 func stop_all_party_actions() -> void:
 	for unit in party_members:
+		clear_encounter_attack_assignment(unit)
 		if is_unit_alive(unit) and unit.has_method("stop_action"):
 			unit.stop_action()
 

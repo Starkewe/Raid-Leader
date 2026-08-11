@@ -10,6 +10,8 @@ var last_combat_outcome: String = ""
 
 func enter_camp(context_type: String = "normal", details: Dictionary = {}) -> void:
 	mode = "camp"
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_CAMP)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	CampaignState.begin_visit(context_type, details)
 	_change_scene(CAMP_SCENE)
 
@@ -25,6 +27,8 @@ func launch_campaign_combat() -> bool:
 	GameState.select_default_encounter()
 	mode = "campaign_combat"
 	last_combat_outcome = ""
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_COMBAT)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	_change_scene(GameState.get_selected_tutorial_scene_path())
 	return true
 
@@ -34,6 +38,8 @@ func retry_campaign_combat() -> void:
 	last_combat_outcome = ""
 	GameState.set_selected_normal_encounter(CampaignState.get_selected_encounter_id())
 	GameState.select_default_encounter()
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_COMBAT)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	_change_scene(GameState.get_selected_tutorial_scene_path())
 
 
@@ -41,6 +47,8 @@ func launch_tutorial(encounter_id: String) -> void:
 	GameState.set_selected_tutorial_boss(encounter_id)
 	mode = "tutorial_combat"
 	last_combat_outcome = ""
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_COMBAT)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	_change_scene(GameState.get_selected_tutorial_scene_path())
 
 
@@ -66,6 +74,8 @@ func return_from_combat(outcome: String) -> void:
 	# Combat return owns the only autosave trigger. Entering camp from menus, editing the
 	# Raid Plan, restarting combat, and unrelated transitions never pass through this call.
 	mode = "camp"
+	GameState.set_raid_debug_context(GameState.RAID_DEBUG_CONTEXT_CAMP)
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	CampaignState.begin_visit(context_type, details)
 	CampaignSaveManagerScript.write_combat_return_autosave(outcome, details)
 	_change_scene(CAMP_SCENE)
@@ -73,6 +83,7 @@ func return_from_combat(outcome: String) -> void:
 
 func go_to_main_menu() -> void:
 	mode = "menu"
+	GameState.set_raid_debug_mode(GameState.RAID_DEBUG_MODE_OFF)
 	_change_scene(MAIN_MENU_SCENE)
 
 

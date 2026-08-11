@@ -145,15 +145,17 @@ func _run() -> void:
 
 	camp.queue_free()
 	await get_tree().process_frame
-	var expanded_states: Dictionary = CampaignState.campaign.get("raider_states", {})
+	var expanded_states: Dictionary = CampaignState.get_campaign_snapshot().get("raider_states", {})
 
 	for future_id in CampaignState.get_future_recruit_ids():
 		var future_state: Dictionary = expanded_states[future_id]
 		future_state["recruited"] = true
 		expanded_states[future_id] = future_state
 
-	CampaignState.campaign["raider_states"] = expanded_states
-	CampaignState._ensure_valid_room_assignments(CampaignState.campaign)
+	_expect(
+		CampaignState.debug_replace_raider_states(expanded_states),
+		"The test-only raider state replacement API rejected raid-test mode."
+	)
 	_expect(
 		CampaignState.get_roster_members().size() == 60
 		and CampaignState.get_reserve_members().size() == 40,
@@ -182,7 +184,7 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 
-	print("Campaign roster capacity and camp smoke regressions passed.")
+	print("RAID_TEST_PASS:campaign_roster_capacity | Campaign roster capacity and camp smoke regressions passed.")
 	get_tree().quit(0)
 
 

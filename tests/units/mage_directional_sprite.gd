@@ -57,7 +57,7 @@ func _run() -> void:
 	if not _test_sprite_alignment(mage):
 		return
 
-	print("Mage directional combat sprite regression test passed.")
+	print("RAID_TEST_PASS:mage_directional_sprite | Mage directional combat sprite regression test passed.")
 	get_tree().quit(0)
 
 

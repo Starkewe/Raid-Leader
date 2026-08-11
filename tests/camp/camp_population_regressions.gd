@@ -144,23 +144,16 @@ func _run() -> void:
 
 
 func _test_position_migration() -> void:
-	var source := CampaignState.campaign.duplicate(true)
+	var source := CampaignState.get_campaign_snapshot()
 	source["schema_version"] = 8
 	for state_value in source.get("raider_states", {}).values():
 		if state_value is Dictionary:
 			state_value.erase("last_camp_position")
 
-	var migrated := CampaignState._migrate_campaign(source)
 	_expect(
-		int(migrated.get("schema_version", 0)) == CampaignState.SCHEMA_VERSION,
-		"An older campaign did not migrate to the current schema."
+		not CampaignState.is_campaign_snapshot_compatible(source),
+		"An older campaign schema was accepted by the clean persistence contract."
 	)
-	for state_value in migrated.get("raider_states", {}).values():
-		if state_value is Dictionary:
-			_expect(
-				Array(state_value.get("last_camp_position", [])).is_empty(),
-				"An older campaign received an invalid fabricated camp position."
-			)
 
 	CampaignState.reset_campaign(false, 61059)
 
@@ -194,7 +187,7 @@ func _finish() -> void:
 		get_tree().quit(1)
 		return
 
-	print("Camp population, position, roster, and conversation regressions passed.")
+	print("RAID_TEST_PASS:camp_population | Camp population, position, roster, and conversation regressions passed.")
 	get_tree().quit(0)
 
 

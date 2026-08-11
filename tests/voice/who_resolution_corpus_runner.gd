@@ -175,7 +175,7 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 
-	print("Who resolution corpus and regression checks passed.")
+	print("RAID_TEST_PASS:who_resolution_corpus | Who resolution corpus and regression checks passed.")
 	get_tree().quit(0)
 
 

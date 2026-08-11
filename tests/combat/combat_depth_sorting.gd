@@ -76,7 +76,7 @@ func _run() -> void:
 		return
 
 	combat_world.queue_free()
-	print("Combat Y-depth sorting regression test passed.")
+	print("RAID_TEST_PASS:combat_depth_sorting | Combat Y-depth sorting regression test passed.")
 	get_tree().quit(0)
 
 

@@ -46,7 +46,7 @@ func _run() -> void:
 	if not _test_crowded_destination_spacing():
 		return
 
-	print("Raider formation spacing regression test passed.")
+	print("RAID_TEST_PASS:raider_formation_spacing | Raider formation spacing regression test passed.")
 	quit(0)
 
 

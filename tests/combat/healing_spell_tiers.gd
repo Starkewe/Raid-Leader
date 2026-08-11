@@ -68,7 +68,7 @@ func _run() -> void:
 			node.queue_free()
 
 	if failures.is_empty():
-		print("Healing spell tier and cast-cadence regressions passed.")
+		print("RAID_TEST_PASS:healing_spell_tiers | Healing spell tier and cast-cadence regressions passed.")
 		get_tree().quit(0)
 		return
 

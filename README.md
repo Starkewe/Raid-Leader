@@ -74,9 +74,17 @@ The current build includes tutorial content and the first encounters from the **
 
 A tank-swap encounter centered on stacking attacks, displacement, directional pressure, ground hazards, and raid-wide damage.
 
-### Chainwarden
+### The Chainmaster
 
 A mid-range melee encounter built around chained attacks, target positioning, forced movement, and escalating phase pressure.
+
+### The Carrion Roc
+
+A captured wild Roc conditioned and surgically altered by the Beast Crucible. Damage-weighted Stagger breaks ground the arena into paired east and west crash soaks; failed soaks leave persistent Carrion Growths that can be selected as named attack targets.
+
+### The Twin Maulers
+
+Two arena beasts share independent Rage and Exhaustion states. The raid must keep both manageable, then reassign pressure quickly enough to Exhaust whichever Mauler is preparing its catastrophic Rampage.
 
 Each boss is designed to test raid-level decision-making rather than individual mechanical execution.
 
@@ -112,6 +120,17 @@ Raid Leader is currently intended to be run from the Godot editor.
 4. Run the main project scene.
 
 The interface and keyboard controls can be used without installing the optional voice-transcription components.
+
+## Development Gate
+
+Run the same isolated regression gate used by CI from PowerShell:
+
+```powershell
+./tools/verify_regression_runner.ps1 -GodotPath <path-to-godot>
+./tools/run_regressions.ps1 -GodotPath <path-to-godot>
+```
+
+Every test runs with `--raid-test` and its own `user://` directory. The runner rejects missing pass markers, explicit failure markers, Godot script errors, timeouts, and non-zero process exits. See [Extending Raid Leader](docs/EXTENDING_SYSTEMS.md) for the catalog/runtime extension points and [Profiling Baselines](docs/PROFILING_BASELINES.md) for repeatable measurements.
 
 ## Current Development Focus
 
