@@ -12,4 +12,3 @@ func to_dictionary() -> Dictionary:
 		"speed_multiplier": speed_multiplier,
 		"range_additive": range_additive,
 	}
-

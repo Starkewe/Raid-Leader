@@ -5,4 +5,3 @@ class_name MaterialRarityDefinition
 @export var display_name: String = ""
 @export var display_color: Color = Color.WHITE
 @export var sort_order: int = 0
-

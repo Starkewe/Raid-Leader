@@ -37,4 +37,3 @@ static func apply_timing(base_duration: float, profile: Dictionary) -> float:
 static func apply_range(base_range: float, profile: Dictionary) -> float:
 	var sanitized := sanitize_profile(profile)
 	return maxf(base_range + float(sanitized["range_additive"]), 0.0)
-

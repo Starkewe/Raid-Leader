@@ -46,3 +46,20 @@ the contract test. Runtime consumers do not substitute hardcoded tuning fallback
 
 Tuning is not hot-reloaded. Restart the running game or test process after editing a
 tuning resource.
+
+## Progression catalog
+
+`data/progression/catalog.tres` is the typed root for boss/archetype assignments,
+weapon-family compatibility, first-clear tokens, material rarity/source metadata,
+layered reward tables, weapons and stat profiles, future weapon-trait hooks, crafting
+recipes, and raider-trait scaffolding. It is loaded once by `ProgressionCatalog`.
+
+Progression validation is cross-resource: errors identify the complete
+`catalog.<collection>[index].property` path and reject unknown or duplicate stable IDs,
+compatibility drift, invalid roll weights/counts, invalid reward sources, incomplete
+boss weapon sets, and recipes without both a rare source-boss primary and a cross-boss
+component. Restart the process after catalog edits; progression content is not
+hot-reloaded.
+
+The extension and reward-revision workflow is documented in
+`docs/EXTENDING_SYSTEMS.md`.

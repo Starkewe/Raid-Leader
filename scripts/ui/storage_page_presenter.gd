@@ -570,4 +570,3 @@ func _on_family_filter_selected(index: int, selector: OptionButton) -> void:
 func _queue_refresh() -> void:
 	if _journal != null and is_instance_valid(_journal):
 		_journal.call("_queue_refresh")
-

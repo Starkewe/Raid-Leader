@@ -170,4 +170,3 @@ func _index_resources(resources: Array, id_property: String, target: Dictionary)
 		var stable_id := String(definition.get(id_property))
 		if not stable_id.is_empty() and not target.has(stable_id):
 			target[stable_id] = definition
-

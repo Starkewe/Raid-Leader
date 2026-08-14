@@ -6,4 +6,3 @@ class_name BossMaterialDefinition
 @export var rarity_id: String = "common"
 @export var source_encounter_ids: Array[String] = []
 @export_multiline var description: String = ""
-

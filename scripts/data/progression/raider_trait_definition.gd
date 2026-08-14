@@ -6,4 +6,3 @@ class_name RaiderTraitDefinition
 @export_enum("major", "minor") var tier: String = "minor"
 @export_multiline var description: String = ""
 @export var hook_id: String = ""
-

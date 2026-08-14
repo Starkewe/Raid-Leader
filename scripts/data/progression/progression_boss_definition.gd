@@ -9,4 +9,3 @@ class_name ProgressionBossDefinition
 @export var weapon_ids: Array[String] = []
 @export var mandatory: bool = true
 @export var apex: bool = false
-

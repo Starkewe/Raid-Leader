@@ -4,4 +4,3 @@
 
 [node name="CampStoresContract" type="Node"]
 script = ExtResource("1")
-

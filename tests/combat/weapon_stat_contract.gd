@@ -105,4 +105,3 @@ func _finish(failures: Array[String]) -> void:
 	for failure in failures:
 		push_error(failure)
 	get_tree().quit(1)
-

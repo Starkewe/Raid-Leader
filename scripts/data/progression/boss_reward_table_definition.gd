@@ -5,4 +5,3 @@ class_name BossRewardTableDefinition
 @export var encounter_id: String = ""
 @export var revision: int = 1
 @export var layers: Array[RewardRollLayerDefinition] = []
-

@@ -6,4 +6,3 @@ class_name AdvancementTokenDefinition
 @export var archetype_class_id: String = ""
 @export var source_encounter_id: String = ""
 @export_multiline var description: String = ""
-
