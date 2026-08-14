@@ -26,6 +26,9 @@ const CampaignRaidPlanServiceScript := preload(
 const CampaignProgressionServiceScript := preload(
 	"res://scripts/core/campaign_progression_service.gd"
 )
+const CampaignRewardServiceScript := preload(
+	"res://scripts/core/campaign_reward_service.gd"
+)
 const CampaignSocialMemoryServiceScript := preload(
 	"res://scripts/core/campaign_social_memory_service.gd"
 )
@@ -40,7 +43,8 @@ signal memory_promoted(event: Dictionary)
 signal relationship_threshold_reached(event: Dictionary)
 
 const SAVE_PATH := "user://raid_leader_saves/autosave.json"
-const SCHEMA_VERSION := 10
+const SCHEMA_VERSION := 11
+const MIGRATABLE_SCHEMA_VERSION := 10
 var ACTIVE_RAID_SIZE: int
 var ATTEMPT_HISTORY_LIMIT: int
 const FIRST_REGION_ID := "beast_crucible"
@@ -53,6 +57,7 @@ var _persistence_service = CampaignPersistenceServiceScript.new()
 var _roster_service = CampaignRosterServiceScript.new()
 var _raid_plan_service = CampaignRaidPlanServiceScript.new()
 var _progression_service = CampaignProgressionServiceScript.new()
+var _reward_service = CampaignRewardServiceScript.new()
 var _social_memory_service = CampaignSocialMemoryServiceScript.new()
 
 
@@ -92,6 +97,8 @@ func load_campaign(path: String = SAVE_PATH) -> bool:
 		)
 		reset_campaign(true)
 		return false
+	if int(source.get("schema_version", -1)) == MIGRATABLE_SCHEMA_VERSION:
+		source = _migrate_version_10_campaign(source)
 	_campaign = _sanitize_current_campaign(source)
 	CampV2EventSystemScript.advance_lifecycle(
 		_campaign, int(Time.get_unix_time_from_system())
@@ -1252,30 +1259,71 @@ func advance_memory_lifecycle(now_unix_time: int = 0) -> void:
 	state_changed.emit()
 
 
-func record_attempt(summary: Dictionary) -> void:
+func record_attempt(summary: Dictionary) -> Dictionary:
 	if summary.is_empty():
-		return
+		return {
+			"ok": false, "status": "invalid_summary",
+			"message": "Attempt summary must not be empty.", "receipt": {},
+		}
 
-	var encounter_id := String(summary.get("encounter_id", get_selected_encounter_id()))
+	var attempt_summary := summary.duplicate(true)
+	var attempt_id := String(attempt_summary.get("attempt_id", "")).strip_edges()
+	if attempt_id.is_empty():
+		return {
+			"ok": false, "status": "invalid_attempt_id",
+			"message": "Campaign attempts require a stable attempt ID.", "receipt": {},
+		}
+	var existing_receipt: Dictionary = Dictionary(
+		_campaign.get("progression", {}).get("reward_receipts", {}).get(attempt_id, {})
+	).duplicate(true)
+	if not existing_receipt.is_empty() or _has_recorded_attempt(attempt_id):
+		return {
+			"ok": true,
+			"status": "duplicate",
+			"message": "This attempt was already recorded.",
+			"receipt": existing_receipt,
+		}
+	if Array(
+		_campaign.get("progression", {}).get("processed_attempt_ids", [])
+	).has(attempt_id):
+		return {
+			"ok": true,
+			"status": "duplicate_historical",
+			"message": "This historical attempt was already processed.",
+			"receipt": {},
+		}
+
+	var encounter_id := String(
+		attempt_summary.get("encounter_id", get_selected_encounter_id())
+	)
+	attempt_summary["encounter_id"] = encounter_id
+	var reward_result := {
+		"ok": true, "status": "not_applicable", "message": "", "receipt": {},
+	}
+	if String(attempt_summary.get("outcome", "")) == "victory":
+		reward_result = _reward_service.process_victory(_campaign, attempt_summary)
+		if not bool(reward_result.get("ok", false)):
+			return reward_result
+
 	var known_discoveries := get_discoveries(encounter_id)
 	var known_abilities: Array = known_discoveries.get("ability_ids", [])
 	var known_phases: Array = known_discoveries.get("phase_ids", [])
 	var newly_observed_abilities: Array[String] = []
 	var newly_observed_phases: Array[String] = []
 
-	for ability_id in summary.get("observed_ability_ids", []):
+	for ability_id in attempt_summary.get("observed_ability_ids", []):
 		if not known_abilities.has(ability_id):
 			newly_observed_abilities.append(String(ability_id))
 
-	for phase_id in summary.get("observed_phase_ids", []):
+	for phase_id in attempt_summary.get("observed_phase_ids", []):
 		if not known_phases.has(phase_id):
 			newly_observed_phases.append(String(phase_id))
 
-	summary["newly_discovered_ability_ids"] = newly_observed_abilities
-	summary["newly_discovered_phase_ids"] = newly_observed_phases
+	attempt_summary["newly_discovered_ability_ids"] = newly_observed_abilities
+	attempt_summary["newly_discovered_phase_ids"] = newly_observed_phases
 	var history: Dictionary = _campaign.get("attempt_history", {})
 	var encounter_history: Array = history.get(encounter_id, [])
-	encounter_history.append(summary.duplicate(true))
+	encounter_history.append(attempt_summary.duplicate(true))
 
 	if encounter_history.size() > ATTEMPT_HISTORY_LIMIT:
 		encounter_history = encounter_history.slice(
@@ -1284,16 +1332,23 @@ func record_attempt(summary: Dictionary) -> void:
 
 	history[encounter_id] = encounter_history
 	_campaign["attempt_history"] = history
-	_campaign["latest_attempt"] = summary.duplicate(true)
-	_update_discoveries_from_attempt(summary)
+	_campaign["latest_attempt"] = attempt_summary.duplicate(true)
+	_update_discoveries_from_attempt(attempt_summary)
 
-	if String(summary.get("outcome", "")) == "victory":
-		_record_victory(encounter_id)
-
-	_record_active_raider_combat_history(String(summary.get("outcome", "")))
-	_emit_attempt_notable_events(summary)
-	attempt_recorded.emit(summary.duplicate(true))
+	_record_active_raider_combat_history(String(attempt_summary.get("outcome", "")))
+	_emit_attempt_notable_events(attempt_summary)
+	attempt_recorded.emit(attempt_summary.duplicate(true))
 	state_changed.emit()
+	return {
+		"ok": true,
+		"status": String(reward_result.get("status", "recorded")),
+		"message": (
+			String(reward_result.get("message", ""))
+			if String(attempt_summary.get("outcome", "")) == "victory"
+			else "Attempt recorded."
+		),
+		"receipt": Dictionary(reward_result.get("receipt", {})).duplicate(true),
+	}
 
 
 func get_attempt_history(encounter_id: String = "") -> Array[Dictionary]:
@@ -1319,6 +1374,154 @@ func get_discoveries(encounter_id: String = "") -> Dictionary:
 
 func get_latest_victory() -> Dictionary:
 	return Dictionary(_campaign.get("latest_victory", {})).duplicate(true)
+
+
+func get_progression_inventory() -> Dictionary:
+	return _progression_service.get_inventory(_campaign)
+
+
+func get_latest_reward_receipt() -> Dictionary:
+	var latest := get_latest_victory()
+	var attempt_id := String(latest.get("attempt_id", ""))
+	if attempt_id.is_empty():
+		return {}
+	return Dictionary(
+		_campaign.get("progression", {}).get("reward_receipts", {}).get(attempt_id, {})
+	).duplicate(true)
+
+
+func get_material_count(material_id: String) -> int:
+	return _progression_service.get_material_count(_campaign, material_id)
+
+
+func get_owned_advancement_token_ids() -> Array[String]:
+	return _string_array(
+		_campaign.get("progression", {}).get("advancement_token_ids", [])
+	)
+
+
+func get_unlocked_recipe_ids() -> Array[String]:
+	return _string_array(
+		_campaign.get("progression", {}).get("unlocked_recipe_ids", [])
+	)
+
+
+func get_crafted_weapon_ids() -> Array[String]:
+	return _string_array(
+		_campaign.get("progression", {}).get("crafted_weapon_ids", [])
+	)
+
+
+func owns_advancement_token(token_id: String) -> bool:
+	return get_owned_advancement_token_ids().has(token_id)
+
+
+func is_recipe_unlocked(recipe_id: String) -> bool:
+	return get_unlocked_recipe_ids().has(recipe_id)
+
+
+func owns_crafted_weapon(weapon_id: String) -> bool:
+	return get_crafted_weapon_ids().has(weapon_id)
+
+
+func check_craft(recipe_id: String) -> Dictionary:
+	return _progression_service.check_craft(_campaign, recipe_id)
+
+
+func craft(recipe_id: String) -> Dictionary:
+	var result := _progression_service.craft(_campaign, recipe_id)
+	if bool(result.get("ok", false)):
+		state_changed.emit()
+	return result
+
+
+func check_equip_weapon(raider_id: String, weapon_id: String) -> Dictionary:
+	return _progression_service.check_equip(_campaign, raider_id, weapon_id)
+
+
+func equip_weapon(raider_id: String, weapon_id: String) -> Dictionary:
+	var result := _progression_service.equip(_campaign, raider_id, weapon_id)
+	if bool(result.get("ok", false)):
+		roster_changed.emit()
+		state_changed.emit()
+	return result
+
+
+func unequip_weapon(raider_id: String) -> Dictionary:
+	var result := _progression_service.unequip(_campaign, raider_id)
+	if bool(result.get("ok", false)):
+		roster_changed.emit()
+		state_changed.emit()
+	return result
+
+
+func get_raider_traits(raider_id: String) -> Dictionary:
+	return _progression_service.get_raider_traits(_campaign, raider_id)
+
+
+func assign_raider_major_trait(raider_id: String, trait_id: String) -> Dictionary:
+	var result := _progression_service.assign_major_trait(_campaign, raider_id, trait_id)
+	if bool(result.get("ok", false)):
+		state_changed.emit()
+	return result
+
+
+func assign_raider_minor_trait(
+	raider_id: String, slot_index: int, trait_id: String
+) -> Dictionary:
+	var result := _progression_service.assign_minor_trait(
+		_campaign, raider_id, slot_index, trait_id
+	)
+	if bool(result.get("ok", false)):
+		state_changed.emit()
+	return result
+
+
+func get_progression_diagnostics() -> Array[Dictionary]:
+	return _progression_service.get_missing_content_diagnostics(_campaign)
+
+
+func get_equipped_raider_ids(weapon_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for raider_id_value in _campaign.get("raider_states", {}):
+		var state_value: Variant = _campaign["raider_states"][raider_id_value]
+		if (
+			state_value is Dictionary
+			and String(state_value.get("equipped_weapon_id", "")) == weapon_id
+		):
+			result.append(String(raider_id_value))
+	return result
+
+
+func debug_grant_progression_materials(grants: Dictionary) -> Dictionary:
+	if not OS.is_debug_build():
+		return {
+			"ok": false, "status": "debug_only",
+			"message": "Fixture grants are available only in debug builds.",
+		}
+	var result := _progression_service.debug_grant_materials(_campaign, grants)
+	if bool(result.get("ok", false)):
+		state_changed.emit()
+	return result
+
+
+func debug_process_seeded_reward(encounter_id: String, attempt_id: String) -> Dictionary:
+	if not OS.is_debug_build():
+		return {
+			"ok": false, "status": "debug_only",
+			"message": "Seeded rewards are available only in debug builds.",
+		}
+	return record_attempt({
+		"attempt_id": attempt_id,
+		"encounter_id": encounter_id,
+		"outcome": "victory",
+	})
+
+
+func get_region_progression(region_id: String = FIRST_REGION_ID) -> Dictionary:
+	return ProgressionCatalog.get_region_completion(
+		region_id, Dictionary(_campaign.get("victories", {}))
+	)
 
 
 func get_victory_count(encounter_id: String) -> int:
@@ -1729,7 +1932,7 @@ func _create_default_campaign(seed_override: int = 0) -> Dictionary:
 		},
 		"unlocked_regions": [FIRST_REGION_ID],
 		"victories": {},
-		"boss_resources": {},
+		"progression": CampaignProgressionServiceScript.create_empty_progression(),
 		"discoveries": {},
 		"attempt_history": {},
 		"latest_attempt": {},
@@ -1769,19 +1972,24 @@ func _sort_members_by_class_then_name(members: Array[Dictionary]) -> void:
 
 
 func _is_current_schema_compatible(source: Dictionary) -> bool:
-	if int(source.get("schema_version", -1)) != SCHEMA_VERSION:
+	var source_version := int(source.get("schema_version", -1))
+	if source_version == MIGRATABLE_SCHEMA_VERSION:
+		return _is_version_10_schema_compatible(source)
+	if source_version != SCHEMA_VERSION:
 		return false
 	if not source.has("campaign_seed"):
 		return false
 	var defaults := _create_default_campaign(int(source["campaign_seed"]))
 	for required_key in defaults.keys():
+		if required_key == "visit_context":
+			continue
 		if not source.has(required_key):
 			return false
 	for dictionary_key in [
 		"campaign_cast", "raider_states", "raid_plan", "memory_store",
 		"relationship_store", "lore_knowledge_store", "camp_conversation_state",
-		"member_quarters_state", "victories", "boss_resources", "discoveries",
-		"attempt_history", "latest_attempt", "latest_victory", "visit_context"
+		"member_quarters_state", "victories", "progression", "discoveries",
+		"attempt_history", "latest_attempt", "latest_victory"
 	]:
 		if not source.get(dictionary_key) is Dictionary:
 			return false
@@ -1804,6 +2012,43 @@ func _is_current_schema_compatible(source: Dictionary) -> bool:
 		if RaiderCatalogScript.get_definition(raider_id).is_empty():
 			return false
 	return true
+
+
+func _is_version_10_schema_compatible(source: Dictionary) -> bool:
+	if int(source.get("schema_version", -1)) != MIGRATABLE_SCHEMA_VERSION:
+		return false
+	if not source.has("campaign_seed"):
+		return false
+	for dictionary_key in [
+		"campaign_cast", "raider_states", "raid_plan", "memory_store",
+		"relationship_store", "lore_knowledge_store", "camp_conversation_state",
+		"member_quarters_state", "victories", "boss_resources", "discoveries",
+		"attempt_history", "latest_attempt", "latest_victory",
+	]:
+		if not source.get(dictionary_key) is Dictionary:
+			return false
+	for array_key in ["notable_event_records", "raid_chronicle", "unlocked_regions"]:
+		if not source.get(array_key) is Array:
+			return false
+	var raid_plan: Dictionary = source["raid_plan"]
+	for dictionary_key in [
+		"formation", "saved_formations", "support_selections", "encounter_configuration",
+	]:
+		if not raid_plan.get(dictionary_key) is Dictionary:
+			return false
+	if not raid_plan.get("active_member_ids") is Array:
+		return false
+	return true
+
+
+func _migrate_version_10_campaign(source: Dictionary) -> Dictionary:
+	var migrated := source.duplicate(true)
+	migrated["progression"] = (
+		CampaignProgressionServiceScript.migrate_version_10_progression(source)
+	)
+	migrated.erase("boss_resources")
+	migrated["schema_version"] = SCHEMA_VERSION
+	return migrated
 
 
 func _sanitize_current_campaign(source: Dictionary) -> Dictionary:
@@ -1844,6 +2089,19 @@ func _sanitize_current_campaign(source: Dictionary) -> Dictionary:
 	sanitized["raid_plan"] = raid_plan
 
 	_sanitize_current_raider_data(sanitized, defaults)
+	sanitized["progression"] = CampaignProgressionServiceScript.sanitize_progression(
+		sanitized.get("progression", {})
+	)
+	var latest_reward_attempt_id := String(
+		sanitized.get("latest_victory", {}).get("attempt_id", "")
+	)
+	if (
+		not latest_reward_attempt_id.is_empty()
+		and sanitized["progression"]["reward_receipts"].has(latest_reward_attempt_id)
+	):
+		sanitized["latest_victory"] = Dictionary(
+			sanitized["progression"]["reward_receipts"][latest_reward_attempt_id]
+		).duplicate(true)
 
 	CampV2EventSystemScript.sanitize_campaign_stores(
 		sanitized,
@@ -2149,23 +2407,20 @@ func _update_discoveries_from_attempt(summary: Dictionary) -> void:
 	_campaign["discoveries"] = discoveries
 
 
-func _record_victory(encounter_id: String) -> void:
-	var victories: Dictionary = _campaign.get("victories", {})
-	var new_count := int(victories.get(encounter_id, 0)) + 1
-	victories[encounter_id] = new_count
-	_campaign["victories"] = victories
-	var boss_resources: Dictionary = _campaign.get("boss_resources", {})
-	boss_resources[encounter_id] = int(boss_resources.get(encounter_id, 0)) + 1
-	_campaign["boss_resources"] = boss_resources
-	var definition = GameState.get_encounter_definition(encounter_id)
-	_campaign["latest_victory"] = {
-		"encounter_id": encounter_id,
-		"display_name": encounter_id if definition == null else definition.display_name,
-		"victory_count": new_count,
-		"first_victory": new_count == 1,
-		"reward_summary": "A boss resource was secured immediately for future advancement systems.",
-		"recorded_unix_time": int(Time.get_unix_time_from_system())
-	}
+func _has_recorded_attempt(attempt_id: String) -> bool:
+	var history_value: Variant = _campaign.get("attempt_history", {})
+	if not history_value is Dictionary:
+		return false
+	for encounter_history_value in history_value.values():
+		if not encounter_history_value is Array:
+			continue
+		for summary_value in encounter_history_value:
+			if (
+				summary_value is Dictionary
+				and String(summary_value.get("attempt_id", "")) == attempt_id
+			):
+				return true
+	return false
 
 
 func _record_active_raider_combat_history(outcome: String) -> void:
@@ -2415,6 +2670,7 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 	if assigned_roles.is_empty():
 		assigned_roles.append(default_role)
 
+	var weapon_projection := _runtime_weapon_projection(state)
 	return {
 		# Camp V1 and combat consumers retain these aliases while stable IDs remain authoritative.
 		"member_id": raider_id,
@@ -2444,6 +2700,15 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 		"recruit_order": int(definition.get("catalog_order", 0)),
 		"advanced_class_id": String(state.get("advanced_class_id", "")),
 		"specialization_id": String(state.get("specialization_id", "")),
+		"equipped_weapon_id": String(state.get("equipped_weapon_id", "")),
+		"weapon_runtime_active": bool(weapon_projection.get("active", false)),
+		"weapon_family_id": String(weapon_projection.get("family_id", "")),
+		"weapon_stat_profile": Dictionary(
+			weapon_projection.get("stat_profile", {})
+		).duplicate(true),
+		"major_trait_id": String(state.get("major_trait_id", "")),
+		"minor_trait_ids": Array(state.get("minor_trait_ids", [])).duplicate(),
+		"doctrine_id": String(state.get("doctrine_id", "")),
 		"source_id": String(state.get("recruitment_source", "unknown")),
 		"room_assignment_id": String(state.get("room_assignment_id", "")),
 		"combat_history": Dictionary(state.get("combat_history", {})).duplicate(true),
@@ -2452,6 +2717,25 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 		).duplicate(),
 		"descriptive_title": String(state.get("descriptive_title", "")),
 		"debug_member": bool(state.get("debug_member", false)),
+	}
+
+
+func _runtime_weapon_projection(state: Dictionary) -> Dictionary:
+	var weapon_id := String(state.get("equipped_weapon_id", ""))
+	if weapon_id.is_empty() or not owns_crafted_weapon(weapon_id):
+		return {"active": false, "family_id": "", "stat_profile": {}}
+	var weapon := ProgressionCatalog.get_weapon(weapon_id)
+	if weapon == null or weapon.stat_profile == null:
+		return {"active": false, "family_id": "", "stat_profile": {}}
+	var class_id := String(state.get("advanced_class_id", ""))
+	if class_id.is_empty():
+		class_id = String(state.get("current_class", ""))
+	if not ProgressionCatalog.is_family_compatible(class_id, weapon.family_id):
+		return {"active": false, "family_id": weapon.family_id, "stat_profile": {}}
+	return {
+		"active": true,
+		"family_id": weapon.family_id,
+		"stat_profile": weapon.stat_profile.to_dictionary(),
 	}
 
 

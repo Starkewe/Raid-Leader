@@ -1987,19 +1987,8 @@ func queue_phase_transition(
 	elif _get_pending_phase() == current_phase:
 		_clear_pending_phase()
 
-	if is_casting and current_ability != null:
-		current_ability.on_interrupted(self, party_members)
-		emit_combat_event("cast_cancelled", self, current_ability.ability_id, 0, {
-			"reason": "phase_transition"
-		})
-
-	is_casting = false
-	current_ability = null
-	current_ability_is_phase_transition = false
-	current_ability_is_basic_attack_trigger = false
-	cast_timer = 0.0
-	current_cast_elapsed = 0.0
-	current_cast_speed_multiplier = 1.0
+	# A phase transition is queued behind an active skill. The existing cast
+	# must retain its runtime state so it can finish and resolve normally.
 	pending_phase_transition_definition = transition_definition
 	phase_transition_pending = true
 	special_timer = 0.0

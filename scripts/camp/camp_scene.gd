@@ -223,7 +223,7 @@ func _run_travel_budget_audit() -> void:
 	var essential := ["command_tent", "formation_yard", "archive", "communal_fire"]
 
 	for facility_id in facilities_by_id.keys():
-		if facility_id in ["storage", "victory_spike"]:
+		if facility_id == "victory_spike":
 			continue
 
 		var facility := get_facility(String(facility_id))

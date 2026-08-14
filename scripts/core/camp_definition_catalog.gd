@@ -40,6 +40,7 @@ const ROUTE_NODE_DATA := [
 	["quarters_approach", Vector2(850, 1570), "facility_approach", "quarters"],
 	["training_approach", Vector2(1110, 1280), "facility_approach", "training"],
 	["liaison_approach", Vector2(2230, 1500), "facility_approach", "liaison"],
+	["storage_approach", Vector2(1930, 1425), "facility_approach", "storage"],
 ]
 const ROUTE_EDGES := [
 	["south_transition", "central_crossroads"],
@@ -53,6 +54,7 @@ const ROUTE_EDGES := [
 	["central_crossroads", "quarters_approach"],
 	["central_crossroads", "training_approach"],
 	["central_crossroads", "liaison_approach"],
+	["central_crossroads", "storage_approach"],
 ]
 
 

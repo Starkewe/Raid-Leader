@@ -62,10 +62,10 @@ func configure_from_definition(definition: UnitDefinition) -> void:
 
 	if action != null:
 		spell_display_name = action.display_name
-		cast_range_units = action.range_units
-		spell_damage = action.amount
-		spell_cooldown = action.cooldown
-		spell_cast_time = action.cast_time
+		cast_range_units = apply_weapon_range(action.range_units)
+		spell_damage = apply_weapon_power(action.amount)
+		spell_cooldown = apply_weapon_timing(action.cooldown)
+		spell_cast_time = apply_weapon_timing(action.cast_time)
 
 
 func _ready():

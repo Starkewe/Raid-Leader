@@ -108,6 +108,7 @@ func _run() -> void:
 	_test_twin_forced_pull_cleanup()
 	_test_other_special_recovery_does_not_reset_auto()
 	_test_chainmaster_transition_behavior()
+	_test_triggered_skill_transition_behavior()
 	_test_earthshaker_stomp_tank_exemptions()
 
 	for node in owned_nodes:
@@ -613,11 +614,20 @@ func _test_other_special_recovery_does_not_reset_auto() -> void:
 
 func _test_chainmaster_transition_behavior() -> void:
 	var boss = _new_boss(CHAINMASTER)
+	var observed_event_types: Array[String] = []
+	boss.combat_event.connect(func(event: Dictionary) -> void:
+		observed_event_types.append(String(event.get("type", "")))
+	)
 	boss.next_ability = boss.create_next_ability()
 	boss.attack_timer = 0.8
 	boss.special_timer = 2.6
 	boss.basic_attack_sequence_count = 2
-	boss.current_ability = BossAbilityScript.new()
+	var active_ability := BossAbilityScript.new()
+	active_ability.ability_id = "chainmaster_active_skill"
+	active_ability.ability_name = "Chainmaster Active Skill"
+	active_ability.cast_time = 2.0
+	active_ability.cooldown = 3.0
+	boss.current_ability = active_ability
 	boss.is_casting = true
 	boss.cast_timer = 1.4
 
@@ -631,16 +641,34 @@ func _test_chainmaster_transition_behavior() -> void:
 		"Chainmaster's scripted Phase 2 transition was not queued."
 	)
 	_expect(
-		not boss.is_casting
-		and boss.current_ability == null
+		boss.is_casting
+		and boss.current_ability == active_ability
+		and is_equal_approx(boss.cast_timer, 1.4)
+		and not observed_event_types.has("cast_cancelled")
 		and is_zero_approx(boss.special_timer)
 		and boss.basic_attack_sequence_count == 0,
-		"Chainmaster's scripted transition no longer interrupts and takes priority."
+		"Chainmaster's scripted transition cancelled or altered the active skill."
 	)
 	_expect_close(
 		boss.attack_timer,
 		0.8,
 		"Queueing Chainmaster's scripted transition changed its auto timer early."
+	)
+	boss.finish_special_cast()
+	_expect(
+		not boss.is_casting
+		and boss.current_ability == null
+		and boss.phase_transition_pending
+		and observed_event_types.has("cast_resolved"),
+		"The active Chainmaster skill did not resolve before its queued transition."
+	)
+	boss.start_special_cast()
+	_expect(
+		boss.is_casting
+		and boss.current_ability_is_phase_transition
+		and boss.current_ability != null
+		and boss.current_ability.ability_id == "break_the_kennels",
+		"Chainmaster's queued transition did not start immediately after the active skill."
 	)
 	var has_next_normal_ability := false
 	for definition in boss.ability_definitions:
@@ -655,6 +683,46 @@ func _test_chainmaster_transition_behavior() -> void:
 		boss.next_ability != null
 		and has_next_normal_ability,
 		"Chainmaster's explicit transition did not resume its normal ability scheduler."
+	)
+
+
+func _test_triggered_skill_transition_behavior() -> void:
+	var boss = _new_boss(EARTHGNASHER)
+	var active_ability := BossAbilityScript.new()
+	active_ability.ability_id = "triggered_active_skill"
+	active_ability.ability_name = "Triggered Active Skill"
+	active_ability.cooldown = 7.0
+	boss.current_ability = active_ability
+	boss.current_ability_is_basic_attack_trigger = true
+	boss.is_casting = true
+	boss.cast_timer = 1.1
+
+	boss.health = int(float(boss.max_health) * 0.60)
+	boss.update_current_phase()
+
+	_expect(
+		boss.is_casting
+		and boss.current_ability == active_ability
+		and boss.current_ability_is_basic_attack_trigger
+		and is_equal_approx(boss.cast_timer, 1.1)
+		and boss.phase_transition_pending,
+		"A phase transition changed the state of an active triggered skill."
+	)
+	boss.finish_special_cast()
+	_expect(
+		not boss.is_casting
+		and boss.current_ability == null
+		and boss.phase_transition_pending
+		and is_zero_approx(boss.get_ability_cooldown_remaining(active_ability.ability_id)),
+		"A triggered skill received normal cooldown handling before its queued transition."
+	)
+	boss.start_special_cast()
+	_expect(
+		boss.is_casting
+		and boss.current_ability_is_phase_transition
+		and boss.current_ability != null
+		and boss.current_ability.ability_id == "earthgnasher_phase_2_transition",
+		"The triggered skill did not hand off directly to the Earthgnasher transition."
 	)
 
 
@@ -774,6 +842,16 @@ func _ability_for_id(boss, ability_id: String) -> BossAbility:
 	for definition in boss.ability_definitions:
 		if definition != null and definition.ability_id == ability_id:
 			return BossAbilityFactoryScript.create_ability_from_definition(definition)
+
+	var triggered_definition = boss.basic_attack_triggered_ability_definition
+
+	if (
+		triggered_definition != null
+		and triggered_definition.ability_id == ability_id
+	):
+		return BossAbilityFactoryScript.create_ability_from_definition(
+			triggered_definition
+		)
 
 	return null
 

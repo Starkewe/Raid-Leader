@@ -8,8 +8,12 @@ func read_payload(path: String) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return {"ok": false, "error": "open_failed", "campaign": {}}
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	var parser := JSON.new()
+	var parse_error := parser.parse(file.get_as_text())
 	file.close()
+	if parse_error != OK:
+		return {"ok": false, "error": "invalid_json", "campaign": {}}
+	var parsed: Variant = parser.data
 	if not parsed is Dictionary:
 		return {"ok": false, "error": "invalid_json", "campaign": {}}
 	var payload: Dictionary = parsed

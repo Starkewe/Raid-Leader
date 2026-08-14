@@ -132,6 +132,11 @@ Run the same isolated regression gate used by CI from PowerShell:
 
 Every test runs with `--raid-test` and its own `user://` directory. The runner rejects missing pass markers, explicit failure markers, Godot script errors, timeouts, and non-zero process exits. See [Extending Raid Leader](docs/EXTENDING_SYSTEMS.md) for the catalog/runtime extension points and [Profiling Baselines](docs/PROFILING_BASELINES.md) for repeatable measurements.
 
+Boss progression is authored in `data/progression/catalog.tres`. Victories produce
+replay-safe material receipts and one-time tokens/recipe unlocks; backend crafting and
+reusable class-compatible weapons are available to debug tooling, while Camp Stores
+is a read-only production inventory browser.
+
 ## Current Development Focus
 
 Current work is focused on:

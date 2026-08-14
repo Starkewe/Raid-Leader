@@ -50,8 +50,8 @@ func _run() -> void:
 		route_debug_data.has("activity_slot_segments"),
 		"Camp route debug data omitted approach-to-slot connectors."
 	)
-	_expect(route_nodes.size() == 11, "The authored camp route node catalog is incomplete.")
-	_expect(route_segments.size() == 10, "The authored camp route segment catalog is incomplete.")
+	_expect(route_nodes.size() == 12, "The authored camp route node catalog is incomplete.")
+	_expect(route_segments.size() == 11, "The authored camp route segment catalog is incomplete.")
 	_expect(
 		activity_slots.size() == 49,
 		"The live activity-slot catalog did not include every authored station slot."
@@ -123,6 +123,7 @@ func _run() -> void:
 		"quarters_approach": Vector2(850, 1570),
 		"training_approach": Vector2(1110, 1280),
 		"liaison_approach": Vector2(2230, 1500),
+		"storage_approach": Vector2(1930, 1425),
 	}
 	for node_id in expected_positions.keys():
 		var node_data := _find_record(route_nodes, String(node_id), "node_id")
