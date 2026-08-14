@@ -1,0 +1,956 @@
+[gd_resource type="Resource" script_class="ProgressionCatalogResource" load_steps=136 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/progression/progression_catalog_resource.gd" id="1_catalog"]
+[ext_resource type="Script" path="res://scripts/data/progression/progression_region_definition.gd" id="2_region"]
+[ext_resource type="Script" path="res://scripts/data/progression/progression_boss_definition.gd" id="3_boss"]
+[ext_resource type="Script" path="res://scripts/data/progression/weapon_family_definition.gd" id="4_family"]
+[ext_resource type="Script" path="res://scripts/data/progression/advancement_token_definition.gd" id="5_token"]
+[ext_resource type="Script" path="res://scripts/data/progression/material_rarity_definition.gd" id="6_rarity"]
+[ext_resource type="Script" path="res://scripts/data/progression/boss_material_definition.gd" id="7_material"]
+[ext_resource type="Script" path="res://scripts/data/progression/reward_roll_entry_definition.gd" id="8_roll_entry"]
+[ext_resource type="Script" path="res://scripts/data/progression/reward_roll_layer_definition.gd" id="9_roll_layer"]
+[ext_resource type="Script" path="res://scripts/data/progression/boss_reward_table_definition.gd" id="10_reward_table"]
+[ext_resource type="Script" path="res://scripts/data/progression/weapon_stat_profile.gd" id="11_stats"]
+[ext_resource type="Script" path="res://scripts/data/progression/weapon_trait_definition.gd" id="12_weapon_trait"]
+[ext_resource type="Script" path="res://scripts/data/progression/weapon_definition.gd" id="13_weapon"]
+[ext_resource type="Script" path="res://scripts/data/progression/crafting_ingredient_definition.gd" id="14_ingredient"]
+[ext_resource type="Script" path="res://scripts/data/progression/crafting_recipe_definition.gd" id="15_recipe"]
+
+[sub_resource type="Resource" id="RarityCommon"]
+script = ExtResource("6_rarity")
+rarity_id = "common"
+display_name = "Common"
+display_color = Color(0.72, 0.75, 0.72, 1)
+sort_order = 0
+
+[sub_resource type="Resource" id="RarityUncommon"]
+script = ExtResource("6_rarity")
+rarity_id = "uncommon"
+display_name = "Uncommon"
+display_color = Color(0.42, 0.78, 0.49, 1)
+sort_order = 1
+
+[sub_resource type="Resource" id="RarityRare"]
+script = ExtResource("6_rarity")
+rarity_id = "rare"
+display_name = "Rare"
+display_color = Color(0.74, 0.55, 0.95, 1)
+sort_order = 2
+
+[sub_resource type="Resource" id="FamilyOneHanded"]
+script = ExtResource("4_family")
+family_id = "one_handed_arms"
+display_name = "One-Handed Arms"
+compatible_class_ids = Array[String](["warrior", "hollow_anvil", "sunder_clerk", "lantern_warden", "hearth_corsair"])
+
+[sub_resource type="Resource" id="FamilyHeavy"]
+script = ExtResource("4_family")
+family_id = "heavy_arms"
+display_name = "Heavy Arms"
+compatible_class_ids = Array[String](["warrior", "hollow_anvil", "gravelord_proxy", "burden_courier", "echo_butcher"])
+
+[sub_resource type="Resource" id="FamilyConduit"]
+script = ExtResource("4_family")
+family_id = "conduit_staves"
+display_name = "Conduit Staves"
+compatible_class_ids = Array[String](["priest", "burden_courier", "memory_apothecary", "moth_surgeon"])
+
+[sub_resource type="Resource" id="FamilyRitual"]
+script = ExtResource("4_family")
+family_id = "ritual_implements"
+display_name = "Ritual Implements"
+compatible_class_ids = Array[String](["priest", "gravelord_proxy", "memory_apothecary", "scar_gardener", "ritebreaker", "rift_tailor"])
+
+[sub_resource type="Resource" id="FamilySkirmishing"]
+script = ExtResource("4_family")
+family_id = "skirmishing_arms"
+display_name = "Skirmishing Arms"
+compatible_class_ids = Array[String](["rogue", "scar_gardener", "echo_butcher", "ritebreaker", "drift_knife", "phasehand"])
+
+[sub_resource type="Resource" id="FamilyProjectile"]
+script = ExtResource("4_family")
+family_id = "projectile_arms"
+display_name = "Projectile Arms"
+compatible_class_ids = Array[String](["rogue", "sunder_clerk", "drift_knife", "rune_slinger"])
+
+[sub_resource type="Resource" id="FamilyBattle"]
+script = ExtResource("4_family")
+family_id = "battle_staves"
+display_name = "Battle Staves"
+compatible_class_ids = Array[String](["mage", "orbit_scribe"])
+
+[sub_resource type="Resource" id="FamilyArcane"]
+script = ExtResource("4_family")
+family_id = "arcane_foci"
+display_name = "Arcane Foci"
+compatible_class_ids = Array[String](["mage", "lantern_warden", "moth_surgeon", "phasehand", "hearth_corsair", "rift_tailor", "rune_slinger", "orbit_scribe"])
+
+[sub_resource type="Resource" id="TokenEarthgnasher"]
+script = ExtResource("5_token")
+token_id = "earthgnasher_warrior_token"
+display_name = "Earthgnasher Warrior Token"
+archetype_class_id = "warrior"
+source_encounter_id = "ogre"
+description = "A permanent first-clear proof aligned with the Warrior archetype. Spending is not implemented."
+
+[sub_resource type="Resource" id="TokenChainmaster"]
+script = ExtResource("5_token")
+token_id = "chainmaster_priest_token"
+display_name = "Chainmaster Priest Token"
+archetype_class_id = "priest"
+source_encounter_id = "chainmaster"
+description = "A permanent first-clear proof aligned with the Priest archetype. Spending is not implemented."
+
+[sub_resource type="Resource" id="TokenCarrionRoc"]
+script = ExtResource("5_token")
+token_id = "carrion_roc_mage_token"
+display_name = "Carrion Roc Mage Token"
+archetype_class_id = "mage"
+source_encounter_id = "carrion_roc"
+description = "A permanent first-clear proof aligned with the Mage archetype. Spending is not implemented."
+
+[sub_resource type="Resource" id="TokenTwinMaulers"]
+script = ExtResource("5_token")
+token_id = "twin_maulers_rogue_token"
+display_name = "Twin Maulers Rogue Token"
+archetype_class_id = "rogue"
+source_encounter_id = "twin_maulers"
+description = "A permanent first-clear proof aligned with the Rogue archetype. Spending is not implemented."
+
+[sub_resource type="Resource" id="MaterialBeastbone"]
+script = ExtResource("7_material")
+material_id = "crucible_beastbone"
+display_name = "Crucible Beastbone"
+rarity_id = "common"
+source_encounter_ids = Array[String](["ogre", "twin_maulers"])
+description = "Dense bone shared by Earthgnasher and the Twin Maulers; reserved for future progression costs."
+
+[sub_resource type="Resource" id="MaterialShaleHide"]
+script = ExtResource("7_material")
+material_id = "shale_caked_hide"
+display_name = "Shale-Caked Hide"
+rarity_id = "common"
+source_encounter_ids = Array[String](["ogre"])
+description = "Earthgnasher hide plated with layers of compressed shale."
+
+[sub_resource type="Resource" id="MaterialQuakeMarrow"]
+script = ExtResource("7_material")
+material_id = "quake_marrow"
+display_name = "Quake Marrow"
+rarity_id = "uncommon"
+source_encounter_ids = Array[String](["ogre"])
+description = "Resonant marrow that still hums with Earthgnasher's impact force."
+
+[sub_resource type="Resource" id="MaterialHeartstone"]
+script = ExtResource("7_material")
+material_id = "earthgnasher_heartstone"
+display_name = "Earthgnasher Heartstone"
+rarity_id = "rare"
+source_encounter_ids = Array[String](["ogre"])
+description = "A singular stone heart capable of anchoring a boss-forged weapon."
+
+[sub_resource type="Resource" id="MaterialBindingIron"]
+script = ExtResource("7_material")
+material_id = "crucible_binding_iron"
+display_name = "Crucible Binding Iron"
+rarity_id = "common"
+source_encounter_ids = Array[String](["chainmaster", "carrion_roc"])
+description = "Hard binding iron shared by Chainmaster and the Carrion Roc; reserved for future progression costs."
+
+[sub_resource type="Resource" id="MaterialChainlink"]
+script = ExtResource("7_material")
+material_id = "tempered_chainlink"
+display_name = "Tempered Chainlink"
+rarity_id = "common"
+source_encounter_ids = Array[String](["chainmaster"])
+description = "A command-tempered link cut from Chainmaster's restraint rig."
+
+[sub_resource type="Resource" id="MaterialCommandResonator"]
+script = ExtResource("7_material")
+material_id = "command_resonator"
+display_name = "Command Resonator"
+rarity_id = "uncommon"
+source_encounter_ids = Array[String](["chainmaster"])
+description = "A resonant component that amplifies binding commands."
+
+[sub_resource type="Resource" id="MaterialCollarCore"]
+script = ExtResource("7_material")
+material_id = "chainmaster_collar_core"
+display_name = "Chainmaster Collar Core"
+rarity_id = "rare"
+source_encounter_ids = Array[String](["chainmaster"])
+description = "The intact control core from Chainmaster's iron collar."
+
+[sub_resource type="Resource" id="MaterialPinion"]
+script = ExtResource("7_material")
+material_id = "surgical_pinion"
+display_name = "Surgical Pinion"
+rarity_id = "common"
+source_encounter_ids = Array[String](["carrion_roc"])
+description = "A clean, blade-like pinion harvested from the Carrion Roc."
+
+[sub_resource type="Resource" id="MaterialGrowthGland"]
+script = ExtResource("7_material")
+material_id = "volatile_growth_gland"
+display_name = "Volatile Growth Gland"
+rarity_id = "uncommon"
+source_encounter_ids = Array[String](["carrion_roc"])
+description = "A volatile gland that once fed the Roc's carrion growths."
+
+[sub_resource type="Resource" id="MaterialStressHeart"]
+script = ExtResource("7_material")
+material_id = "carrion_roc_stress_heart"
+display_name = "Carrion Roc Stress Heart"
+rarity_id = "rare"
+source_encounter_ids = Array[String](["carrion_roc"])
+description = "The Roc's overstrained heart, preserved at the instant of defeat."
+
+[sub_resource type="Resource" id="MaterialRageHide"]
+script = ExtResource("7_material")
+material_id = "rage_slick_hide"
+display_name = "Rage-Slick Hide"
+rarity_id = "common"
+source_encounter_ids = Array[String](["twin_maulers"])
+description = "Mauler hide permanently slick with alchemical rage."
+
+[sub_resource type="Resource" id="MaterialSinew"]
+script = ExtResource("7_material")
+material_id = "exhaustion_sinew"
+display_name = "Exhaustion Sinew"
+rarity_id = "uncommon"
+source_encounter_ids = Array[String](["twin_maulers"])
+description = "Sinew locked at the precise boundary between fury and exhaustion."
+
+[sub_resource type="Resource" id="MaterialFangs"]
+script = ExtResource("7_material")
+material_id = "matched_mauler_fangs"
+display_name = "Matched Mauler Fangs"
+rarity_id = "rare"
+source_encounter_ids = Array[String](["twin_maulers"])
+description = "A perfectly matched pair of fangs, one from each Mauler."
+
+[sub_resource type="Resource" id="TraitAftershock"]
+script = ExtResource("12_weapon_trait")
+trait_id = "aftershock"
+display_name = "Aftershock"
+description = "Future hook: a heavy impact may echo after the initial strike."
+hook_id = "aftershock"
+
+[sub_resource type="Resource" id="TraitFaultline"]
+script = ExtResource("12_weapon_trait")
+trait_id = "faultline"
+display_name = "Faultline"
+description = "Future hook: repeated blows may open a fault through the target."
+hook_id = "faultline"
+
+[sub_resource type="Resource" id="TraitBindingLiturgy"]
+script = ExtResource("12_weapon_trait")
+trait_id = "binding_liturgy"
+display_name = "Binding Liturgy"
+description = "Future hook: ritual actions may briefly bind their subject."
+hook_id = "binding_liturgy"
+
+[sub_resource type="Resource" id="TraitBarbedRecall"]
+script = ExtResource("12_weapon_trait")
+trait_id = "barbed_recall"
+display_name = "Barbed Recall"
+description = "Future hook: a hooked strike may recall or reposition a target."
+hook_id = "barbed_recall"
+
+[sub_resource type="Resource" id="TraitCarrionBloom"]
+script = ExtResource("12_weapon_trait")
+trait_id = "carrion_bloom"
+display_name = "Carrion Bloom"
+description = "Future hook: arcane impacts may seed a volatile bloom."
+hook_id = "carrion_bloom"
+
+[sub_resource type="Resource" id="TraitCrashMark"]
+script = ExtResource("12_weapon_trait")
+trait_id = "crash_mark"
+display_name = "Crash Mark"
+description = "Future hook: long-range hits may mark a target for a crash."
+hook_id = "crash_mark"
+
+[sub_resource type="Resource" id="TraitPairedFury"]
+script = ExtResource("12_weapon_trait")
+trait_id = "paired_fury"
+display_name = "Paired Fury"
+description = "Future hook: alternating knife strikes may build paired fury."
+hook_id = "paired_fury"
+
+[sub_resource type="Resource" id="TraitExhaustingBlow"]
+script = ExtResource("12_weapon_trait")
+trait_id = "exhausting_blow"
+display_name = "Exhausting Blow"
+description = "Future hook: a maul impact may exhaust the target."
+hook_id = "exhausting_blow"
+
+[sub_resource type="Resource" id="StatsHeartmaul"]
+script = ExtResource("11_stats")
+power_multiplier = 1.15
+speed_multiplier = 0.9
+range_additive = 0.5
+
+[sub_resource type="Resource" id="StatsCudgel"]
+script = ExtResource("11_stats")
+power_multiplier = 1.08
+speed_multiplier = 1.0
+
+[sub_resource type="Resource" id="StatsLitany"]
+script = ExtResource("11_stats")
+power_multiplier = 1.1
+speed_multiplier = 0.95
+range_additive = 2.0
+
+[sub_resource type="Resource" id="StatsCollarhook"]
+script = ExtResource("11_stats")
+power_multiplier = 1.06
+speed_multiplier = 1.05
+range_additive = 1.0
+
+[sub_resource type="Resource" id="StatsResonator"]
+script = ExtResource("11_stats")
+power_multiplier = 1.1
+speed_multiplier = 1.0
+range_additive = 2.0
+
+[sub_resource type="Resource" id="StatsLongbow"]
+script = ExtResource("11_stats")
+power_multiplier = 1.08
+speed_multiplier = 0.95
+range_additive = 5.0
+
+[sub_resource type="Resource" id="StatsKnives"]
+script = ExtResource("11_stats")
+power_multiplier = 1.04
+speed_multiplier = 1.12
+
+[sub_resource type="Resource" id="StatsRampage"]
+script = ExtResource("11_stats")
+power_multiplier = 1.13
+speed_multiplier = 0.92
+range_additive = 0.5
+
+[sub_resource type="Resource" id="WeaponHeartmaul"]
+script = ExtResource("13_weapon")
+weapon_id = "earthgnasher_heartmaul"
+display_name = "Earthgnasher Heartmaul"
+family_id = "heavy_arms"
+source_encounter_id = "ogre"
+recipe_id = "craft_earthgnasher_heartmaul"
+stat_profile = SubResource("StatsHeartmaul")
+trait_id = "aftershock"
+description = "A heartstone maul built to carry Earthgnasher's impact."
+
+[sub_resource type="Resource" id="WeaponCudgel"]
+script = ExtResource("13_weapon")
+weapon_id = "faultline_cudgel"
+display_name = "Faultline Cudgel"
+family_id = "one_handed_arms"
+source_encounter_id = "ogre"
+recipe_id = "craft_faultline_cudgel"
+stat_profile = SubResource("StatsCudgel")
+trait_id = "faultline"
+description = "A compact cudgel veined with controlled fault lines."
+
+[sub_resource type="Resource" id="WeaponLitany"]
+script = ExtResource("13_weapon")
+weapon_id = "litany_of_links"
+display_name = "Litany of Links"
+family_id = "ritual_implements"
+source_encounter_id = "chainmaster"
+recipe_id = "craft_litany_of_links"
+stat_profile = SubResource("StatsLitany")
+trait_id = "binding_liturgy"
+description = "A ritual chain whose links carry a litany of restraint."
+
+[sub_resource type="Resource" id="WeaponCollarhook"]
+script = ExtResource("13_weapon")
+weapon_id = "collarhook_blade"
+display_name = "Collarhook Blade"
+family_id = "one_handed_arms"
+source_encounter_id = "chainmaster"
+recipe_id = "craft_collarhook_blade"
+stat_profile = SubResource("StatsCollarhook")
+trait_id = "barbed_recall"
+description = "A hooked blade assembled around Chainmaster's collar core."
+
+[sub_resource type="Resource" id="WeaponResonator"]
+script = ExtResource("13_weapon")
+weapon_id = "carrion_resonator"
+display_name = "Carrion Resonator"
+family_id = "arcane_foci"
+source_encounter_id = "carrion_roc"
+recipe_id = "craft_carrion_resonator"
+stat_profile = SubResource("StatsResonator")
+trait_id = "carrion_bloom"
+description = "An arcane focus driven by the Carrion Roc's stress heart."
+
+[sub_resource type="Resource" id="WeaponLongbow"]
+script = ExtResource("13_weapon")
+weapon_id = "crashbone_longbow"
+display_name = "Crashbone Longbow"
+family_id = "projectile_arms"
+source_encounter_id = "carrion_roc"
+recipe_id = "craft_crashbone_longbow"
+stat_profile = SubResource("StatsLongbow")
+trait_id = "crash_mark"
+description = "A longbow tuned to the Roc's violent diving resonance."
+
+[sub_resource type="Resource" id="WeaponKnives"]
+script = ExtResource("13_weapon")
+weapon_id = "twin_fang_knives"
+display_name = "Twin-Fang Knives"
+family_id = "skirmishing_arms"
+source_encounter_id = "twin_maulers"
+recipe_id = "craft_twin_fang_knives"
+stat_profile = SubResource("StatsKnives")
+trait_id = "paired_fury"
+description = "Matched knives shaped around the Maulers' paired fangs."
+
+[sub_resource type="Resource" id="WeaponRampage"]
+script = ExtResource("13_weapon")
+weapon_id = "rampage_maul"
+display_name = "Rampage Maul"
+family_id = "heavy_arms"
+source_encounter_id = "twin_maulers"
+recipe_id = "craft_rampage_maul"
+stat_profile = SubResource("StatsRampage")
+trait_id = "exhausting_blow"
+description = "A maul balanced at the boundary between rampage and exhaustion."
+
+[sub_resource type="Resource" id="IngHeartmaulRare"]
+script = ExtResource("14_ingredient")
+material_id = "earthgnasher_heartstone"
+quantity = 1
+
+[sub_resource type="Resource" id="IngHeartmaulSource"]
+script = ExtResource("14_ingredient")
+material_id = "quake_marrow"
+quantity = 2
+
+[sub_resource type="Resource" id="IngHeartmaulCross"]
+script = ExtResource("14_ingredient")
+material_id = "tempered_chainlink"
+quantity = 2
+
+[sub_resource type="Resource" id="RecipeHeartmaul"]
+script = ExtResource("15_recipe")
+recipe_id = "craft_earthgnasher_heartmaul"
+display_name = "Forge Earthgnasher Heartmaul"
+source_encounter_id = "ogre"
+output_weapon_id = "earthgnasher_heartmaul"
+ingredients = Array[ExtResource("14_ingredient")]([SubResource("IngHeartmaulRare"), SubResource("IngHeartmaulSource"), SubResource("IngHeartmaulCross")])
+
+[sub_resource type="Resource" id="IngCudgelRare"]
+script = ExtResource("14_ingredient")
+material_id = "earthgnasher_heartstone"
+quantity = 1
+
+[sub_resource type="Resource" id="IngCudgelSource"]
+script = ExtResource("14_ingredient")
+material_id = "quake_marrow"
+quantity = 2
+
+[sub_resource type="Resource" id="IngCudgelCross"]
+script = ExtResource("14_ingredient")
+material_id = "rage_slick_hide"
+quantity = 2
+
+[sub_resource type="Resource" id="RecipeCudgel"]
+script = ExtResource("15_recipe")
+recipe_id = "craft_faultline_cudgel"
+display_name = "Forge Faultline Cudgel"
+source_encounter_id = "ogre"
+output_weapon_id = "faultline_cudgel"
+ingredients = Array[ExtResource("14_ingredient")]([SubResource("IngCudgelRare"), SubResource("IngCudgelSource"), SubResource("IngCudgelCross")])
+
+[sub_resource type="Resource" id="IngLitanyRare"]
+script = ExtResource("14_ingredient")
+material_id = "chainmaster_collar_core"
+quantity = 1
+
+[sub_resource type="Resource" id="IngLitanySource"]
+script = ExtResource("14_ingredient")
+material_id = "command_resonator"
+quantity = 2
+
+[sub_resource type="Resource" id="IngLitanyCross"]
+script = ExtResource("14_ingredient")
+material_id = "shale_caked_hide"
+quantity = 2
+
+[sub_resource type="Resource" id="RecipeLitany"]
+script = ExtResource("15_recipe")
+recipe_id = "craft_litany_of_links"
+display_name = "Forge Litany of Links"
+source_encounter_id = "chainmaster"
+output_weapon_id = "litany_of_links"
+ingredients = Array[ExtResource("14_ingredient")]([SubResource("IngLitanyRare"), SubResource("IngLitanySource"), SubResource("IngLitanyCross")])
+
+[sub_resource type="Resource" id="IngCollarhookRare"]
+script = ExtResource("14_ingredient")
+material_id = "chainmaster_collar_core"
+quantity = 1
+
+[sub_resource type="Resource" id="IngCollarhookSource"]
+script = ExtResource("14_ingredient")
+material_id = "command_resonator"
+quantity = 2
+
+[sub_resource type="Resource" id="IngCollarhookCross"]
+script = ExtResource("14_ingredient")
+material_id = "surgical_pinion"
+quantity = 2
+
+[sub_resource type="Resource" id="RecipeCollarhook"]
+script = ExtResource("15_recipe")
+recipe_id = "craft_collarhook_blade"
+display_name = "Forge Collarhook Blade"
+source_encounter_id = "chainmaster"
+output_weapon_id = "collarhook_blade"
+ingredients = Array[ExtResource("14_ingredient")]([SubResource("IngCollarhookRare"), SubResource("IngCollarhookSource"), SubResource("IngCollarhookCross")])
+
+[sub_resource type="Resource" id="IngResonatorRare"]
+script = ExtResource("14_ingredient")
+material_id = "carrion_roc_stress_heart"
+quantity = 1
+
+[sub_resource type="Resource" id="IngResonatorSource"]
+script = ExtResource("14_ingredient")
+material_id = "volatile_growth_gland"
+quantity = 2
+
+[sub_resource type="Resource" id="IngResonatorCross"]
+script = ExtResource("14_ingredient")
+material_id = "command_resonator"
+quantity = 2
+
+[sub_resource type="Resource" id="RecipeResonator"]
+script = ExtResource("15_recipe")
+recipe_id = "craft_carrion_resonator"
+display_name = "Forge Carrion Resonator"
+source_encounter_id = "carrion_roc"
+output_weapon_id = "carrion_resonator"
+ingredients = Array[ExtResource("14_ingredient")]([SubResource("IngResonatorRare"), SubResource("IngResonatorSource"), SubResource("IngResonatorCross")])
+
+[sub_resource type="Resource" id="IngLongbowRare"]
+script = ExtResource("14_ingredient")
+material_id = "carrion_roc_stress_heart"
+quantity = 1
+
+[sub_resource type="Resource" id="IngLongbowSource"]
+script = ExtResource("14_ingredient")
+material_id = "volatile_growth_gland"
+quantity = 2
+
+[sub_resource type="Resource" id="IngLongbowCross"]
+script = ExtResource("14_ingredient")
+material_id = "exhaustion_sinew"
+quantity = 2
+
+[sub_resource type="Resource" id="RecipeLongbow"]
+script = ExtResource("15_recipe")
+recipe_id = "craft_crashbone_longbow"
+display_name = "Forge Crashbone Longbow"
+source_encounter_id = "carrion_roc"
+output_weapon_id = "crashbone_longbow"
+ingredients = Array[ExtResource("14_ingredient")]([SubResource("IngLongbowRare"), SubResource("IngLongbowSource"), SubResource("IngLongbowCross")])
+
+[sub_resource type="Resource" id="IngKnivesRare"]
+script = ExtResource("14_ingredient")
+material_id = "matched_mauler_fangs"
+quantity = 1
+
+[sub_resource type="Resource" id="IngKnivesSource"]
+script = ExtResource("14_ingredient")
+material_id = "exhaustion_sinew"
+quantity = 2
+
+[sub_resource type="Resource" id="IngKnivesCross"]
+script = ExtResource("14_ingredient")
+material_id = "surgical_pinion"
+quantity = 2
+
+[sub_resource type="Resource" id="RecipeKnives"]
+script = ExtResource("15_recipe")
+recipe_id = "craft_twin_fang_knives"
+display_name = "Forge Twin-Fang Knives"
+source_encounter_id = "twin_maulers"
+output_weapon_id = "twin_fang_knives"
+ingredients = Array[ExtResource("14_ingredient")]([SubResource("IngKnivesRare"), SubResource("IngKnivesSource"), SubResource("IngKnivesCross")])
+
+[sub_resource type="Resource" id="IngRampageRare"]
+script = ExtResource("14_ingredient")
+material_id = "matched_mauler_fangs"
+quantity = 1
+
+[sub_resource type="Resource" id="IngRampageSource"]
+script = ExtResource("14_ingredient")
+material_id = "exhaustion_sinew"
+quantity = 2
+
+[sub_resource type="Resource" id="IngRampageCross"]
+script = ExtResource("14_ingredient")
+material_id = "quake_marrow"
+quantity = 2
+
+[sub_resource type="Resource" id="RecipeRampage"]
+script = ExtResource("15_recipe")
+recipe_id = "craft_rampage_maul"
+display_name = "Forge Rampage Maul"
+source_encounter_id = "twin_maulers"
+output_weapon_id = "rampage_maul"
+ingredients = Array[ExtResource("14_ingredient")]([SubResource("IngRampageRare"), SubResource("IngRampageSource"), SubResource("IngRampageCross")])
+
+[sub_resource type="Resource" id="EarthBasicShared"]
+script = ExtResource("8_roll_entry")
+material_id = "crucible_beastbone"
+weight_percent = 45.0
+
+[sub_resource type="Resource" id="EarthBasicCommon"]
+script = ExtResource("8_roll_entry")
+material_id = "shale_caked_hide"
+weight_percent = 35.0
+
+[sub_resource type="Resource" id="EarthBasicUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "quake_marrow"
+weight_percent = 20.0
+
+[sub_resource type="Resource" id="EarthBasic"]
+script = ExtResource("9_roll_layer")
+layer_id = "basic"
+display_name = "Basic"
+minimum_rolls = 2
+maximum_rolls = 4
+entries = Array[ExtResource("8_roll_entry")]([SubResource("EarthBasicShared"), SubResource("EarthBasicCommon"), SubResource("EarthBasicUncommon")])
+
+[sub_resource type="Resource" id="EarthValUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "quake_marrow"
+weight_percent = 70.0
+
+[sub_resource type="Resource" id="EarthValRare"]
+script = ExtResource("8_roll_entry")
+material_id = "earthgnasher_heartstone"
+weight_percent = 30.0
+
+[sub_resource type="Resource" id="EarthValuable"]
+script = ExtResource("9_roll_layer")
+layer_id = "valuable"
+display_name = "Valuable"
+minimum_rolls = 1
+maximum_rolls = 1
+entries = Array[ExtResource("8_roll_entry")]([SubResource("EarthValUncommon"), SubResource("EarthValRare")])
+
+[sub_resource type="Resource" id="EarthBonusShared"]
+script = ExtResource("8_roll_entry")
+material_id = "crucible_beastbone"
+weight_percent = 22.5
+
+[sub_resource type="Resource" id="EarthBonusCommon"]
+script = ExtResource("8_roll_entry")
+material_id = "shale_caked_hide"
+weight_percent = 17.5
+
+[sub_resource type="Resource" id="EarthBonusUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "quake_marrow"
+weight_percent = 45.0
+
+[sub_resource type="Resource" id="EarthBonusRare"]
+script = ExtResource("8_roll_entry")
+material_id = "earthgnasher_heartstone"
+weight_percent = 15.0
+
+[sub_resource type="Resource" id="EarthBonus"]
+script = ExtResource("9_roll_layer")
+layer_id = "bonus"
+display_name = "Bonus"
+entries = Array[ExtResource("8_roll_entry")]([SubResource("EarthBonusShared"), SubResource("EarthBonusCommon"), SubResource("EarthBonusUncommon"), SubResource("EarthBonusRare")])
+
+[sub_resource type="Resource" id="TableEarth"]
+script = ExtResource("10_reward_table")
+reward_table_id = "earthgnasher_rewards"
+encounter_id = "ogre"
+revision = 1
+layers = Array[ExtResource("9_roll_layer")]([SubResource("EarthBasic"), SubResource("EarthValuable"), SubResource("EarthBonus")])
+
+[sub_resource type="Resource" id="ChainBasicShared"]
+script = ExtResource("8_roll_entry")
+material_id = "crucible_binding_iron"
+weight_percent = 45.0
+
+[sub_resource type="Resource" id="ChainBasicCommon"]
+script = ExtResource("8_roll_entry")
+material_id = "tempered_chainlink"
+weight_percent = 35.0
+
+[sub_resource type="Resource" id="ChainBasicUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "command_resonator"
+weight_percent = 20.0
+
+[sub_resource type="Resource" id="ChainBasic"]
+script = ExtResource("9_roll_layer")
+layer_id = "basic"
+display_name = "Basic"
+minimum_rolls = 2
+maximum_rolls = 4
+entries = Array[ExtResource("8_roll_entry")]([SubResource("ChainBasicShared"), SubResource("ChainBasicCommon"), SubResource("ChainBasicUncommon")])
+
+[sub_resource type="Resource" id="ChainValUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "command_resonator"
+weight_percent = 70.0
+
+[sub_resource type="Resource" id="ChainValRare"]
+script = ExtResource("8_roll_entry")
+material_id = "chainmaster_collar_core"
+weight_percent = 30.0
+
+[sub_resource type="Resource" id="ChainValuable"]
+script = ExtResource("9_roll_layer")
+layer_id = "valuable"
+display_name = "Valuable"
+minimum_rolls = 1
+maximum_rolls = 1
+entries = Array[ExtResource("8_roll_entry")]([SubResource("ChainValUncommon"), SubResource("ChainValRare")])
+
+[sub_resource type="Resource" id="ChainBonusShared"]
+script = ExtResource("8_roll_entry")
+material_id = "crucible_binding_iron"
+weight_percent = 22.5
+
+[sub_resource type="Resource" id="ChainBonusCommon"]
+script = ExtResource("8_roll_entry")
+material_id = "tempered_chainlink"
+weight_percent = 17.5
+
+[sub_resource type="Resource" id="ChainBonusUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "command_resonator"
+weight_percent = 45.0
+
+[sub_resource type="Resource" id="ChainBonusRare"]
+script = ExtResource("8_roll_entry")
+material_id = "chainmaster_collar_core"
+weight_percent = 15.0
+
+[sub_resource type="Resource" id="ChainBonus"]
+script = ExtResource("9_roll_layer")
+layer_id = "bonus"
+display_name = "Bonus"
+entries = Array[ExtResource("8_roll_entry")]([SubResource("ChainBonusShared"), SubResource("ChainBonusCommon"), SubResource("ChainBonusUncommon"), SubResource("ChainBonusRare")])
+
+[sub_resource type="Resource" id="TableChain"]
+script = ExtResource("10_reward_table")
+reward_table_id = "chainmaster_rewards"
+encounter_id = "chainmaster"
+revision = 1
+layers = Array[ExtResource("9_roll_layer")]([SubResource("ChainBasic"), SubResource("ChainValuable"), SubResource("ChainBonus")])
+
+[sub_resource type="Resource" id="RocBasicShared"]
+script = ExtResource("8_roll_entry")
+material_id = "crucible_binding_iron"
+weight_percent = 45.0
+
+[sub_resource type="Resource" id="RocBasicCommon"]
+script = ExtResource("8_roll_entry")
+material_id = "surgical_pinion"
+weight_percent = 35.0
+
+[sub_resource type="Resource" id="RocBasicUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "volatile_growth_gland"
+weight_percent = 20.0
+
+[sub_resource type="Resource" id="RocBasic"]
+script = ExtResource("9_roll_layer")
+layer_id = "basic"
+display_name = "Basic"
+minimum_rolls = 2
+maximum_rolls = 4
+entries = Array[ExtResource("8_roll_entry")]([SubResource("RocBasicShared"), SubResource("RocBasicCommon"), SubResource("RocBasicUncommon")])
+
+[sub_resource type="Resource" id="RocValUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "volatile_growth_gland"
+weight_percent = 70.0
+
+[sub_resource type="Resource" id="RocValRare"]
+script = ExtResource("8_roll_entry")
+material_id = "carrion_roc_stress_heart"
+weight_percent = 30.0
+
+[sub_resource type="Resource" id="RocValuable"]
+script = ExtResource("9_roll_layer")
+layer_id = "valuable"
+display_name = "Valuable"
+minimum_rolls = 1
+maximum_rolls = 1
+entries = Array[ExtResource("8_roll_entry")]([SubResource("RocValUncommon"), SubResource("RocValRare")])
+
+[sub_resource type="Resource" id="RocBonusShared"]
+script = ExtResource("8_roll_entry")
+material_id = "crucible_binding_iron"
+weight_percent = 22.5
+
+[sub_resource type="Resource" id="RocBonusCommon"]
+script = ExtResource("8_roll_entry")
+material_id = "surgical_pinion"
+weight_percent = 17.5
+
+[sub_resource type="Resource" id="RocBonusUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "volatile_growth_gland"
+weight_percent = 45.0
+
+[sub_resource type="Resource" id="RocBonusRare"]
+script = ExtResource("8_roll_entry")
+material_id = "carrion_roc_stress_heart"
+weight_percent = 15.0
+
+[sub_resource type="Resource" id="RocBonus"]
+script = ExtResource("9_roll_layer")
+layer_id = "bonus"
+display_name = "Bonus"
+entries = Array[ExtResource("8_roll_entry")]([SubResource("RocBonusShared"), SubResource("RocBonusCommon"), SubResource("RocBonusUncommon"), SubResource("RocBonusRare")])
+
+[sub_resource type="Resource" id="TableRoc"]
+script = ExtResource("10_reward_table")
+reward_table_id = "carrion_roc_rewards"
+encounter_id = "carrion_roc"
+revision = 1
+layers = Array[ExtResource("9_roll_layer")]([SubResource("RocBasic"), SubResource("RocValuable"), SubResource("RocBonus")])
+
+[sub_resource type="Resource" id="MaulersBasicShared"]
+script = ExtResource("8_roll_entry")
+material_id = "crucible_beastbone"
+weight_percent = 45.0
+
+[sub_resource type="Resource" id="MaulersBasicCommon"]
+script = ExtResource("8_roll_entry")
+material_id = "rage_slick_hide"
+weight_percent = 35.0
+
+[sub_resource type="Resource" id="MaulersBasicUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "exhaustion_sinew"
+weight_percent = 20.0
+
+[sub_resource type="Resource" id="MaulersBasic"]
+script = ExtResource("9_roll_layer")
+layer_id = "basic"
+display_name = "Basic"
+minimum_rolls = 2
+maximum_rolls = 4
+entries = Array[ExtResource("8_roll_entry")]([SubResource("MaulersBasicShared"), SubResource("MaulersBasicCommon"), SubResource("MaulersBasicUncommon")])
+
+[sub_resource type="Resource" id="MaulersValUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "exhaustion_sinew"
+weight_percent = 70.0
+
+[sub_resource type="Resource" id="MaulersValRare"]
+script = ExtResource("8_roll_entry")
+material_id = "matched_mauler_fangs"
+weight_percent = 30.0
+
+[sub_resource type="Resource" id="MaulersValuable"]
+script = ExtResource("9_roll_layer")
+layer_id = "valuable"
+display_name = "Valuable"
+minimum_rolls = 1
+maximum_rolls = 1
+entries = Array[ExtResource("8_roll_entry")]([SubResource("MaulersValUncommon"), SubResource("MaulersValRare")])
+
+[sub_resource type="Resource" id="MaulersBonusShared"]
+script = ExtResource("8_roll_entry")
+material_id = "crucible_beastbone"
+weight_percent = 22.5
+
+[sub_resource type="Resource" id="MaulersBonusCommon"]
+script = ExtResource("8_roll_entry")
+material_id = "rage_slick_hide"
+weight_percent = 17.5
+
+[sub_resource type="Resource" id="MaulersBonusUncommon"]
+script = ExtResource("8_roll_entry")
+material_id = "exhaustion_sinew"
+weight_percent = 45.0
+
+[sub_resource type="Resource" id="MaulersBonusRare"]
+script = ExtResource("8_roll_entry")
+material_id = "matched_mauler_fangs"
+weight_percent = 15.0
+
+[sub_resource type="Resource" id="MaulersBonus"]
+script = ExtResource("9_roll_layer")
+layer_id = "bonus"
+display_name = "Bonus"
+entries = Array[ExtResource("8_roll_entry")]([SubResource("MaulersBonusShared"), SubResource("MaulersBonusCommon"), SubResource("MaulersBonusUncommon"), SubResource("MaulersBonusRare")])
+
+[sub_resource type="Resource" id="TableMaulers"]
+script = ExtResource("10_reward_table")
+reward_table_id = "twin_maulers_rewards"
+encounter_id = "twin_maulers"
+revision = 1
+layers = Array[ExtResource("9_roll_layer")]([SubResource("MaulersBasic"), SubResource("MaulersValuable"), SubResource("MaulersBonus")])
+
+[sub_resource type="Resource" id="BossEarthgnasher"]
+script = ExtResource("3_boss")
+encounter_id = "ogre"
+display_name = "Earthgnasher"
+archetype_class_id = "warrior"
+token_id = "earthgnasher_warrior_token"
+reward_table_id = "earthgnasher_rewards"
+weapon_ids = Array[String](["earthgnasher_heartmaul", "faultline_cudgel"])
+
+[sub_resource type="Resource" id="BossChainmaster"]
+script = ExtResource("3_boss")
+encounter_id = "chainmaster"
+display_name = "Chainmaster"
+archetype_class_id = "priest"
+token_id = "chainmaster_priest_token"
+reward_table_id = "chainmaster_rewards"
+weapon_ids = Array[String](["litany_of_links", "collarhook_blade"])
+
+[sub_resource type="Resource" id="BossCarrionRoc"]
+script = ExtResource("3_boss")
+encounter_id = "carrion_roc"
+display_name = "Carrion Roc"
+archetype_class_id = "mage"
+token_id = "carrion_roc_mage_token"
+reward_table_id = "carrion_roc_rewards"
+weapon_ids = Array[String](["carrion_resonator", "crashbone_longbow"])
+
+[sub_resource type="Resource" id="BossTwinMaulers"]
+script = ExtResource("3_boss")
+encounter_id = "twin_maulers"
+display_name = "Twin Maulers"
+archetype_class_id = "rogue"
+token_id = "twin_maulers_rogue_token"
+reward_table_id = "twin_maulers_rewards"
+weapon_ids = Array[String](["twin_fang_knives", "rampage_maul"])
+
+[sub_resource type="Resource" id="RegionBeastCrucible"]
+script = ExtResource("2_region")
+region_id = "beast_crucible"
+display_name = "Beast Crucible"
+bosses = Array[ExtResource("3_boss")]([SubResource("BossEarthgnasher"), SubResource("BossChainmaster"), SubResource("BossCarrionRoc"), SubResource("BossTwinMaulers")])
+
+[resource]
+script = ExtResource("1_catalog")
+catalog_revision = 1
+regions = Array[ExtResource("2_region")]([SubResource("RegionBeastCrucible")])
+weapon_families = Array[ExtResource("4_family")]([SubResource("FamilyOneHanded"), SubResource("FamilyHeavy"), SubResource("FamilyConduit"), SubResource("FamilyRitual"), SubResource("FamilySkirmishing"), SubResource("FamilyProjectile"), SubResource("FamilyBattle"), SubResource("FamilyArcane")])
+advancement_tokens = Array[ExtResource("5_token")]([SubResource("TokenEarthgnasher"), SubResource("TokenChainmaster"), SubResource("TokenCarrionRoc"), SubResource("TokenTwinMaulers")])
+material_rarities = Array[ExtResource("6_rarity")]([SubResource("RarityCommon"), SubResource("RarityUncommon"), SubResource("RarityRare")])
+boss_materials = Array[ExtResource("7_material")]([SubResource("MaterialBeastbone"), SubResource("MaterialShaleHide"), SubResource("MaterialQuakeMarrow"), SubResource("MaterialHeartstone"), SubResource("MaterialBindingIron"), SubResource("MaterialChainlink"), SubResource("MaterialCommandResonator"), SubResource("MaterialCollarCore"), SubResource("MaterialPinion"), SubResource("MaterialGrowthGland"), SubResource("MaterialStressHeart"), SubResource("MaterialRageHide"), SubResource("MaterialSinew"), SubResource("MaterialFangs")])
+reward_tables = Array[ExtResource("10_reward_table")]([SubResource("TableEarth"), SubResource("TableChain"), SubResource("TableRoc"), SubResource("TableMaulers")])
+weapon_traits = Array[ExtResource("12_weapon_trait")]([SubResource("TraitAftershock"), SubResource("TraitFaultline"), SubResource("TraitBindingLiturgy"), SubResource("TraitBarbedRecall"), SubResource("TraitCarrionBloom"), SubResource("TraitCrashMark"), SubResource("TraitPairedFury"), SubResource("TraitExhaustingBlow")])
+weapons = Array[ExtResource("13_weapon")]([SubResource("WeaponHeartmaul"), SubResource("WeaponCudgel"), SubResource("WeaponLitany"), SubResource("WeaponCollarhook"), SubResource("WeaponResonator"), SubResource("WeaponLongbow"), SubResource("WeaponKnives"), SubResource("WeaponRampage")])
+crafting_recipes = Array[ExtResource("15_recipe")]([SubResource("RecipeHeartmaul"), SubResource("RecipeCudgel"), SubResource("RecipeLitany"), SubResource("RecipeCollarhook"), SubResource("RecipeResonator"), SubResource("RecipeLongbow"), SubResource("RecipeKnives"), SubResource("RecipeRampage")])
+raider_traits = Array[Resource]([])

@@ -23,6 +23,7 @@ driver/mix_rate=48000
 [autoload]
 
 TuningCatalog="*res://scripts/core/tuning_catalog.gd"
+ProgressionCatalog="*res://scripts/core/progression_catalog.gd"
 GameState="*res://scripts/core/game_state.gd"
 CampaignState="*res://scripts/core/campaign_state.gd"
 SceneFlow="*res://scripts/core/scene_flow.gd"
