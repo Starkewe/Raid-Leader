@@ -14,6 +14,7 @@ const FormationYardPagePresenterScript := preload(
 )
 const ArchivePagePresenterScript := preload("res://scripts/ui/archive_page_presenter.gd")
 const QuartersPagePresenterScript := preload("res://scripts/ui/quarters_page_presenter.gd")
+const StoragePagePresenterScript := preload("res://scripts/ui/storage_page_presenter.gd")
 
 const COMMAND_CLASS_COLUMN_WIDTH := 170.0
 const COMMAND_NAME_COLUMN_WIDTH := 300.0
@@ -40,6 +41,7 @@ func _ready() -> void:
 		"formation_yard": FormationYardPagePresenterScript.new(),
 		"archive": ArchivePagePresenterScript.new(),
 		"quarters": QuartersPagePresenterScript.new(),
+		"storage": StoragePagePresenterScript.new(),
 	}
 	add_to_group("escape_modal")
 	_build_shell()

@@ -33,6 +33,7 @@
     {"id":"rogue_directional_sprite","kind":"scene","target":"tests/units/rogue_directional_sprite.tscn"},
     {"id":"warrior_directional_sprite","kind":"scene","target":"tests/units/warrior_directional_sprite.tscn"},
     {"id":"camp_debug_visuals","kind":"scene","target":"tests/camp/camp_debug_visuals_regressions.tscn"},
+	{"id":"camp_stores_contract","kind":"scene","target":"tests/camp/camp_stores_contract.tscn"},
     {"id":"camp_population","kind":"scene","target":"tests/camp/camp_population_regressions.tscn"},
     {"id":"campaign_roster_capacity","kind":"scene","target":"tests/camp/campaign_roster_capacity.tscn"},
     {"id":"class_visuals","kind":"scene","target":"tests/ui/class_visuals_regression.tscn"},
