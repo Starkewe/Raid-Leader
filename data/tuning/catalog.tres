@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="TuningCatalogResource" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tuning/tuning_catalog_resource.gd" id="1_catalog"]
+[ext_resource type="Resource" path="res://data/tuning/raid_campaign.tres" id="2_raid"]
+[ext_resource type="Resource" path="res://data/tuning/combat.tres" id="3_combat"]
+[ext_resource type="Resource" path="res://data/tuning/dodge.tres" id="4_dodge"]
+[ext_resource type="Resource" path="res://data/tuning/camp.tres" id="5_camp"]
+[ext_resource type="Resource" path="res://data/tuning/voice.tres" id="6_voice"]
+[ext_resource type="Resource" path="res://data/tuning/runtime_limits.tres" id="7_runtime"]
+
+[resource]
+script = ExtResource("1_catalog")
+raid_campaign = ExtResource("2_raid")
+combat = ExtResource("3_combat")
+dodge = ExtResource("4_dodge")
+camp = ExtResource("5_camp")
+voice = ExtResource("6_voice")
+runtime_limits = ExtResource("7_runtime")

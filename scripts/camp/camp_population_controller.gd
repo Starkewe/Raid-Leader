@@ -8,7 +8,6 @@ const CampContentCatalogScript := preload("res://scripts/core/camp_content_catal
 const CampDefinitionCatalogScript := preload(
 	"res://scripts/core/camp_definition_catalog.gd"
 )
-const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
 const CampConversationDirectorScript := preload(
 	"res://scripts/camp/camp_conversation_director.gd"
 )
@@ -18,8 +17,8 @@ const CampActorLifecycleServiceScript := preload(
 const CampActivityReservationServiceScript := preload(
 	"res://scripts/camp/camp_activity_reservation_service.gd"
 )
-const TUNING := CampV2TuningScript.ACTIVITIES
-const CONVERSATION_TUNING := CampV2TuningScript.CONVERSATIONS
+static var TUNING: CampActivityTuning = TuningCatalogAccess.get_camp().activities
+static var CONVERSATION_TUNING: CampConversationTuning = TuningCatalogAccess.get_camp().conversations
 
 var actors_by_id: Dictionary = {}
 # Compatibility name retained for existing diagnostics; values are now stable station IDs.
@@ -35,7 +34,7 @@ var conversation_director: CampConversationDirector = null
 var actor_lifecycle_service = CampActorLifecycleServiceScript.new()
 var activity_reservation_service = CampActivityReservationServiceScript.new()
 var rng := RandomNumberGenerator.new()
-var reaction_timer: float = 2.0
+var reaction_timer: float = TUNING.visit_reaction_initial_delay_seconds
 var visible_bubble_count: int = 0
 var rebuild_queued: bool = false
 var accelerated_timing: bool = false
@@ -56,7 +55,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	var scaled_delta := delta * (
-		float(TUNING.get("accelerated_timing_multiplier", 6.0))
+		TUNING.accelerated_timing_multiplier
 		if accelerated_timing
 		else 1.0
 	)
@@ -65,7 +64,10 @@ func _process(delta: float) -> void:
 	reaction_timer -= scaled_delta
 
 	if reaction_timer <= 0.0:
-		reaction_timer = rng.randf_range(3.5, 6.5)
+		reaction_timer = rng.randf_range(
+			TUNING.visit_reaction_interval_min_seconds,
+			TUNING.visit_reaction_interval_max_seconds
+		)
 		_try_emit_visit_reaction()
 
 
@@ -156,8 +158,11 @@ func _spawn_actor(
 
 	var actor := actor_lifecycle_service.create_actor(
 		get_parent(), CampMemberScene, member, spawn_position,
-		rng.randf_range(0.4, 4.0),
-		float(TUNING.get("accelerated_timing_multiplier", 6.0)) if accelerated_timing else 1.0,
+		rng.randf_range(
+			TUNING.initial_activity_delay_min_seconds,
+			TUNING.initial_activity_delay_max_seconds
+		),
+		TUNING.accelerated_timing_multiplier if accelerated_timing else 1.0,
 		{
 			"ready_for_activity": Callable(self, "_on_actor_ready_for_activity"),
 			"activity_completed": Callable(self, "_on_activity_completed"),
@@ -342,7 +347,7 @@ func _on_actor_ready_for_activity(member_id: String) -> void:
 		desired_max > 1
 		and (
 			activity.minimum_participants > 1
-			or rng.randf() <= float(TUNING.get("shared_activity_chance", 0.68))
+			or rng.randf() <= TUNING.shared_activity_chance
 		)
 	):
 		participant_ids.append_array(
@@ -426,7 +431,7 @@ func _select_activity(actor: CampMemberActor) -> Dictionary:
 		)
 
 		if activity.activity_id == actor.get_last_activity_id():
-			weight *= 0.25
+			weight *= TUNING.repeated_activity_weight_multiplier
 
 		if weight <= 0.0:
 			continue
@@ -487,13 +492,13 @@ func _find_shared_participants(
 		var member := other_actor.get_member_data()
 		var weight := 1.0
 		if activity.favored_classes.has(String(member.get("unit_class", ""))):
-			weight += 1.0
+			weight += TUNING.shared_favored_class_bonus
 		if _arrays_intersect(member.get("attributes", []), activity.personality_preferences):
-			weight += 0.75
+			weight += TUNING.shared_personality_preference_bonus
 		var other_room := String(member.get("room_assignment_id", ""))
 		if not starter_room.is_empty() and starter_room == other_room:
 			# Roommates are slightly more likely to share camp time, never combat power.
-			weight += float(TUNING.get("roommate_shared_activity_bonus", 0.65))
+			weight += TUNING.roommate_shared_activity_bonus
 		candidates.append({"raider_id": other_id, "weight": weight})
 
 	var result: Array[String] = []
@@ -609,39 +614,43 @@ func _activity_weight(
 	var role := String(member.get("role", ""))
 
 	if activity.favored_classes.has(unit_class):
-		weight *= 1.65
+		weight *= TUNING.favored_class_weight_multiplier
 	if activity.favored_roles.has(role):
-		weight *= 1.2
+		weight *= TUNING.favored_role_weight_multiplier
 
 	for attribute in member.get("attributes", []):
 		if activity.favored_attributes.has(String(attribute)):
-			weight *= 1.3
+			weight *= TUNING.favored_attribute_weight_multiplier
 		if activity.personality_preferences.has(String(attribute)):
-			weight *= 1.15
+			weight *= TUNING.personality_preference_weight_multiplier
 
 	if member.get("preferred_activity_tags", []).has(activity.activity_id):
-		weight *= 1.25
+		weight *= TUNING.preferred_activity_weight_multiplier
 
 	var visit_type := String(CampaignState.get_visit_context().get("type", "normal"))
 
 	if visit_type == "wipe" and activity.activity_id in ["rehearse", "study_target"]:
-		weight *= 1.8
+		weight *= TUNING.wipe_activity_weight_multiplier
 	elif (
 		visit_type in ["first_victory", "repeat_victory", "apex_victory"]
 		and activity.activity_id == "socialize"
 	):
-		weight *= 2.3
+		weight *= TUNING.victory_social_weight_multiplier
 	elif (
 		visit_type in ["recruitment", "roster_change"]
 		and activity.activity_id in ["socialize", "train"]
 	):
-		weight *= 1.7
+		weight *= TUNING.roster_change_activity_weight_multiplier
 
 	if activity.activity_id == String(member.get("last_activity_id", "")):
-		weight *= 0.25
+		weight *= TUNING.repeated_activity_weight_multiplier
 
 	var distance := from_position.distance_to(destination)
-	weight *= clampf(1.15 - distance / 4200.0, 0.55, 1.15)
+	weight *= clampf(
+		TUNING.distance_weight_numerator - distance / TUNING.distance_weight_scale_pixels,
+		TUNING.distance_weight_minimum,
+		TUNING.distance_weight_maximum
+	)
 	return weight
 
 
@@ -657,8 +666,8 @@ func _on_activity_completed(member_id: String, activity_id: String) -> void:
 		_record_routine_completion(member_id, activity)
 
 		if (
-			visible_bubble_count < 3
-			and rng.randf() <= 0.12
+			visible_bubble_count < TUNING.ambient_bubble_cap
+			and rng.randf() <= TUNING.activity_feedback_chance
 			and not activity.feedback_lines.is_empty()
 		):
 			var actor := actors_by_id.get(member_id) as CampMemberActor
@@ -670,7 +679,8 @@ func _on_activity_completed(member_id: String, activity_id: String) -> void:
 						activity.feedback_lines[rng.randi_range(
 							0, activity.feedback_lines.size() - 1
 						)]
-					)
+					),
+					TUNING.activity_feedback_bubble_duration_seconds
 				)
 
 
@@ -694,7 +704,7 @@ func _record_routine_completion(
 
 	if (
 		outcome != "limited_memory_reinforcement"
-		or rng.randf() > float(TUNING.get("routine_memory_reinforcement_chance", 0.06))
+		or rng.randf() > TUNING.routine_memory_reinforcement_chance
 	):
 		return
 	var memories := CampaignState.get_raider_memories(member_id)
@@ -715,7 +725,7 @@ func _on_navigation_failed(member_id: String, activity_id: String) -> void:
 	activity_by_member.erase(member_id)
 	_remove_from_activity_instance(member_id)
 	_reset_runtime_activity(member_id)
-	_set_cooldown(member_id, activity_id, 2.0)
+	_set_cooldown(member_id, activity_id, TUNING.navigation_failure_cooldown_seconds)
 
 
 func _on_bubble_visibility_changed(visible_now: bool) -> void:
@@ -725,7 +735,7 @@ func _on_bubble_visibility_changed(visible_now: bool) -> void:
 
 func _try_emit_visit_reaction() -> void:
 	if (
-		visible_bubble_count >= int(TUNING.get("ambient_bubble_cap", 3))
+		visible_bubble_count >= TUNING.ambient_bubble_cap
 		or actors_by_id.is_empty()
 	):
 		return
@@ -748,7 +758,10 @@ func _try_emit_visit_reaction() -> void:
 			actor != null
 			and not actor.has_visible_bubble()
 			and Dictionary(runtime_state.get("social_interaction", {})).is_empty()
-			and actor.show_bubble(String(lines[rng.randi_range(0, lines.size() - 1)]), 5.5)
+			and actor.show_bubble(
+				String(lines[rng.randi_range(0, lines.size() - 1)]),
+				TUNING.visit_reaction_bubble_duration_seconds
+			)
 		):
 			return
 
@@ -1059,8 +1072,8 @@ func _conversation_targets(participant_ids: Array[String]) -> Array[Vector2]:
 	var second_actor := actors_by_id.get(participant_ids[1]) as CampMemberActor
 	var first_anchor := _conversation_anchor_for(participant_ids[0], first_actor)
 	var second_anchor := _conversation_anchor_for(participant_ids[1], second_actor)
-	var radius := float(CONVERSATION_TUNING.get("participant_conversation_radius", 120.0))
-	var spacing := float(CONVERSATION_TUNING.get("participant_conversation_spacing", 48.0))
+	var radius := CONVERSATION_TUNING.participant_conversation_radius_pixels
+	var spacing := CONVERSATION_TUNING.participant_conversation_spacing_pixels
 
 	if first_anchor.distance_to(second_anchor) <= radius:
 		return [first_anchor, second_anchor]
@@ -1120,7 +1133,7 @@ func cancel_active_conversations() -> int:
 
 func set_accelerated_activity_timing(enabled: bool) -> void:
 	accelerated_timing = enabled
-	var multiplier := float(TUNING.get("accelerated_timing_multiplier", 6.0))
+	var multiplier := TUNING.accelerated_timing_multiplier
 	for actor_value in actors_by_id.values():
 		var actor := actor_value as CampMemberActor
 		if actor != null:
@@ -1212,7 +1225,7 @@ func get_camp_v2_integration_debug_report() -> Dictionary:
 	return {
 		"persistent_state": CampaignState.get_camp_v2_integration_debug_report(),
 		"runtime_state": get_camp_v2_runtime_debug_report(),
-		"tuning": CampV2TuningScript.get_summary(),
+		"tuning": TuningCatalogAccess.get_camp().get_summary(),
 	}
 
 
@@ -1295,7 +1308,12 @@ func _fallback_spawn_position(_index: int, total: int) -> Vector2:
 func _is_position_occupied(position: Vector2) -> bool:
 	for actor_value in actors_by_id.values():
 		var actor := actor_value as CampMemberActor
-		if actor != null and is_instance_valid(actor) and actor.global_position.distance_to(position) < 38.0:
+		if (
+			actor != null
+			and is_instance_valid(actor)
+			and actor.global_position.distance_to(position)
+			< TuningCatalogAccess.get_camp().movement.population_occupancy_distance_pixels
+		):
 			return true
 	return false
 

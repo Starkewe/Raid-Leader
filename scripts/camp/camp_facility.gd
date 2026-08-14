@@ -17,7 +17,7 @@ static var _cell_texture_cache: Dictionary = {}
 @export var visual_offset: Vector2 = Vector2.ZERO
 @export var footprint: Vector2 = Vector2(220, 150)
 @export var collision_offset: Vector2 = Vector2(0, -20)
-@export var interaction_radius: float = 170.0
+@export var interaction_radius: float
 @export var activity_slot_offsets: Array[Vector2] = []
 
 var reservations: Dictionary = {}
@@ -26,6 +26,7 @@ var title_label: Label = null
 
 
 func _ready() -> void:
+	interaction_radius = TuningCatalogAccess.get_camp().get_facility_interaction_radius(facility_id)
 	add_to_group("camp_facility")
 	z_index = clampi(int(global_position.y / 3.0), 0, 1000)
 	_create_sprite()

@@ -1,7 +1,9 @@
 extends RefCounted
 class_name HealingSpellSelector
 
-const INTERRUPTION_CAST_SAFETY_SECONDS: float = 0.1
+static var INTERRUPTION_CAST_SAFETY_SECONDS: float = (
+	TuningCatalogAccess.get_combat().healing_interruption_cast_safety_seconds
+)
 
 var policy: HealingDecisionPolicy = null
 

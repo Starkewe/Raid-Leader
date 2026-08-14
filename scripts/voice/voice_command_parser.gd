@@ -481,7 +481,7 @@ func _extract_healing_scope_suffix(text: String) -> Dictionary:
 			if bool(special_result.get("found", false)):
 				return special_result
 
-	for group_number in range(1, ceili(float(GameState.MAX_RAID_SIZE) / 5.0) + 1):
+	for group_number in range(1, TuningCatalogAccess.get_raid_campaign().get_raid_group_count() + 1):
 		for number_alias in _number_aliases(group_number):
 			for group_word in ["group", "row"]:
 				var group_result := _healing_scope_suffix_result(
@@ -836,7 +836,7 @@ func _extract_selectors(text: String, allow_everyone: bool) -> Array:
 	if allow_everyone and _has_any_word(working, ["everyone", "everybody", "all", "raid"]):
 		_add_selector(selectors, CommandSchemaScript.SELECTOR_EVERYONE, "")
 
-	for group_number in range(1, ceili(float(GameState.MAX_RAID_SIZE) / 5.0) + 1):
+	for group_number in range(1, TuningCatalogAccess.get_raid_campaign().get_raid_group_count() + 1):
 		for number_alias in _number_aliases(group_number):
 			if (
 				_has_phrase(working, "group " + number_alias)

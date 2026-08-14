@@ -8,12 +8,8 @@ const RaiderRelationshipStoreScript := preload(
 const RaiderLoreKnowledgeStoreScript := preload(
 	"res://scripts/data/raider_lore_knowledge_store.gd"
 )
-const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
-
-const NOTABLE_EVENT_LIMIT: int = CampV2TuningScript.EVENT_LIMITS[
-	"notable_event_records"
-]
-const RAID_CHRONICLE_LIMIT: int = CampV2TuningScript.EVENT_LIMITS["raid_chronicle"]
+static var NOTABLE_EVENT_LIMIT: int = TuningCatalogAccess.get_camp().notable_event_record_limit
+static var RAID_CHRONICLE_LIMIT: int = TuningCatalogAccess.get_camp().raid_chronicle_limit
 
 const EVENT_CATEGORIES := {
 	"raider_recruited": "roster",

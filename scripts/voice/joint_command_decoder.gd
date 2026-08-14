@@ -2,9 +2,9 @@ extends RefCounted
 class_name JointCommandDecoder
 
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
-const TuningScript := preload("res://scripts/voice/command_decoder_tuning.gd")
 const VocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
 const VoiceTextSimilarityScript := preload("res://scripts/voice/voice_text_similarity.gd")
+static var TUNING: VoiceTuning = TuningCatalogAccess.get_voice()
 
 const SLOT_EXPLICIT := "explicit"
 const SLOT_OMITTED := "omitted"
@@ -133,7 +133,7 @@ func decode(
 		for candidate in action_candidates:
 			complete_candidates.append(candidate)
 
-	_prune_candidates(complete_candidates, TuningScript.BEAM_WIDTH)
+	_prune_candidates(complete_candidates, TUNING.decoder_beam_width)
 	var scoring_duration := Time.get_ticks_usec() - scoring_started
 
 	if complete_candidates.is_empty():
@@ -545,7 +545,7 @@ func format_diagnostics(resolution: Dictionary) -> String:
 		lines.append("  default target: " + default_reason)
 
 	var candidates: Array = resolution.get("candidate_scores", [])
-	var top_count := mini(TuningScript.TOP_DIAGNOSTIC_CANDIDATES, candidates.size())
+	var top_count := mini(TUNING.top_diagnostic_candidates, candidates.size())
 
 	for index in range(top_count):
 		var candidate: Dictionary = candidates[index]
@@ -660,7 +660,7 @@ func _complete_action_alignment(
 	var leading_tokens := tokens.slice(0, action_start)
 	var trailing_tokens := tokens.slice(action_end)
 
-	if leading_tokens.size() > TuningScript.MAX_WHO_SPAN_TOKENS:
+	if leading_tokens.size() > TUNING.max_who_span_tokens:
 		_increment_reason(exclusion_reasons, "who_span_too_long")
 		return candidates
 
@@ -762,7 +762,7 @@ func _complete_action_alignment(
 					String(candidate.get("exclusion_reason", "validation_failed"))
 				)
 
-	_prune_candidates(candidates, TuningScript.BEAM_WIDTH)
+	_prune_candidates(candidates, TUNING.decoder_beam_width)
 	return candidates
 
 
@@ -805,7 +805,7 @@ func _generate_action_alignments(tokens: Array[String]) -> Array[Dictionary]:
 	for start in range(tokens.size()):
 		for span_length in range(
 			1,
-			mini(TuningScript.MAX_ACTION_SPAN_TOKENS, tokens.size() - start) + 1
+			mini(TUNING.max_action_span_tokens, tokens.size() - start) + 1
 		):
 			var span_end := start + span_length
 			var span_text := _join_tokens(tokens, start, span_end)
@@ -820,13 +820,13 @@ func _generate_action_alignments(tokens: Array[String]) -> Array[Dictionary]:
 
 				if (
 					not exact
-					and similarity < TuningScript.MIN_LOW_CONFIDENCE_ACTION_SIMILARITY
+					and similarity < TUNING.min_low_confidence_action_similarity
 				):
 					continue
 
 				var low_confidence_action := (
 					not exact
-					and similarity < TuningScript.MIN_ACTION_SIMILARITY
+					and similarity < TUNING.min_action_similarity
 				)
 
 				var key := "%s:%d:%d" % [
@@ -863,7 +863,7 @@ func _generate_action_alignments(tokens: Array[String]) -> Array[Dictionary]:
 			for sequence in merged_sequence_cache:
 				var sequence_similarity := _entry_similarity(span_text, sequence)
 
-				if sequence_similarity < TuningScript.MIN_MERGED_SEQUENCE_SIMILARITY:
+				if sequence_similarity < TUNING.min_merged_sequence_similarity:
 					continue
 
 				var sequence_key := "%s:%s:%d:%d" % [
@@ -895,7 +895,7 @@ func _generate_action_alignments(tokens: Array[String]) -> Array[Dictionary]:
 				)
 
 	_sort_alignment_scores(alignments)
-	_prune_candidates(alignments, TuningScript.BEAM_WIDTH * 2, "score")
+	_prune_candidates(alignments, TUNING.decoder_beam_width * 2, "score")
 	return alignments
 
 
@@ -1008,9 +1008,9 @@ func _merged_alignments_for_exact_action(
 			similarity = _entry_similarity(span_text, sequence)
 
 		var minimum_similarity := (
-			TuningScript.MIN_EXACT_ACTION_MERGED_SIMILARITY
+			TUNING.min_exact_action_merged_similarity
 			if same_span_as_action
-			else TuningScript.MIN_MERGED_SEQUENCE_SIMILARITY
+			else TUNING.min_merged_sequence_similarity
 		)
 
 		if similarity < minimum_similarity:
@@ -1031,7 +1031,7 @@ func _merged_alignments_for_exact_action(
 			"alignment": "one_to_many" if same_span_as_action else "many_to_many"
 		})
 
-	_prune_candidates(alignments, TuningScript.BEAM_WIDTH, "score")
+	_prune_candidates(alignments, TUNING.decoder_beam_width, "score")
 	return alignments
 
 
@@ -1064,8 +1064,8 @@ func _collapsed_two_term_similarity(
 		)
 
 		if (
-			first_score < TuningScript.MIN_COLLAPSED_TERM_SIMILARITY
-			or second_score < TuningScript.MIN_COLLAPSED_TERM_SIMILARITY
+			first_score < TUNING.min_collapsed_term_similarity
+			or second_score < TUNING.min_collapsed_term_similarity
 		):
 			continue
 
@@ -1177,8 +1177,8 @@ func _generate_movement_where_candidates(
 		if (
 			not first_region.is_empty()
 			and not second_range.is_empty()
-			and float(first_region.get("score", 0.0)) >= TuningScript.MIN_DESTINATION_SIMILARITY
-			and float(second_range.get("score", 0.0)) >= TuningScript.MIN_DESTINATION_SIMILARITY
+			and float(first_region.get("score", 0.0)) >= TUNING.min_destination_similarity
+			and float(second_range.get("score", 0.0)) >= TUNING.min_destination_similarity
 		):
 			candidates.append(_where_candidate(
 				{
@@ -1201,7 +1201,7 @@ func _generate_movement_where_candidates(
 
 	if (
 		not region_match.is_empty()
-		and float(region_match.get("score", 0.0)) >= TuningScript.MIN_DESTINATION_SIMILARITY
+		and float(region_match.get("score", 0.0)) >= TUNING.min_destination_similarity
 	):
 		var region_where := (
 			"movement_rotate"
@@ -1226,7 +1226,7 @@ func _generate_movement_where_candidates(
 
 		if (
 			not range_match.is_empty()
-			and float(range_match.get("score", 0.0)) >= TuningScript.MIN_DESTINATION_SIMILARITY
+			and float(range_match.get("score", 0.0)) >= TUNING.min_destination_similarity
 		):
 			candidates.append(_where_candidate(
 				{
@@ -1242,7 +1242,7 @@ func _generate_movement_where_candidates(
 			))
 
 	_deduplicate_where_candidates(candidates)
-	_prune_candidates(candidates, TuningScript.BEAM_WIDTH, "score")
+	_prune_candidates(candidates, TUNING.decoder_beam_width, "score")
 	return candidates
 
 
@@ -1297,7 +1297,7 @@ func _generate_who_candidates(
 		return candidates
 
 	var scores: Array = resolution.get("candidate_scores", [])
-	var top_count := mini(TuningScript.TOP_WHO_CANDIDATES_PER_SPAN, scores.size())
+	var top_count := mini(TUNING.top_who_candidates_per_span, scores.size())
 
 	for index in range(top_count):
 		var score_value = scores[index]
@@ -1406,9 +1406,9 @@ func _build_complete_candidate(
 		else "Who → What → Where"
 	)
 	var grammar_score := (
-		TuningScript.OMITTED_WHO_GRAMMAR_SCORE
+		TUNING.omitted_who_grammar_score
 		if who_state == SLOT_DEFAULTED
-		else TuningScript.CANONICAL_ORDER_SCORE
+		else TUNING.canonical_order_score
 	)
 	var alignment_score := _combined_alignment_score(action_alignment, where_candidate)
 	var action_score := float(action_alignment.get("score", 0.0))
@@ -1425,28 +1425,28 @@ func _build_complete_candidate(
 
 	var capability_specificity_bonus := (
 		capability_specificity
-		* TuningScript.MAX_ACTION_CAPABILITY_SPECIFICITY_BONUS
+		* TUNING.max_action_capability_specificity_bonus
 	)
 
 	if who_state == SLOT_DEFAULTED:
-		costs += TuningScript.IMPLICIT_DEFAULT_COST
+		costs += TUNING.implicit_default_cost
 
 	if not bool(action_alignment.get("exact", false)):
-		costs += TuningScript.FUZZY_ACTION_COST
+		costs += TUNING.fuzzy_action_cost
 
 	if destination_score < 0.999 and String(where_candidate.get("state", "")) == SLOT_EXPLICIT:
-		costs += TuningScript.FUZZY_DESTINATION_COST
+		costs += TUNING.fuzzy_destination_cost
 
 	var exact_bonus := 0.0
 
 	if bool(action_alignment.get("exact", false)):
-		exact_bonus += TuningScript.EXACT_EVIDENCE_BONUS * 0.5
+		exact_bonus += TUNING.exact_evidence_bonus * 0.5
 
 	if destination_score >= 0.999 and String(where_candidate.get("state", "")) == SLOT_EXPLICIT:
-		exact_bonus += TuningScript.EXACT_EVIDENCE_BONUS * 0.5
+		exact_bonus += TUNING.exact_evidence_bonus * 0.5
 
 	if bool(where_candidate.get("semantic", false)):
-		exact_bonus += TuningScript.CONTEXTUAL_SEMANTIC_BONUS
+		exact_bonus += TUNING.contextual_semantic_bonus
 
 	var components := {
 		"who_evidence": who_score,
@@ -1465,12 +1465,12 @@ func _build_complete_candidate(
 		"costs": costs
 	}
 	var final_score := (
-		who_score * TuningScript.WEIGHT_WHO_EVIDENCE
-		+ action_score * TuningScript.WEIGHT_ACTION_EVIDENCE
-		+ destination_score * TuningScript.WEIGHT_DESTINATION_EVIDENCE
-		+ grammar_score * TuningScript.WEIGHT_GRAMMAR
-		+ alignment_score * TuningScript.WEIGHT_ALIGNMENT
-		+ TuningScript.WEIGHT_VALIDITY
+		who_score * TUNING.decoder_weight_who_evidence
+		+ action_score * TUNING.decoder_weight_action_evidence
+		+ destination_score * TUNING.decoder_weight_destination_evidence
+		+ grammar_score * TUNING.decoder_weight_grammar
+		+ alignment_score * TUNING.decoder_weight_alignment
+		+ TUNING.decoder_weight_validity
 		+ exact_bonus
 		+ capability_specificity_bonus
 		- costs
@@ -1593,12 +1593,12 @@ func _low_confidence_action_who_is_grounded(
 		best_identity_score = maxf(best_identity_score, identity_score)
 
 	return (
-		selected_identity_score >= TuningScript.MIN_LOW_CONFIDENCE_WHO_IDENTITY_SCORE
+		selected_identity_score >= TUNING.min_low_confidence_who_identity_score
 		and selected_identity_score >= best_identity_score - 0.0001
 		and (
 			runner_up_identity_score < 0.0
 			or selected_identity_score - runner_up_identity_score
-			>= TuningScript.MIN_LOW_CONFIDENCE_WHO_IDENTITY_MARGIN
+			>= TUNING.min_low_confidence_who_identity_margin
 		)
 	)
 
@@ -1628,8 +1628,8 @@ func _default_who_candidate(default_data: Dictionary, filler_count: int) -> Dict
 		"span_text": "",
 		"default_reason": reason,
 		"filler_cost": (
-			TuningScript.FILLER_INTERPRETATION_COST
-			+ maxf(0.0, float(filler_count - 1) * TuningScript.EXTRA_FILLER_TOKEN_COST)
+			TUNING.filler_interpretation_cost
+			+ maxf(0.0, float(filler_count - 1) * TUNING.extra_filler_token_cost)
 			if filler_count > 0
 			else 0.0
 		),
@@ -1794,7 +1794,7 @@ func _combined_alignment_score(
 	where_candidate: Dictionary
 ) -> float:
 	if bool(action_alignment.get("merged", false)):
-		return TuningScript.MERGED_ALIGNMENT_SCORE
+		return TUNING.merged_alignment_score
 
 	var action_alignment_kind := String(action_alignment.get("alignment", "one_to_one"))
 	var where_alignment_kind := String(where_candidate.get("alignment", "one_to_one"))
@@ -1802,7 +1802,7 @@ func _combined_alignment_score(
 	if action_alignment_kind == "many_to_one" or where_alignment_kind in [
 		"many_to_one", "two_ordered_terms"
 	]:
-		return TuningScript.SPLIT_ALIGNMENT_SCORE
+		return TUNING.split_alignment_score
 
 	return 1.0
 
@@ -1935,7 +1935,7 @@ func _has_ambiguous_low_confidence_winner(candidates: Array[Dictionary]) -> bool
 	)
 	return (
 		winner_score - runner_up_score
-		< TuningScript.MIN_LOW_CONFIDENCE_DISTINCT_COMMAND_MARGIN
+		< TUNING.min_low_confidence_distinct_command_margin
 	)
 
 
@@ -1954,7 +1954,7 @@ func _prune_candidates(
 
 func _collect_alternative_spans(alignments: Array[Dictionary]) -> Array[Dictionary]:
 	var spans: Array[Dictionary] = []
-	var limit := mini(TuningScript.TOP_DIAGNOSTIC_CANDIDATES, alignments.size())
+	var limit := mini(TUNING.top_diagnostic_candidates, alignments.size())
 
 	for index in range(limit):
 		var alignment: Dictionary = alignments[index]

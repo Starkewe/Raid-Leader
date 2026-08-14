@@ -1,8 +1,6 @@
 extends RefCounted
 class_name RaidPlanValidator
 
-const MIN_ACTIVE_RAID_SIZE := 1
-const MAX_ACTIVE_RAID_SIZE := 20
 const VALID_REGIONS := [
 	"north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"
 ]
@@ -12,6 +10,9 @@ const VALID_RANGES := ["close", "mid", "far"]
 static func validate(
 	plan: Dictionary, roster_by_id: Dictionary, available_encounter_ids: Array[String]
 ) -> Dictionary:
+	var tuning := TuningCatalogAccess.get_raid_campaign()
+	var minimum_active_raid_size := tuning.minimum_active_raid_size
+	var maximum_active_raid_size := tuning.maximum_raid_size
 	var errors: Array[String] = []
 	var warnings: Array[String] = []
 	var encounter_id := String(plan.get("encounter_id", ""))
@@ -23,18 +24,18 @@ static func validate(
 	if not available_encounter_ids.has(encounter_id):
 		errors.append("The selected boss is not available in this region.")
 
-	if active_ids.size() < MIN_ACTIVE_RAID_SIZE or active_ids.size() > MAX_ACTIVE_RAID_SIZE:
+	if active_ids.size() < minimum_active_raid_size or active_ids.size() > maximum_active_raid_size:
 		errors.append(
 			(
 				"The active raid must contain between %d and %d members; it currently contains %d."
-				% [MIN_ACTIVE_RAID_SIZE, MAX_ACTIVE_RAID_SIZE, active_ids.size()]
+				% [minimum_active_raid_size, maximum_active_raid_size, active_ids.size()]
 			)
 		)
-	elif active_ids.size() < MAX_ACTIVE_RAID_SIZE:
+	elif active_ids.size() < maximum_active_raid_size:
 		warnings.append(
 			(
 				"The raid is embarking below full strength with %d of %d active members."
-				% [active_ids.size(), MAX_ACTIVE_RAID_SIZE]
+				% [active_ids.size(), maximum_active_raid_size]
 			)
 		)
 

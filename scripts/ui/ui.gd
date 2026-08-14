@@ -2,8 +2,6 @@ extends CanvasLayer
 
 const CommandDebugPanelScript := preload("res://scripts/ui/command_debug_panel.gd")
 
-const RAID_GROUP_SIZE := 5
-const RAID_GROUP_COUNT := 4
 const RAID_GROUP_LABEL_FONT_SIZE := 10
 const RAID_GROUP_LABEL_HEIGHT := 12.0
 
@@ -131,6 +129,9 @@ func position_boss_frame_panel():
 
 func setup_raid_frames(units: Array):
 	clear_raid_frames()
+	var raid_tuning := TuningCatalogAccess.get_raid_campaign()
+	var raid_group_size := raid_tuning.raid_group_size
+	var raid_group_count := raid_tuning.get_raid_group_count()
 
 	if raid_frame_stack == null:
 		print("ERROR: Cannot setup raid frames because RaidFrameStack is missing.")
@@ -140,9 +141,9 @@ func setup_raid_frames(units: Array):
 		print("ERROR: Raid member frame scene is not assigned on UI.")
 		return
 
-	for group_index in range(RAID_GROUP_COUNT):
-		var group_start := group_index * RAID_GROUP_SIZE
-		var group_end := mini(group_start + RAID_GROUP_SIZE, units.size())
+	for group_index in range(raid_group_count):
+		var group_start := group_index * raid_group_size
+		var group_end := mini(group_start + raid_group_size, units.size())
 		var group_units: Array = []
 
 		for unit_index in range(group_start, group_end):

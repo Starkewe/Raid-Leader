@@ -1,6 +1,10 @@
 extends CharacterBody2D
 
-@export var speed: float = 300.0
+@export var speed: float
+
+
+func _init() -> void:
+	speed = TuningCatalogAccess.get_combat().combat_player_speed_pixels_per_second
 
 func _physics_process(delta):
 	var direction := Vector2.ZERO

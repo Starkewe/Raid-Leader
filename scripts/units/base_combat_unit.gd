@@ -5,7 +5,6 @@ const CombatMeasurementsScript := preload("res://scripts/combat/combat_measureme
 const CombatAutoPositionerScript := preload(
 	"res://scripts/combat/combat_auto_positioner.gd"
 )
-const DodgeTuningScript := preload("res://scripts/combat/dodge_tuning.gd")
 const ForcedMovementControllerScript := preload("res://scripts/combat/forced_movement_controller.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 const StatusEffectControllerScript := preload("res://scripts/combat/status_effect_controller.gd")
@@ -27,14 +26,26 @@ signal visual_class_changed(class_id: String)
 const ACTION_NONE := ""
 const ACTION_ATTACK := "attack"
 const ACTION_MOVE := "move"
-const TAUNT_COOLDOWN_DURATION := 5.0
+const DODGE_MOVEMENT_PHYSICAL := "physical"
+const DODGE_MOVEMENT_TELEPORT := "teleport"
+const DODGE_TRAIL_PRESENTATION_LIFETIME_SECONDS := 0.12
+const DODGE_TRAIL_PRESENTATION_OPACITY := 0.22
+const DODGE_TRAIL_PRESENTATION_WIDTH_PIXELS := 5.0
+const DODGE_TELEPORT_PRESENTATION_PULSE_LIFETIME_SECONDS := 0.15
+const DODGE_TELEPORT_PRESENTATION_PULSE_RADIUS_PIXELS := 22.0
+const DODGE_TELEPORT_PRESENTATION_PULSE_OPACITY := 0.32
+const DODGE_RAID_FRAME_PRESENTATION_FLASH_DURATION_SECONDS := 0.28
+const DODGE_RAID_FRAME_PRESENTATION_FLASH_STRENGTH := 0.55
+static var TAUNT_COOLDOWN_DURATION: float = (
+	TuningCatalogAccess.get_combat().taunt_cooldown_duration_seconds
+)
 const AUTOMATIC_HAZARD_DODGE_SOURCE_ID := -2
 
 var max_health: int = 100
-var speed: float = 140.0
+var speed: float
 @export var show_world_health_bar: bool = false
-@export var manual_move_stop_distance: float = 12.0
-@export var mini_region_footprint_radius: float = 12.0
+@export var manual_move_stop_distance: float
+@export var mini_region_footprint_radius: float
 
 @onready var health_bar = get_node_or_null("HealthBar")
 
@@ -178,6 +189,14 @@ var automatic_hazard_escape_active: bool:
 var forced_movement_controller: ForcedMovementController = ForcedMovementControllerScript.new()
 var status_effect_controller: StatusEffectController = StatusEffectControllerScript.new()
 var combat_auto_positioner: CombatAutoPositioner = CombatAutoPositionerScript.new()
+
+
+func _init() -> void:
+	var combat_tuning := TuningCatalogAccess.get_combat()
+	speed = combat_tuning.get_base_movement_speed_pixels_per_second()
+	manual_move_stop_distance = combat_tuning.manual_move_stop_distance_pixels
+	mini_region_footprint_radius = combat_tuning.mini_region_footprint_radius_pixels
+
 
 func _ready():
 	forced_movement_controller.setup(self)
@@ -766,7 +785,7 @@ func initialize_dodge_profile() -> void:
 	if dodge_base_class.is_empty() and unit_definition != null:
 		dodge_base_class = unit_definition.get_base_class()
 
-	dodge_profile = DodgeTuningScript.get_profile(dodge_base_class)
+	dodge_profile = TuningCatalogAccess.get_dodge().get_profile(dodge_base_class)
 	dodge_charge_capacity = int(dodge_profile.get("charges", 0))
 	dodge_available_charges = dodge_charge_capacity
 	dodge_recharge_remaining = 0.0
@@ -796,8 +815,8 @@ func try_start_commanded_dodge() -> bool:
 	var final_destination := manual_move_waypoints[manual_move_waypoints.size() - 1]
 	var initial_distance := global_position.distance_to(final_destination)
 	var second_dash_threshold := (
-		DodgeTuningScript.get_mini_region_spacing_pixels()
-		* DodgeTuningScript.ROGUE_SECOND_DASH_THRESHOLD_SPACINGS
+		MovementSlotResolverScript.get_mini_region_spacing_pixels()
+		* TuningCatalogAccess.get_dodge().rogue_second_dash_threshold_spacings
 	)
 	var should_double_dash := (
 		dodge_base_class.to_lower() == "rogue"
@@ -835,7 +854,7 @@ func start_dodge_burst_to_position(
 
 	spend_dodge_charge()
 	dodge_active = true
-	dodge_kind = String(dodge_profile.get("movement_type", DodgeTuningScript.MOVEMENT_PHYSICAL))
+	dodge_kind = String(dodge_profile.get("movement_type", DODGE_MOVEMENT_PHYSICAL))
 	dodge_elapsed = 0.0
 	dodge_duration = maxf(float(dodge_profile.get("duration", 0.0)), 0.001)
 	dodge_start_position = global_position
@@ -844,14 +863,14 @@ func start_dodge_burst_to_position(
 	stop_movement()
 
 	var maximum_distance := (
-		DodgeTuningScript.get_mini_region_spacing_pixels()
+		MovementSlotResolverScript.get_mini_region_spacing_pixels()
 		* float(dodge_profile.get("distance_spacings", 0.0))
 	)
 	var requested_distance := minf(maximum_distance, remaining_distance)
 	var requested_motion := global_position.direction_to(current_destination) * requested_distance
 	dodge_end_position = resolve_valid_burst_endpoint(requested_motion)
 
-	if dodge_kind == DodgeTuningScript.MOVEMENT_TELEPORT:
+	if dodge_kind == DODGE_MOVEMENT_TELEPORT:
 		begin_teleport_visual()
 		global_position = dodge_end_position
 		spawn_teleport_pulse(get_visual_feet_anchor_world_position())
@@ -873,12 +892,12 @@ func update_active_dodge(delta: float) -> void:
 	dodge_elapsed = minf(dodge_elapsed + delta, dodge_duration)
 	var normalized_time := clampf(dodge_elapsed / dodge_duration, 0.0, 1.0)
 
-	if dodge_kind == DodgeTuningScript.MOVEMENT_TELEPORT:
+	if dodge_kind == DODGE_MOVEMENT_TELEPORT:
 		update_teleport_visual(normalized_time)
 	else:
 		var eased_time: float = 1.0 - pow(
 			1.0 - normalized_time,
-			DodgeTuningScript.PHYSICAL_DASH_EASING_STRENGTH
+			TuningCatalogAccess.get_dodge().physical_dash_easing_strength
 		)
 		var intended_position := dodge_start_position.lerp(dodge_end_position, eased_time)
 		var motion := intended_position - global_position
@@ -963,7 +982,7 @@ func update_dodge_recharge(delta: float) -> void:
 
 	dodge_available_charges = mini(dodge_available_charges + 1, dodge_charge_capacity)
 	dodge_flash_segment = maxi(dodge_available_charges - 1, 0)
-	dodge_flash_remaining = DodgeTuningScript.RAID_FRAME_FLASH_DURATION
+	dodge_flash_remaining = DODGE_RAID_FRAME_PRESENTATION_FLASH_DURATION_SECONDS
 
 	if dodge_available_charges < dodge_charge_capacity:
 		dodge_recharge_remaining = get_dodge_recharge_duration()
@@ -1000,10 +1019,10 @@ func get_dodge_charge_display() -> Array[Dictionary]:
 			),
 			"flash_strength": (
 				clampf(
-					dodge_flash_remaining / DodgeTuningScript.RAID_FRAME_FLASH_DURATION,
+					dodge_flash_remaining / DODGE_RAID_FRAME_PRESENTATION_FLASH_DURATION_SECONDS,
 					0.0,
 					1.0
-				) * DodgeTuningScript.RAID_FRAME_FLASH_STRENGTH
+				) * DODGE_RAID_FRAME_PRESENTATION_FLASH_STRENGTH
 			)
 		})
 
@@ -1038,12 +1057,12 @@ func begin_dash_trail() -> void:
 		return
 
 	dodge_trail = Line2D.new()
-	dodge_trail.width = DodgeTuningScript.DASH_TRAIL_WIDTH
+	dodge_trail.width = DODGE_TRAIL_PRESENTATION_WIDTH_PIXELS
 	dodge_trail.default_color = Color(
 		1.0,
 		0.9,
 		0.48,
-		DodgeTuningScript.DASH_TRAIL_OPACITY
+		DODGE_TRAIL_PRESENTATION_OPACITY
 	)
 	dodge_trail.z_index = z_index - 1
 	(parent_node as Node2D).add_child(dodge_trail)
@@ -1062,7 +1081,7 @@ func update_dash_trail() -> void:
 
 
 func finish_dodge_visual() -> void:
-	if dodge_kind == DodgeTuningScript.MOVEMENT_TELEPORT:
+	if dodge_kind == DODGE_MOVEMENT_TELEPORT:
 		restore_dodge_visual()
 		return
 
@@ -1076,7 +1095,7 @@ func finish_dodge_visual() -> void:
 		trail_to_fade,
 		"modulate:a",
 		0.0,
-		DodgeTuningScript.DASH_TRAIL_LIFETIME
+		DODGE_TRAIL_PRESENTATION_LIFETIME_SECONDS
 	)
 	tween.finished.connect(Callable(trail_to_fade, "queue_free"))
 
@@ -1137,14 +1156,14 @@ func spawn_teleport_pulse(world_position: Vector2) -> void:
 
 	for point_index in range(point_count):
 		var angle := TAU * float(point_index) / float(point_count)
-		points.append(Vector2.from_angle(angle) * DodgeTuningScript.TELEPORT_PULSE_SCALE)
+		points.append(Vector2.from_angle(angle) * DODGE_TELEPORT_PRESENTATION_PULSE_RADIUS_PIXELS)
 
 	pulse.polygon = points
 	pulse.color = Color(
 		0.58,
 		0.78,
 		1.0,
-		DodgeTuningScript.TELEPORT_PULSE_OPACITY
+		DODGE_TELEPORT_PRESENTATION_PULSE_OPACITY
 	)
 	pulse.global_position = world_position
 	pulse.z_index = z_index - 1
@@ -1156,13 +1175,13 @@ func spawn_teleport_pulse(world_position: Vector2) -> void:
 		pulse,
 		"scale",
 		Vector2.ONE,
-		DodgeTuningScript.TELEPORT_PULSE_LIFETIME
+		DODGE_TELEPORT_PRESENTATION_PULSE_LIFETIME_SECONDS
 	).from(Vector2.ONE * 0.35)
 	tween.tween_property(
 		pulse,
 		"modulate:a",
 		0.0,
-		DodgeTuningScript.TELEPORT_PULSE_LIFETIME
+		DODGE_TELEPORT_PRESENTATION_PULSE_LIFETIME_SECONDS
 	)
 	tween.finished.connect(Callable(pulse, "queue_free"))
 

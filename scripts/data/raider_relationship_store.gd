@@ -1,15 +1,14 @@
 extends RefCounted
 class_name RaiderRelationshipStore
 
-const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
-const TUNING := CampV2TuningScript.RELATIONSHIPS
+static var TUNING: CampRelationshipTuning = TuningCatalogAccess.get_camp().relationships
 const DIMENSIONS := ["affinity", "trust", "respect", "tension"]
-const VALUE_MIN: int = TUNING["value_minimum"]
-const VALUE_MAX: int = TUNING["value_maximum"]
-const PAIR_MEMORY_LIMIT: int = TUNING["pair_memory_limit"]
-const PERMANENT_PAIR_MEMORY_LIMIT: int = TUNING["permanent_pair_memory_limit"]
-const RECENT_CONVERSATION_LIMIT: int = TUNING["recent_conversation_limit"]
-const THRESHOLDS: Array = TUNING["thresholds"]
+static var VALUE_MIN: int = TUNING.value_minimum
+static var VALUE_MAX: int = TUNING.value_maximum
+static var PAIR_MEMORY_LIMIT: int = TUNING.pair_memory_limit
+static var PERMANENT_PAIR_MEMORY_LIMIT: int = TUNING.permanent_pair_memory_limit
+static var RECENT_CONVERSATION_LIMIT: int = TUNING.recent_conversation_limit
+static var THRESHOLDS: Array = TUNING.thresholds
 
 
 static func create_store() -> Dictionary:
@@ -90,26 +89,45 @@ static func get_public_label(pair: Dictionary, viewer_id: String) -> String:
 	var tension := int(view.get("tension", 0))
 
 	if (
-		affinity >= 60
-		and trust >= 55
-		and int(reciprocal.get("affinity", 0)) >= 45
-		and int(reciprocal.get("trust", 0)) >= 40
+		affinity >= TUNING.close_friend_minimum_affinity
+		and trust >= TUNING.close_friend_minimum_trust
+		and int(reciprocal.get("affinity", 0))
+		>= TUNING.close_friend_reciprocal_minimum_affinity
+		and int(reciprocal.get("trust", 0))
+		>= TUNING.close_friend_reciprocal_minimum_trust
 	):
 		return "Close friends"
 
-	if trust >= 55 and respect >= 20:
+	if (
+		trust >= TUNING.trusted_companion_minimum_trust
+		and respect >= TUNING.trusted_companion_minimum_respect
+	):
 		return "Trusted companion"
 
-	if respect >= 50 and tension >= 20 and affinity < 40:
+	if (
+		respect >= TUNING.respectful_rival_minimum_respect
+		and tension >= TUNING.respectful_rival_minimum_tension
+		and affinity < TUNING.respectful_rival_maximum_affinity_exclusive
+	):
 		return "Respectful rivals"
 
-	if affinity >= 35 and trust < 20:
+	if (
+		affinity >= TUNING.fond_minimum_affinity
+		and trust < TUNING.fond_maximum_trust_exclusive
+	):
 		return "Fond but unreliable"
 
-	if tension >= 50 or affinity <= -30 or trust <= -35:
+	if (
+		tension >= TUNING.strained_minimum_tension
+		or affinity <= TUNING.strained_maximum_affinity
+		or trust <= TUNING.strained_maximum_trust
+	):
 		return "Strained"
 
-	if affinity >= 20 and trust >= 15:
+	if (
+		affinity >= TUNING.becoming_friend_minimum_affinity
+		and trust >= TUNING.becoming_friend_minimum_trust
+	):
 		return "Becoming friends"
 
 	return "Familiar but distant"
@@ -160,7 +178,11 @@ static func _record_shared_context(pair: Dictionary, event: Dictionary) -> void:
 
 	match event_type:
 		"boss_defeated":
-			_append_limited(context["shared_victories"], _context_entry(event), 16)
+			_append_limited(
+				context["shared_victories"],
+				_context_entry(event),
+				TUNING.shared_context_history_limit
+			)
 			creates_pair_memory = bool(data.get("pair_distinctive", false))
 			pair_memory_kind = "shared_victory"
 		"room_assignment_changed":
@@ -171,20 +193,32 @@ static func _record_shared_context(pair: Dictionary, event: Dictionary) -> void:
 					"room_assignment_id": String(data.get("room_assignment_id", "")),
 					"recorded_unix_time": int(event.get("recorded_unix_time", 0)),
 				},
-				16
+				TUNING.shared_context_history_limit
 			)
 			creates_pair_memory = bool(data.get("meaningful", false))
 			pair_memory_kind = "roommate_history"
 		"exceptional_heal_or_rescue":
-			_append_limited(context["rescue_events"], _context_entry(event), 16)
+			_append_limited(
+				context["rescue_events"],
+				_context_entry(event),
+				TUNING.shared_context_history_limit
+			)
 			creates_pair_memory = true
 			pair_memory_kind = "rescue"
 		"meaningful_argument":
-			_append_limited(context["meaningful_arguments"], _context_entry(event), 16)
+			_append_limited(
+				context["meaningful_arguments"],
+				_context_entry(event),
+				TUNING.shared_context_history_limit
+			)
 			creates_pair_memory = true
 			pair_memory_kind = "argument"
 		"mentorship_milestone":
-			_append_limited(context["mentorship"], _context_entry(event), 16)
+			_append_limited(
+				context["mentorship"],
+				_context_entry(event),
+				TUNING.shared_context_history_limit
+			)
 			creates_pair_memory = true
 			pair_memory_kind = "mentorship"
 		"significant_shared_activity":
@@ -244,7 +278,8 @@ static func _apply_qualifying_changes(
 	else:
 		qualifies = (
 			bool(data.get("threshold_worthy", false))
-			and int(event.get("significance", 0)) >= 60
+			and int(event.get("significance", 0))
+			>= TUNING.qualifying_event_minimum_significance
 			and event_type != "significant_shared_activity"
 		)
 
@@ -278,7 +313,7 @@ static func _apply_qualifying_changes(
 			var before := int(values.get(dimension, 0))
 			var delta := int(viewer_deltas[dimension])
 			if not bool(data.get("allow_large_relationship_delta", false)):
-				var maximum_delta := int(TUNING.get("maximum_normal_dimension_delta", 8))
+				var maximum_delta := TUNING.maximum_normal_dimension_delta
 				delta = clampi(delta, -maximum_delta, maximum_delta)
 			var after := clampi(before + delta, VALUE_MIN, VALUE_MAX)
 			values[dimension] = after
@@ -310,7 +345,11 @@ static func _apply_qualifying_changes(
 						"participants": [String(viewer_id), other_id],
 						"memory_category": "social",
 						"subject_key": "%s:%s" % [dimension, threshold],
-						"significance": 75 if abs(threshold) >= 50 else 60,
+						"significance": (
+							TUNING.high_threshold_event_significance
+							if abs(threshold) >= TUNING.permanent_memory_threshold_magnitude
+							else TUNING.standard_threshold_event_significance
+						),
 						"structured_data": threshold_entry.duplicate(true),
 						"prose_template_id": "relationship_threshold_reached",
 						"prose_parameters": {
@@ -319,7 +358,7 @@ static func _apply_qualifying_changes(
 					}
 				)
 
-				if abs(threshold) >= 50:
+				if abs(threshold) >= TUNING.permanent_memory_threshold_magnitude:
 					_record_permanent_relationship_memory(pair, threshold_entry, event)
 
 		directional[viewer_id] = values
@@ -368,12 +407,17 @@ static func _threshold_progress(pair: Dictionary) -> Dictionary:
 			var next_positive := 0
 			var next_negative := 0
 
-			for threshold in [25, 50, 75]:
+			for threshold in THRESHOLDS:
+				if threshold <= 0:
+					continue
 				if value < threshold:
 					next_positive = threshold
 					break
 
-			for threshold in [-25, -50, -75]:
+			for threshold_index in range(THRESHOLDS.size() - 1, -1, -1):
+				var threshold: int = THRESHOLDS[threshold_index]
+				if threshold >= 0:
+					continue
 				if value > threshold:
 					next_negative = threshold
 					break
@@ -450,7 +494,9 @@ static func _sanitize_pair(
 				else {}
 			)
 		else:
-			context[context_key] = _dictionary_array(source_context.get(context_key, []), 16)
+			context[context_key] = _dictionary_array(
+				source_context.get(context_key, []), TUNING.shared_context_history_limit
+			)
 
 	result["shared_context"] = context
 	result["pair_memories"] = _dictionary_array(

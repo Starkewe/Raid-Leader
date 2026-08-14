@@ -4,7 +4,9 @@ const GamePauseMenuScript := preload("res://scripts/ui/game_pause_menu.gd")
 const CampDefinitionCatalogScript := preload("res://scripts/core/camp_definition_catalog.gd")
 const CampNavigationServiceScript := preload("res://scripts/camp/camp_navigation_service.gd")
 const CAMP_WORLD_RECT := Rect2(0, 0, 3000, 2100)
-const POPULATION_COLLISION_MARGIN := 26.0
+static var POPULATION_COLLISION_MARGIN: float = (
+	TuningCatalogAccess.get_camp().movement.population_collision_margin_pixels
+)
 
 @onready var player: CampPlayer = $CampPlayer
 @onready var journal: CampJournal = $CampHUD/CampJournal

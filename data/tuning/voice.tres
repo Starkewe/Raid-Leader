@@ -1,0 +1,65 @@
+[gd_resource type="Resource" script_class="VoiceTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tuning/voice_tuning.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+hard_zero_threshold = 0.000001
+max_hard_zero_run_kept = 16
+min_record_seconds = 0.25
+max_record_seconds = 6.0
+microphone_restart_delay_frames = 2
+target_peak = 0.85
+silence_threshold = 0.0025
+keep_silence_seconds = 0.15
+max_queued_transcriptions = 3
+transcription_ttl_seconds = 8.0
+transcription_process_timeout_seconds = 15.0
+max_action_span_tokens = 3
+max_destination_span_tokens = 3
+max_who_span_tokens = 4
+max_canonical_terms_per_alignment = 2
+decoder_beam_width = 12
+top_diagnostic_candidates = 5
+top_who_candidates_per_span = 5
+min_action_similarity = 0.48
+min_low_confidence_action_similarity = 0.35
+min_destination_similarity = 0.46
+min_merged_sequence_similarity = 0.5
+min_exact_action_merged_similarity = 0.68
+min_collapsed_term_similarity = 0.55
+min_low_confidence_who_identity_score = 0.3
+min_low_confidence_who_identity_margin = 0.1
+max_action_capability_specificity_bonus = 0.04
+min_low_confidence_distinct_command_margin = 0.01
+decoder_weight_who_evidence = 0.34
+decoder_weight_action_evidence = 0.25
+decoder_weight_destination_evidence = 0.22
+decoder_weight_grammar = 0.1
+decoder_weight_alignment = 0.06
+decoder_weight_validity = 0.03
+exact_evidence_bonus = 0.08
+contextual_semantic_bonus = 0.02
+canonical_order_score = 1.0
+omitted_who_grammar_score = 1.0
+merged_alignment_score = 0.88
+split_alignment_score = 0.92
+implicit_default_cost = 0.035
+filler_interpretation_cost = 0.055
+extra_filler_token_cost = 0.01
+fuzzy_action_cost = 0.015
+fuzzy_destination_cost = 0.015
+identity_text_similarity_weight = 0.44
+identity_phonetic_similarity_weight = 0.34
+identity_exact_evidence_weight = 0.14
+identity_partial_evidence_weight = 0.08
+structural_fit_weight = 0.04
+number_agreement_weight = 0.02
+plural_agreement_weight = 0.04
+command_compatibility_weight = 0.02
+target_category_priors = {"numbered_individual": 0.01, "class_group": 0.008, "role_group": 0.004, "everyone": 0.0, "row": 0.0}
+max_recent_use_prior = 0.008
+recent_identity_tie_window = 0.025
+recent_selection_limit = 12
+row_competition_min_identity_score = 0.4
+resolver_debug_top_candidate_count = 5

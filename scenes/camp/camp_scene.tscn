@@ -44,7 +44,6 @@ interactive = true
 visual_offset = Vector2(36, 32)
 footprint = Vector2(310, 155)
 collision_offset = Vector2(0, -15)
-interaction_radius = 225.0
 activity_slot_offsets = Array[Vector2]([Vector2(-190, 170), Vector2(-125, 185), Vector2(125, 185), Vector2(190, 170), Vector2(-210, 40), Vector2(210, 40)])
 
 [node name="Archive" type="Node2D" parent="." unique_id=1292092875]
@@ -56,7 +55,6 @@ responsibility = "Observed boss intelligence and detailed attempt analysis."
 interactive = true
 atlas_cell = Vector2i(1, 0)
 footprint = Vector2(245, 135)
-interaction_radius = 205.0
 activity_slot_offsets = Array[Vector2]([Vector2(-160, 145), Vector2(-95, 155), Vector2(95, 155), Vector2(160, 145), Vector2(-175, 20), Vector2(175, 20)])
 
 [node name="Smith" type="Node2D" parent="." unique_id=1889662562]
@@ -110,7 +108,6 @@ interactive = true
 atlas_cell = Vector2i(2, 1)
 footprint = Vector2(155, 90)
 collision_offset = Vector2(0, 10)
-interaction_radius = 190.0
 activity_slot_offsets = Array[Vector2]([Vector2(-150, -110), Vector2(-80, -145), Vector2(0, -155), Vector2(80, -145), Vector2(150, -110), Vector2(-155, 100), Vector2(-80, 135), Vector2(0, 145), Vector2(80, 135), Vector2(155, 100)])
 
 [node name="VictorySpike" type="Node2D" parent="." unique_id=48518427]

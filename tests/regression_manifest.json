@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "tests": [
+	{"id":"tuning_catalog_contract","kind":"scene","target":"tests/contracts/tuning_catalog_contract.tscn"},
     {"id":"advanced_class_catalog_contract","kind":"scene","target":"tests/contracts/advanced_class_catalog_contract.tscn"},
 	{"id":"encounter_session_contract","kind":"scene","target":"tests/contracts/encounter_session_contract.tscn"},
 	{"id":"campaign_schema_contract","kind":"scene","target":"tests/contracts/campaign_schema_contract.tscn","allow_error_patterns":["Campaign schema is incompatible"]},

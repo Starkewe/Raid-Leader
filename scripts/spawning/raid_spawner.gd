@@ -4,10 +4,17 @@ class_name RaidSpawner
 
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 
-@export var columns: int = 5
-@export var rows: int = 4
-@export var cell_spacing: Vector2 = Vector2(150, 150)
+@export var columns: int
+@export var rows: int
+@export var cell_spacing: Vector2
 @export var add_to_party_group: bool = true
+
+
+func _init() -> void:
+	var raid_tuning := TuningCatalogAccess.get_raid_campaign()
+	columns = raid_tuning.raid_group_size
+	rows = raid_tuning.get_raid_group_count()
+	cell_spacing = TuningCatalogAccess.get_combat().raid_spawn_grid_cell_spacing_pixels
 
 var spawned_units: Array[Node2D] = []
 var scene_cache: Dictionary = {}

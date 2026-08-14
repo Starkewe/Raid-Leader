@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="RuntimeLimitsTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tuning/runtime_limits_tuning.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+combat_log_entries = 10000
+combat_event_queue_compaction_threshold = 32
+projectile_pool_capacity = 64
+impact_pool_capacity = 48

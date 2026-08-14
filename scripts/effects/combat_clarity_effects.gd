@@ -6,8 +6,10 @@ const ProjectileEffectScript := preload("res://scripts/effects/combat_projectile
 const ImpactEffectScript := preload("res://scripts/effects/combat_impact_effect.gd")
 const BossTargetIndicatorScript := preload("res://scripts/effects/boss_target_indicator.gd")
 
-const MAX_PROJECTILE_POOL_SIZE := 64
-const MAX_IMPACT_POOL_SIZE := 48
+static var MAX_PROJECTILE_POOL_SIZE: int = (
+	TuningCatalogAccess.get_runtime_limits().projectile_pool_capacity
+)
+static var MAX_IMPACT_POOL_SIZE: int = TuningCatalogAccess.get_runtime_limits().impact_pool_capacity
 
 var party_member_ids: Dictionary = {}
 var boss: Node2D = null

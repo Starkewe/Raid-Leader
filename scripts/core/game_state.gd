@@ -12,7 +12,7 @@ signal raid_debug_context_changed(context: String)
 const RAID_TEST_ARGUMENT := "--raid-test"
 const RAID_TEST_RUN_ENVIRONMENT := "RAID_TEST_RUN_ID"
 
-const MAX_RAID_SIZE: int = 20
+var MAX_RAID_SIZE: int
 const SETTINGS_PATH := "user://raid_leader_settings.cfg"
 const RAID_DEBUG_CONTENT_GROUP: StringName = &"raid_debug_content"
 const RAID_DEBUG_AVAILABLE_META: StringName = &"raid_debug_available"
@@ -144,6 +144,7 @@ var voice_settings: Dictionary = {
 
 
 func _enter_tree() -> void:
+	MAX_RAID_SIZE = TuningCatalogAccess.get_raid_campaign().maximum_raid_size
 	if not is_raid_test_mode():
 		return
 

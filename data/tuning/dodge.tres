@@ -1,0 +1,46 @@
+[gd_resource type="Resource" script_class="DodgeTuningResource" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tuning/dodge_tuning_resource.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/tuning/dodge_profile_tuning.gd" id="2"]
+
+[sub_resource type="Resource" id="DodgeProfile_warrior"]
+script = ExtResource("2")
+base_class = "warrior"
+charges = 1
+movement_type = "physical"
+distance_spacings = 0.5
+duration_seconds = 0.225
+recharge_seconds = 8.0
+
+[sub_resource type="Resource" id="DodgeProfile_priest"]
+script = ExtResource("2")
+base_class = "priest"
+charges = 1
+movement_type = "physical"
+distance_spacings = 1.0
+duration_seconds = 0.3
+recharge_seconds = 8.0
+
+[sub_resource type="Resource" id="DodgeProfile_rogue"]
+script = ExtResource("2")
+base_class = "rogue"
+charges = 2
+movement_type = "physical"
+distance_spacings = 1.0
+duration_seconds = 0.3
+recharge_seconds = 8.0
+
+[sub_resource type="Resource" id="DodgeProfile_mage"]
+script = ExtResource("2")
+base_class = "mage"
+charges = 1
+movement_type = "teleport"
+distance_spacings = 1.5
+duration_seconds = 0.15
+recharge_seconds = 12.0
+
+[resource]
+script = ExtResource("1")
+physical_dash_easing_strength = 4.5
+rogue_second_dash_threshold_spacings = 2.0
+profiles = Array[ExtResource("2")]([SubResource("DodgeProfile_warrior"), SubResource("DodgeProfile_priest"), SubResource("DodgeProfile_rogue"), SubResource("DodgeProfile_mage")])

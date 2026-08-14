@@ -2,7 +2,9 @@ extends RefCounted
 
 class_name CombatEventQueue
 
-const COMPACT_THRESHOLD: int = 32
+static var COMPACT_THRESHOLD: int = (
+	TuningCatalogAccess.get_runtime_limits().combat_event_queue_compaction_threshold
+)
 
 var event_queue: Array[Dictionary] = []
 var read_index: int = 0

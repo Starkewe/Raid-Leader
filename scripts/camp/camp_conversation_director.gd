@@ -2,12 +2,11 @@ extends Node
 class_name CampConversationDirector
 
 const CampContentCatalogScript := preload("res://scripts/core/camp_content_catalog.gd")
-const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
-const TUNING := CampV2TuningScript.CONVERSATIONS
+static var TUNING: CampConversationTuning = TuningCatalogAccess.get_camp().conversations
 
-const DEBUG_HISTORY_LIMIT: int = TUNING["debug_history_limit"]
-const DEFAULT_BUBBLE_DURATION: float = TUNING["bubble_duration_seconds"]
-const DEFAULT_PAUSE_DURATION: float = TUNING["pause_between_bubbles_seconds"]
+static var DEBUG_HISTORY_LIMIT: int = TUNING.debug_history_limit
+static var DEFAULT_BUBBLE_DURATION: float = TUNING.bubble_duration_seconds
+static var DEFAULT_PAUSE_DURATION: float = TUNING.pause_between_bubbles_seconds
 
 var population_controller: Node = null
 var frames: Array[Dictionary] = []
@@ -114,7 +113,7 @@ func cancel_for_participants(participant_ids_value: Variant, reason: String = "p
 
 func set_accelerated_timing(enabled: bool) -> void:
 	timing_multiplier = (
-		float(CampV2TuningScript.ACTIVITIES.get("accelerated_timing_multiplier", 6.0))
+		TuningCatalogAccess.get_camp().activities.accelerated_timing_multiplier
 		if enabled
 		else 1.0
 	)
@@ -161,7 +160,7 @@ func _try_start_scheduled_conversation(kind: String, ignore_cooldowns: bool) -> 
 		var frame: Dictionary = frame_value
 		if kind == "ordinary" and String(frame.get("kind", "ordinary")) == "lore":
 			# Lore is rare but remains part of the ordinary scheduler at a lower weight.
-			if rng.randf() > float(TUNING.get("lore_schedule_chance", 0.16)):
+			if rng.randf() > TUNING.lore_schedule_chance:
 				_record_rejection(frame, "lore_rarity_gate")
 				continue
 
@@ -270,14 +269,12 @@ func _evaluate_frame(
 		and String(first.get("room_assignment_id", ""))
 		== String(second.get("room_assignment_id", ""))
 	):
-		selection_weight *= float(TUNING.get("roommate_selection_multiplier", 1.25))
+		selection_weight *= TUNING.roommate_selection_multiplier
 	if (
 		first.get("authored_connection_ids", []).has(second_id)
 		or second.get("authored_connection_ids", []).has(first_id)
 	):
-		selection_weight *= float(
-			TUNING.get("authored_connection_selection_multiplier", 1.35)
-		)
+		selection_weight *= TUNING.authored_connection_selection_multiplier
 	selection_weight *= _repetition_multiplier(
 		frame,
 		[first_id, second_id],
@@ -462,7 +459,10 @@ func _present_current_beat(conversation_id: String) -> void:
 	var role := String(beat.get("speaker_role", ""))
 	var speaker_id := String(session.get("participants_by_role", {}).get(role, ""))
 	var text := _resolve_authored_line(beat, speaker_id, session)
-	var duration := maxf(float(beat.get("duration", DEFAULT_BUBBLE_DURATION)), 2.8)
+	var duration := maxf(
+		float(beat.get("duration", DEFAULT_BUBBLE_DURATION)),
+		TUNING.minimum_bubble_duration_seconds
+	)
 	if not bool(population_controller.call("show_conversation_bubble", speaker_id, text, duration)):
 		_cancel_conversation(conversation_id, "bubble_unavailable")
 		return
@@ -670,7 +670,9 @@ func _apply_frame_cooldowns(selection: Dictionary) -> void:
 	var keys: Dictionary = selection.get("cooldown_keys", {})
 	var mapped: Dictionary = {}
 	for kind in keys.keys():
-		mapped[String(keys[kind])] = float(durations.get(kind, 60.0))
+		mapped[String(keys[kind])] = float(
+			durations.get(kind, TUNING.default_frame_cooldown_seconds)
+		)
 	CampaignState.set_conversation_cooldowns(mapped)
 
 
@@ -702,16 +704,16 @@ func _record_rejection(
 func _maximum_concurrent_conversations() -> int:
 	var population := int(population_controller.call("get_actor_count"))
 	return (
-		int(TUNING.get("maximum_conversations_large_camp", 2))
-		if population >= int(TUNING.get("population_for_second_conversation", 25))
-		else int(TUNING.get("maximum_conversations_small_camp", 1))
+		TUNING.maximum_conversations_large_camp
+		if population >= TUNING.population_for_second_conversation
+		else TUNING.maximum_conversations_small_camp
 	)
 
 
 func _repetition_multiplier(
 	frame: Dictionary, participant_ids: Array[String], station_id: String, activity_id: String
 ) -> float:
-	var recent := CampaignState.get_conversation_summaries("", 12)
+	var recent := CampaignState.get_conversation_summaries("", TUNING.recent_summary_limit)
 	var result := 1.0
 	var frame_id := String(frame.get("frame_id", ""))
 	var sorted_ids := participant_ids.duplicate()
@@ -719,28 +721,26 @@ func _repetition_multiplier(
 	for offset in range(recent.size()):
 		var index := recent.size() - 1 - offset
 		var summary: Dictionary = recent[index]
-		if offset < 8 and String(summary.get("frame_id", "")) == frame_id:
-			result *= float(TUNING.get("recent_frame_repetition_multiplier", 0.35))
+		if offset < TUNING.recent_frame_window and String(summary.get("frame_id", "")) == frame_id:
+			result *= TUNING.recent_frame_repetition_multiplier
 			break
-	for offset in range(mini(recent.size(), 6)):
+	for offset in range(mini(recent.size(), TUNING.recent_pair_window)):
 		var summary: Dictionary = recent[recent.size() - 1 - offset]
 		var summary_ids := _string_array(summary.get("participant_ids", []))
 		summary_ids.sort()
 		if summary_ids == sorted_ids:
-			result *= float(TUNING.get("recent_pair_repetition_multiplier", 0.55))
+			result *= TUNING.recent_pair_repetition_multiplier
 			break
 	if not station_id.is_empty() or not activity_id.is_empty():
-		for offset in range(mini(recent.size(), 5)):
+		for offset in range(mini(recent.size(), TUNING.recent_context_window)):
 			var summary: Dictionary = recent[recent.size() - 1 - offset]
 			if (
 				String(summary.get("station_id", "")) == station_id
 				and String(summary.get("activity_id", "")) == activity_id
 			):
-				result *= float(
-					TUNING.get("recent_context_repetition_multiplier", 0.65)
-				)
+				result *= TUNING.recent_context_repetition_multiplier
 				break
-	return maxf(result, 0.05)
+	return maxf(result, TUNING.minimum_repetition_multiplier)
 
 
 func _arrays_intersect(first: Array, second: Array) -> bool:

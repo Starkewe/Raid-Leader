@@ -6,24 +6,24 @@ signal recording_finished(wav_path: String)
 signal recording_failed(reason: String)
 
 @export var remove_capture_padding: bool = true
-@export var hard_zero_threshold: float = 0.000001
-@export var max_hard_zero_run_kept: int = 16
+@export var hard_zero_threshold: float
+@export var max_hard_zero_run_kept: int
 
 @export var push_to_talk_action: String = "voice_push_to_talk"
 @export var capture_bus_name: String = "VoiceCapture"
 @export var mic_player_path: NodePath
 @export var transcriber_path: NodePath
 
-@export var min_record_seconds: float = 0.25
-@export var max_record_seconds: float = 6.0
-@export var microphone_restart_delay_frames: int = 2
+@export var min_record_seconds: float
+@export var max_record_seconds: float
+@export var microphone_restart_delay_frames: int
 
 @export var normalize_output: bool = true
-@export var target_peak: float = 0.85
+@export var target_peak: float
 
 @export var trim_silence: bool = false
-@export var silence_threshold: float = 0.0025
-@export var keep_silence_seconds: float = 0.15
+@export var silence_threshold: float
+@export var keep_silence_seconds: float
 
 var _capture_effect: AudioEffectCapture = null
 var _is_recording: bool = false
@@ -41,6 +41,18 @@ var _capture_discarded_frames_at_start: int = 0
 
 @onready var _mic_player: AudioStreamPlayer = get_node_or_null(mic_player_path) as AudioStreamPlayer
 @onready var _transcriber: VoiceTranscriberClient = get_node_or_null(transcriber_path) as VoiceTranscriberClient
+
+
+func _init() -> void:
+	var voice_tuning := TuningCatalogAccess.get_voice()
+	hard_zero_threshold = voice_tuning.hard_zero_threshold
+	max_hard_zero_run_kept = voice_tuning.max_hard_zero_run_kept
+	min_record_seconds = voice_tuning.min_record_seconds
+	max_record_seconds = voice_tuning.max_record_seconds
+	microphone_restart_delay_frames = voice_tuning.microphone_restart_delay_frames
+	target_peak = voice_tuning.target_peak
+	silence_threshold = voice_tuning.silence_threshold
+	keep_silence_seconds = voice_tuning.keep_silence_seconds
 
 
 func _ready() -> void:
