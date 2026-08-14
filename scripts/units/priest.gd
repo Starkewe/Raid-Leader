@@ -111,9 +111,9 @@ func configure_from_definition(definition: UnitDefinition) -> void:
 
 	if cure_action != null:
 		cure_display_name = cure_action.display_name
-		cure_range_units = cure_action.range_units
-		cure_cooldown = cure_action.cooldown
-		cure_cast_time = cure_action.cast_time
+		cure_range_units = apply_weapon_range(cure_action.range_units)
+		cure_cooldown = apply_weapon_timing(cure_action.cooldown)
+		cure_cast_time = apply_weapon_timing(cure_action.cast_time)
 
 
 func _ensure_healing_spell_selector() -> void:
@@ -162,10 +162,10 @@ func _apply_heal_action(action: UnitActionDefinition) -> void:
 	active_heal_action = action
 	heal_ability_id = action.action_id
 	heal_display_name = action.display_name
-	cast_range_units = action.range_units
-	heal_amount = action.amount
-	heal_cooldown = action.cooldown
-	heal_cast_time = action.cast_time
+	cast_range_units = apply_weapon_range(action.range_units)
+	heal_amount = apply_weapon_power(action.amount)
+	heal_cooldown = apply_weapon_timing(action.cooldown)
+	heal_cast_time = apply_weapon_timing(action.cast_time)
 
 
 func _ready():

@@ -61,14 +61,14 @@ func configure_from_definition(definition: UnitDefinition) -> void:
 	var interrupt_action := definition.get_action(interrupt_ability_id)
 
 	if attack_action != null:
-		attack_range_units = attack_action.range_units
-		stop_distance_units = attack_action.stop_distance_units
-		attack_damage = attack_action.amount
-		attack_cooldown = attack_action.cooldown
+		attack_range_units = apply_weapon_range(attack_action.range_units)
+		stop_distance_units = apply_weapon_range(attack_action.stop_distance_units)
+		attack_damage = apply_weapon_power(attack_action.amount)
+		attack_cooldown = apply_weapon_timing(attack_action.cooldown)
 
 	if interrupt_action != null:
-		interrupt_range_units = interrupt_action.range_units
-		interrupt_cooldown = interrupt_action.cooldown
+		interrupt_range_units = apply_weapon_range(interrupt_action.range_units)
+		interrupt_cooldown = apply_weapon_timing(interrupt_action.cooldown)
 
 
 func _ready():

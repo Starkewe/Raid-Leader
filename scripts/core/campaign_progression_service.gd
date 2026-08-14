@@ -160,6 +160,350 @@ func get_material_count(campaign: Dictionary, material_id: String) -> int:
 	)
 
 
+func check_craft(campaign: Dictionary, recipe_id: String) -> Dictionary:
+	var recipe := ProgressionCatalog.get_recipe(recipe_id)
+	if recipe == null:
+		return _result(
+			false, "unknown_definition", "Unknown crafting recipe '%s'." % recipe_id
+		)
+	var progression := sanitize_progression(campaign.get("progression", {}))
+	if not Array(progression.get("unlocked_recipe_ids", [])).has(recipe_id):
+		return _result(
+			false, "locked_recipe", "Recipe '%s' has not been unlocked." % recipe.display_name
+		)
+	if Array(progression.get("crafted_weapon_ids", [])).has(recipe.output_weapon_id):
+		return _result(
+			false, "already_owned", "Weapon '%s' has already been crafted." % recipe.output_weapon_id
+		)
+	var materials: Dictionary = progression.get("materials", {})
+	var missing: Dictionary = {}
+	var ingredient_status: Array[Dictionary] = []
+	for ingredient in recipe.ingredients:
+		if ingredient == null:
+			continue
+		var owned := int(materials.get(ingredient.material_id, 0))
+		var required := ingredient.quantity
+		ingredient_status.append({
+			"material_id": ingredient.material_id,
+			"owned": owned,
+			"required": required,
+			"missing": maxi(required - owned, 0),
+		})
+		if owned < required:
+			missing[ingredient.material_id] = required - owned
+	if not missing.is_empty():
+		return {
+			"ok": false,
+			"status": "insufficient_materials",
+			"message": "Missing materials for '%s'." % recipe.display_name,
+			"recipe_id": recipe_id,
+			"output_weapon_id": recipe.output_weapon_id,
+			"ingredients": ingredient_status,
+			"missing_materials": missing,
+		}
+	return {
+		"ok": true,
+		"status": "craftable",
+		"message": "All materials are available for '%s'." % recipe.display_name,
+		"recipe_id": recipe_id,
+		"output_weapon_id": recipe.output_weapon_id,
+		"ingredients": ingredient_status,
+		"missing_materials": {},
+	}
+
+
+func craft(campaign: Dictionary, recipe_id: String) -> Dictionary:
+	var validation := check_craft(campaign, recipe_id)
+	if not bool(validation.get("ok", false)):
+		return validation
+	var recipe := ProgressionCatalog.get_recipe(recipe_id)
+	if recipe == null:
+		return _result(false, "unknown_definition", "Crafting recipe disappeared.")
+	var progression := sanitize_progression(campaign.get("progression", {}))
+	var materials: Dictionary = Dictionary(progression.get("materials", {})).duplicate(true)
+	for ingredient in recipe.ingredients:
+		if ingredient == null:
+			continue
+		var remaining := int(materials.get(ingredient.material_id, 0)) - ingredient.quantity
+		if remaining > 0:
+			materials[ingredient.material_id] = remaining
+		else:
+			materials.erase(ingredient.material_id)
+	var crafted_ids: Array = Array(progression.get("crafted_weapon_ids", [])).duplicate()
+	_append_unique_string(crafted_ids, recipe.output_weapon_id)
+	progression["materials"] = materials
+	progression["crafted_weapon_ids"] = crafted_ids
+	campaign["progression"] = progression
+	return {
+		"ok": true,
+		"status": "crafted",
+		"message": "Crafted '%s'." % recipe.output_weapon_id,
+		"recipe_id": recipe_id,
+		"weapon_id": recipe.output_weapon_id,
+		"consumed": Array(validation.get("ingredients", [])).duplicate(true),
+	}
+
+
+func check_equip(
+	campaign: Dictionary, raider_id: String, weapon_id: String
+) -> Dictionary:
+	var state_result := _get_raider_state(campaign, raider_id)
+	if not bool(state_result.get("ok", false)):
+		return state_result
+	var weapon := ProgressionCatalog.get_weapon(weapon_id)
+	if weapon == null:
+		return _result(
+			false, "unknown_definition", "Unknown weapon definition '%s'." % weapon_id
+		)
+	var progression := sanitize_progression(campaign.get("progression", {}))
+	if not Array(progression.get("crafted_weapon_ids", [])).has(weapon_id):
+		return _result(
+			false, "not_crafted", "Weapon '%s' has not been crafted." % weapon.display_name
+		)
+	var state: Dictionary = state_result.get("state", {})
+	var class_id := _effective_class_id(state)
+	if not ProgressionCatalog.is_family_compatible(class_id, weapon.family_id):
+		return {
+			"ok": false,
+			"status": "incompatible_family",
+			"message": "Class '%s' cannot equip %s." % [class_id, weapon.family_id],
+			"raider_id": raider_id,
+			"weapon_id": weapon_id,
+			"class_id": class_id,
+			"family_id": weapon.family_id,
+		}
+	return {
+		"ok": true,
+		"status": "equippable",
+		"message": "Weapon can be equipped.",
+		"raider_id": raider_id,
+		"weapon_id": weapon_id,
+		"class_id": class_id,
+		"family_id": weapon.family_id,
+	}
+
+
+func equip(campaign: Dictionary, raider_id: String, weapon_id: String) -> Dictionary:
+	var validation := check_equip(campaign, raider_id, weapon_id)
+	if not bool(validation.get("ok", false)):
+		return validation
+	var states: Dictionary = campaign.get("raider_states", {})
+	var state: Dictionary = Dictionary(states[raider_id]).duplicate(true)
+	state["equipped_weapon_id"] = weapon_id
+	states[raider_id] = state
+	campaign["raider_states"] = states
+	validation["ok"] = true
+	validation["status"] = "equipped"
+	validation["message"] = "Weapon equipped."
+	return validation
+
+
+func unequip(campaign: Dictionary, raider_id: String) -> Dictionary:
+	var state_result := _get_raider_state(campaign, raider_id)
+	if not bool(state_result.get("ok", false)):
+		return state_result
+	var states: Dictionary = campaign.get("raider_states", {})
+	var state: Dictionary = Dictionary(states[raider_id]).duplicate(true)
+	var previous_weapon_id := String(state.get("equipped_weapon_id", ""))
+	state["equipped_weapon_id"] = ""
+	states[raider_id] = state
+	campaign["raider_states"] = states
+	return {
+		"ok": true,
+		"status": "unequipped",
+		"message": "Weapon unequipped.",
+		"raider_id": raider_id,
+		"previous_weapon_id": previous_weapon_id,
+	}
+
+
+func get_raider_traits(campaign: Dictionary, raider_id: String) -> Dictionary:
+	var state_result := _get_raider_state(campaign, raider_id)
+	if not bool(state_result.get("ok", false)):
+		return state_result
+	var state: Dictionary = state_result.get("state", {})
+	return {
+		"ok": true,
+		"status": "read",
+		"message": "Trait slots read.",
+		"raider_id": raider_id,
+		"major_trait_id": String(state.get("major_trait_id", "")),
+		"minor_trait_ids": _two_trait_slots(state.get("minor_trait_ids", [])),
+		"doctrine_id": String(state.get("doctrine_id", "")),
+	}
+
+
+func assign_major_trait(
+	campaign: Dictionary, raider_id: String, trait_id: String,
+	catalog_override: ProgressionCatalogResource = null
+) -> Dictionary:
+	return _assign_trait(
+		campaign, raider_id, "major", 0, trait_id, catalog_override
+	)
+
+
+func assign_minor_trait(
+	campaign: Dictionary, raider_id: String, slot_index: int, trait_id: String,
+	catalog_override: ProgressionCatalogResource = null
+) -> Dictionary:
+	if slot_index < 0 or slot_index > 1:
+		return _result(false, "invalid_slot", "Minor trait slot must be 0 or 1.")
+	return _assign_trait(
+		campaign, raider_id, "minor", slot_index, trait_id, catalog_override
+	)
+
+
+func get_missing_content_diagnostics(campaign: Dictionary) -> Array[Dictionary]:
+	var diagnostics: Array[Dictionary] = []
+	var progression := sanitize_progression(campaign.get("progression", {}))
+	for token_id in progression.get("advancement_token_ids", []):
+		if ProgressionCatalog.get_advancement_token(String(token_id)) == null:
+			diagnostics.append(_missing("progression.advancement_token_ids", String(token_id)))
+	for material_id_value in progression.get("materials", {}):
+		if ProgressionCatalog.get_material(String(material_id_value)) == null:
+			diagnostics.append(_missing("progression.materials", String(material_id_value)))
+	for recipe_id in progression.get("unlocked_recipe_ids", []):
+		if ProgressionCatalog.get_recipe(String(recipe_id)) == null:
+			diagnostics.append(_missing("progression.unlocked_recipe_ids", String(recipe_id)))
+	for weapon_id in progression.get("crafted_weapon_ids", []):
+		if ProgressionCatalog.get_weapon(String(weapon_id)) == null:
+			diagnostics.append(_missing("progression.crafted_weapon_ids", String(weapon_id)))
+	for raider_id_value in campaign.get("raider_states", {}):
+		var raider_id := String(raider_id_value)
+		var state_value: Variant = campaign["raider_states"][raider_id_value]
+		if not state_value is Dictionary:
+			continue
+		var state: Dictionary = state_value
+		var weapon_id := String(state.get("equipped_weapon_id", ""))
+		if not weapon_id.is_empty() and ProgressionCatalog.get_weapon(weapon_id) == null:
+			diagnostics.append(_missing("raider_states.%s.equipped_weapon_id" % raider_id, weapon_id))
+		var major_id := String(state.get("major_trait_id", ""))
+		if not major_id.is_empty() and ProgressionCatalog.get_raider_trait(major_id) == null:
+			diagnostics.append(_missing("raider_states.%s.major_trait_id" % raider_id, major_id))
+		for minor_id in state.get("minor_trait_ids", []):
+			if not String(minor_id).is_empty() and ProgressionCatalog.get_raider_trait(String(minor_id)) == null:
+				diagnostics.append(_missing("raider_states.%s.minor_trait_ids" % raider_id, String(minor_id)))
+	return diagnostics
+
+
+func debug_grant_materials(campaign: Dictionary, grants: Dictionary) -> Dictionary:
+	var progression := sanitize_progression(campaign.get("progression", {}))
+	var materials: Dictionary = Dictionary(progression.get("materials", {})).duplicate(true)
+	for material_id_value in grants:
+		var material_id := String(material_id_value)
+		var quantity := int(grants[material_id_value])
+		if ProgressionCatalog.get_material(material_id) == null:
+			return _result(false, "unknown_definition", "Unknown material '%s'." % material_id)
+		if quantity <= 0:
+			return _result(false, "invalid_quantity", "Grant quantities must be positive.")
+	for material_id_value in grants:
+		var material_id := String(material_id_value)
+		materials[material_id] = int(materials.get(material_id, 0)) + int(grants[material_id_value])
+	progression["materials"] = materials
+	campaign["progression"] = progression
+	return {
+		"ok": true, "status": "granted", "message": "Fixture materials granted.",
+		"materials": grants.duplicate(true),
+	}
+
+
+func _assign_trait(
+	campaign: Dictionary, raider_id: String, tier: String, slot_index: int,
+	trait_id: String, catalog_override: ProgressionCatalogResource
+) -> Dictionary:
+	var state_result := _get_raider_state(campaign, raider_id)
+	if not bool(state_result.get("ok", false)):
+		return state_result
+	var states: Dictionary = campaign.get("raider_states", {})
+	var state: Dictionary = Dictionary(states[raider_id]).duplicate(true)
+	var minor_slots := _two_trait_slots(state.get("minor_trait_ids", []))
+	if trait_id.is_empty():
+		if tier == "major":
+			state["major_trait_id"] = ""
+		else:
+			minor_slots[slot_index] = ""
+			state["minor_trait_ids"] = minor_slots
+		states[raider_id] = state
+		campaign["raider_states"] = states
+		return {
+			"ok": true, "status": "cleared", "message": "Trait slot cleared.",
+			"raider_id": raider_id, "tier": tier, "slot_index": slot_index,
+		}
+	var raider_trait := _get_raider_trait_definition(trait_id, catalog_override)
+	if raider_trait == null:
+		return _result(false, "unknown_definition", "Unknown raider trait '%s'." % trait_id)
+	if raider_trait.tier != tier:
+		return _result(
+			false, "incompatible_tier",
+			"Trait '%s' belongs in a %s slot." % [trait_id, raider_trait.tier]
+		)
+	var assigned_ids: Array = [String(state.get("major_trait_id", ""))]
+	assigned_ids.append_array(minor_slots)
+	if assigned_ids.has(trait_id):
+		return _result(false, "duplicate_trait", "A raider cannot assign the same trait twice.")
+	if tier == "major":
+		state["major_trait_id"] = trait_id
+	else:
+		minor_slots[slot_index] = trait_id
+		state["minor_trait_ids"] = minor_slots
+	states[raider_id] = state
+	campaign["raider_states"] = states
+	return {
+		"ok": true, "status": "assigned", "message": "Trait assigned.",
+		"raider_id": raider_id, "trait_id": trait_id,
+		"tier": tier, "slot_index": slot_index,
+	}
+
+
+func _get_raider_trait_definition(
+	trait_id: String, catalog_override: ProgressionCatalogResource
+) -> RaiderTraitDefinition:
+	if catalog_override == null:
+		return ProgressionCatalog.get_raider_trait(trait_id)
+	for raider_trait in catalog_override.raider_traits:
+		if raider_trait != null and raider_trait.trait_id == trait_id:
+			return raider_trait
+	return null
+
+
+func _get_raider_state(campaign: Dictionary, raider_id: String) -> Dictionary:
+	var states_value: Variant = campaign.get("raider_states", {})
+	if not states_value is Dictionary or not states_value.has(raider_id):
+		return _result(false, "unknown_raider", "Unknown campaign raider '%s'." % raider_id)
+	var state_value: Variant = states_value[raider_id]
+	if not state_value is Dictionary:
+		return _result(false, "unknown_raider", "Raider state is malformed.")
+	return {"ok": true, "status": "found", "message": "", "state": state_value}
+
+
+func _effective_class_id(state: Dictionary) -> String:
+	var advanced_id := String(state.get("advanced_class_id", ""))
+	return (
+		RaiderClassCatalog.normalize_class_id(advanced_id)
+		if not advanced_id.is_empty()
+		else RaiderClassCatalog.normalize_class_id(String(state.get("current_class", "")))
+	)
+
+
+func _two_trait_slots(value: Variant) -> Array[String]:
+	var result: Array[String] = ["", ""]
+	if value is Array:
+		for index in range(mini(2, value.size())):
+			result[index] = String(value[index])
+	return result
+
+
+func _missing(path: String, stable_id: String) -> Dictionary:
+	return {
+		"status": "missing_content", "path": path, "stable_id": stable_id,
+		"message": "Saved content '%s' is unavailable at %s." % [stable_id, path],
+	}
+
+
+func _result(ok: bool, status: String, message: String) -> Dictionary:
+	return {"ok": ok, "status": status, "message": message}
+
+
 static func _unique_string_array(value: Variant) -> Array[String]:
 	var result: Array[String] = []
 	if value is Array:

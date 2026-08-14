@@ -1424,6 +1424,100 @@ func owns_crafted_weapon(weapon_id: String) -> bool:
 	return get_crafted_weapon_ids().has(weapon_id)
 
 
+func check_craft(recipe_id: String) -> Dictionary:
+	return _progression_service.check_craft(_campaign, recipe_id)
+
+
+func craft(recipe_id: String) -> Dictionary:
+	var result := _progression_service.craft(_campaign, recipe_id)
+	if bool(result.get("ok", false)):
+		state_changed.emit()
+	return result
+
+
+func check_equip_weapon(raider_id: String, weapon_id: String) -> Dictionary:
+	return _progression_service.check_equip(_campaign, raider_id, weapon_id)
+
+
+func equip_weapon(raider_id: String, weapon_id: String) -> Dictionary:
+	var result := _progression_service.equip(_campaign, raider_id, weapon_id)
+	if bool(result.get("ok", false)):
+		roster_changed.emit()
+		state_changed.emit()
+	return result
+
+
+func unequip_weapon(raider_id: String) -> Dictionary:
+	var result := _progression_service.unequip(_campaign, raider_id)
+	if bool(result.get("ok", false)):
+		roster_changed.emit()
+		state_changed.emit()
+	return result
+
+
+func get_raider_traits(raider_id: String) -> Dictionary:
+	return _progression_service.get_raider_traits(_campaign, raider_id)
+
+
+func assign_raider_major_trait(raider_id: String, trait_id: String) -> Dictionary:
+	var result := _progression_service.assign_major_trait(_campaign, raider_id, trait_id)
+	if bool(result.get("ok", false)):
+		state_changed.emit()
+	return result
+
+
+func assign_raider_minor_trait(
+	raider_id: String, slot_index: int, trait_id: String
+) -> Dictionary:
+	var result := _progression_service.assign_minor_trait(
+		_campaign, raider_id, slot_index, trait_id
+	)
+	if bool(result.get("ok", false)):
+		state_changed.emit()
+	return result
+
+
+func get_progression_diagnostics() -> Array[Dictionary]:
+	return _progression_service.get_missing_content_diagnostics(_campaign)
+
+
+func get_equipped_raider_ids(weapon_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for raider_id_value in _campaign.get("raider_states", {}):
+		var state_value: Variant = _campaign["raider_states"][raider_id_value]
+		if (
+			state_value is Dictionary
+			and String(state_value.get("equipped_weapon_id", "")) == weapon_id
+		):
+			result.append(String(raider_id_value))
+	return result
+
+
+func debug_grant_progression_materials(grants: Dictionary) -> Dictionary:
+	if not OS.is_debug_build():
+		return {
+			"ok": false, "status": "debug_only",
+			"message": "Fixture grants are available only in debug builds.",
+		}
+	var result := _progression_service.debug_grant_materials(_campaign, grants)
+	if bool(result.get("ok", false)):
+		state_changed.emit()
+	return result
+
+
+func debug_process_seeded_reward(encounter_id: String, attempt_id: String) -> Dictionary:
+	if not OS.is_debug_build():
+		return {
+			"ok": false, "status": "debug_only",
+			"message": "Seeded rewards are available only in debug builds.",
+		}
+	return record_attempt({
+		"attempt_id": attempt_id,
+		"encounter_id": encounter_id,
+		"outcome": "victory",
+	})
+
+
 func get_region_progression(region_id: String = FIRST_REGION_ID) -> Dictionary:
 	return ProgressionCatalog.get_region_completion(
 		region_id, Dictionary(_campaign.get("victories", {}))
@@ -2576,6 +2670,7 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 	if assigned_roles.is_empty():
 		assigned_roles.append(default_role)
 
+	var weapon_projection := _runtime_weapon_projection(state)
 	return {
 		# Camp V1 and combat consumers retain these aliases while stable IDs remain authoritative.
 		"member_id": raider_id,
@@ -2605,6 +2700,15 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 		"recruit_order": int(definition.get("catalog_order", 0)),
 		"advanced_class_id": String(state.get("advanced_class_id", "")),
 		"specialization_id": String(state.get("specialization_id", "")),
+		"equipped_weapon_id": String(state.get("equipped_weapon_id", "")),
+		"weapon_runtime_active": bool(weapon_projection.get("active", false)),
+		"weapon_family_id": String(weapon_projection.get("family_id", "")),
+		"weapon_stat_profile": Dictionary(
+			weapon_projection.get("stat_profile", {})
+		).duplicate(true),
+		"major_trait_id": String(state.get("major_trait_id", "")),
+		"minor_trait_ids": Array(state.get("minor_trait_ids", [])).duplicate(),
+		"doctrine_id": String(state.get("doctrine_id", "")),
 		"source_id": String(state.get("recruitment_source", "unknown")),
 		"room_assignment_id": String(state.get("room_assignment_id", "")),
 		"combat_history": Dictionary(state.get("combat_history", {})).duplicate(true),
@@ -2613,6 +2717,25 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 		).duplicate(),
 		"descriptive_title": String(state.get("descriptive_title", "")),
 		"debug_member": bool(state.get("debug_member", false)),
+	}
+
+
+func _runtime_weapon_projection(state: Dictionary) -> Dictionary:
+	var weapon_id := String(state.get("equipped_weapon_id", ""))
+	if weapon_id.is_empty() or not owns_crafted_weapon(weapon_id):
+		return {"active": false, "family_id": "", "stat_profile": {}}
+	var weapon := ProgressionCatalog.get_weapon(weapon_id)
+	if weapon == null or weapon.stat_profile == null:
+		return {"active": false, "family_id": "", "stat_profile": {}}
+	var class_id := String(state.get("advanced_class_id", ""))
+	if class_id.is_empty():
+		class_id = String(state.get("current_class", ""))
+	if not ProgressionCatalog.is_family_compatible(class_id, weapon.family_id):
+		return {"active": false, "family_id": weapon.family_id, "stat_profile": {}}
+	return {
+		"active": true,
+		"family_id": weapon.family_id,
+		"stat_profile": weapon.stat_profile.to_dictionary(),
 	}
 
 

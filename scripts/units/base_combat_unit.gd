@@ -18,6 +18,7 @@ const RaiderClassCatalogScript := preload(
 const CampaignRosterServiceScript := preload(
 	"res://scripts/core/campaign_roster_service.gd"
 )
+const WeaponStatAdapterScript := preload("res://scripts/combat/weapon_stat_adapter.gd")
 
 signal defeated(unit)
 signal combat_event(event: Dictionary)
@@ -64,6 +65,8 @@ var unit_number: int = 0
 var display_name: String = ""
 var member_id: String = ""
 var member_description: String = ""
+var equipped_weapon_id: String = ""
+var weapon_stat_profile: Dictionary = WeaponStatAdapterScript.IDENTITY_PROFILE.duplicate()
 
 var command_movement_controller = CommandMovementControllerScript.new()
 var dodge_controller = DodgeControllerScript.new()
@@ -1453,6 +1456,8 @@ func setup_unit_identity(new_unit_class: String, new_unit_number: int):
 	display_name = new_unit_class + " " + str(new_unit_number)
 	member_id = ""
 	member_description = ""
+	equipped_weapon_id = ""
+	weapon_stat_profile = WeaponStatAdapterScript.IDENTITY_PROFILE.duplicate()
 
 
 func setup_campaign_identity(member_data: Dictionary, class_ordinal: int) -> void:
@@ -1461,7 +1466,28 @@ func setup_campaign_identity(member_data: Dictionary, class_ordinal: int) -> voi
 	member_id = String(member_data.get("member_id", ""))
 	display_name = CampaignRosterServiceScript.format_member_label(member_data)
 	member_description = String(member_data.get("description", ""))
+	equipped_weapon_id = (
+		String(member_data.get("equipped_weapon_id", ""))
+		if bool(member_data.get("weapon_runtime_active", false)) else ""
+	)
+	weapon_stat_profile = WeaponStatAdapterScript.sanitize_profile(
+		member_data.get("weapon_stat_profile", {})
+	)
+	if unit_definition != null:
+		configure_from_definition(unit_definition)
 	configure_runtime_roles(member_data.get("roles", [member_data.get("role", "dps")]))
+
+
+func apply_weapon_power(base_amount: int) -> int:
+	return WeaponStatAdapterScript.apply_power(base_amount, weapon_stat_profile)
+
+
+func apply_weapon_timing(base_duration: float) -> float:
+	return WeaponStatAdapterScript.apply_timing(base_duration, weapon_stat_profile)
+
+
+func apply_weapon_range(base_range: float) -> float:
+	return WeaponStatAdapterScript.apply_range(base_range, weapon_stat_profile)
 
 
 func configure_runtime_roles(assigned_roles: Array) -> void:
