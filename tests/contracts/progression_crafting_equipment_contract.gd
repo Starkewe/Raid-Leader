@@ -76,12 +76,29 @@ func _validate_equipment(
 		failures.append("Uncrafted weapon did not report not_crafted.")
 	if CampaignState.check_equip_weapon(mage_id, "earthgnasher_heartmaul").get("status") != "incompatible_family":
 		failures.append("Incompatible base class did not report incompatible_family.")
-	for warrior_id in [warrior_a, warrior_b]:
-		var equipped := CampaignState.equip_weapon(warrior_id, "earthgnasher_heartmaul")
-		if equipped.get("status") != "equipped":
-			failures.append("Reusable weapon could not equip warrior '%s'." % warrior_id)
-	if CampaignState.get_equipped_raider_ids("earthgnasher_heartmaul").size() != 2:
-		failures.append("Reusable weapon was treated as a single item instance.")
+	var equipped := CampaignState.equip_weapon(warrior_a, "earthgnasher_heartmaul")
+	if equipped.get("status") != "equipped":
+		failures.append("Unique weapon could not equip its first compatible warrior.")
+	var already := CampaignState.check_equip_weapon(warrior_a, "earthgnasher_heartmaul")
+	if already.get("status") != "already_equipped" or already.get("holder_id") != warrior_a:
+		failures.append("Current holder did not report already_equipped with its holder ID.")
+	var assigned := CampaignState.check_equip_weapon(warrior_b, "earthgnasher_heartmaul")
+	if assigned.get("status") != "assigned_elsewhere" or assigned.get("holder_id") != warrior_a:
+		failures.append("Second raider did not see assigned_elsewhere with the current holder ID.")
+	if CampaignState.equip_weapon(warrior_b, "earthgnasher_heartmaul").get("status") != "assigned_elsewhere":
+		failures.append("A unique weapon was reused without manual unequip.")
+	if CampaignState.get_weapon_holder_id("earthgnasher_heartmaul") != warrior_a:
+		failures.append("Unique weapon holder lookup returned the wrong raider.")
+	if CampaignState.get_equipped_raider_ids("earthgnasher_heartmaul") != [warrior_a]:
+		failures.append("Compatibility getter exposed more than the unique holder.")
+
+	var projected := CampaignState.get_member(warrior_a)
+	if not bool(projected.get("weapon_runtime_active", false)):
+		failures.append("Equipped weapon was not projected into combat member data.")
+	if projected.get("weapon_stat_profile", {}).is_empty():
+		failures.append("Combat member projection omitted weapon stats.")
+	if CampaignState.unequip_weapon(warrior_a).get("status") != "unequipped":
+		failures.append("Current holder could not manually unequip the weapon.")
 
 	if CampaignState.check_equip_weapon(rogue_id, "earthgnasher_heartmaul").get("status") != "incompatible_family":
 		failures.append("Base Rogue incorrectly equipped Heavy Arms.")
@@ -91,16 +108,25 @@ func _validate_equipment(
 		failures.append("Echo Butcher did not receive Heavy Arms compatibility.")
 	if not CampaignState.owns_advancement_token("earthgnasher_warrior_token"):
 		failures.append("Equipment/class seam unexpectedly consumed the boss token.")
+	CampaignState.unequip_weapon(rogue_id)
+	if CampaignState.equip_weapon(warrior_b, "earthgnasher_heartmaul").get("status") != "equipped":
+		failures.append("Weapon did not become available after its holder manually unequipped it.")
 
-	var projected := CampaignState.get_member(warrior_a)
-	if not bool(projected.get("weapon_runtime_active", false)):
-		failures.append("Equipped weapon was not projected into combat member data.")
-	if projected.get("weapon_stat_profile", {}).is_empty():
-		failures.append("Combat member projection omitted weapon stats.")
-	if CampaignState.unequip_weapon(warrior_b).get("status") != "unequipped":
-		failures.append("Weapon could not be unequipped.")
-	if not String(CampaignState.get_member(warrior_b).get("equipped_weapon_id", "")).is_empty():
-		failures.append("Unequipped weapon remained in projected member data.")
+	CampaignState.debug_grant_progression_materials({
+		"earthgnasher_heartstone": 1, "quake_marrow": 2, "rage_slick_hide": 2,
+	})
+	if CampaignState.craft("craft_faultline_cudgel").get("status") != "crafted":
+		failures.append("Replacement-weapon fixture could not be crafted.")
+	else:
+		var replacement := CampaignState.equip_weapon(warrior_b, "faultline_cudgel")
+		if replacement.get("status") != "equipped":
+			failures.append("Compatible replacement weapon could not be equipped.")
+		elif replacement.get("previous_weapon_id") != "earthgnasher_heartmaul":
+			failures.append("Replacement result omitted the released previous weapon ID.")
+		if not CampaignState.get_weapon_holder_id("earthgnasher_heartmaul").is_empty():
+			failures.append("Replacing equipment did not return the previous weapon to the armory.")
+		if CampaignState.equip_weapon(warrior_a, "earthgnasher_heartmaul").get("status") != "equipped":
+			failures.append("Released previous weapon could not be assigned to another raider.")
 
 	var states: Dictionary = CampaignState.get_campaign_snapshot().get("raider_states", {})
 	states[warrior_b]["equipped_weapon_id"] = "returning_content_weapon"
@@ -118,6 +144,10 @@ func _validate_equipment(
 				found_diagnostic = true
 		if not found_diagnostic:
 			failures.append("Unknown saved weapon did not report missing-content diagnostics.")
+		if CampaignState.unequip_weapon(warrior_b).get("status") != "unequipped":
+			failures.append("Missing-content weapon could not be unequipped for recovery.")
+		if not String(CampaignState.get_member(warrior_b).get("equipped_weapon_id", "")).is_empty():
+			failures.append("Missing-content unequip did not clear the saved slot.")
 
 
 func _validate_traits(failures: Array[String]) -> void:

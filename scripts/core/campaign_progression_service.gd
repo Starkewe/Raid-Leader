@@ -18,7 +18,10 @@ static func create_empty_progression() -> Dictionary:
 		"first_clear_claims": [],
 		"processed_attempt_ids": [],
 		"reward_receipts": {},
-		"migration_diagnostics": {"unknown_legacy_boss_resources": {}},
+		"migration_diagnostics": {
+			"unknown_legacy_boss_resources": {},
+			"duplicate_weapon_assignments": [],
+		},
 	}
 
 
@@ -60,6 +63,24 @@ static func sanitize_progression(value: Variant) -> Dictionary:
 				diagnostics["unknown_legacy_boss_resources"][encounter_id_value]
 			)
 	diagnostics["unknown_legacy_boss_resources"] = unknown_legacy
+	var duplicate_assignments: Array[Dictionary] = []
+	var duplicate_value: Variant = diagnostics.get("duplicate_weapon_assignments", [])
+	if duplicate_value is Array:
+		for entry_value in duplicate_value:
+			if not entry_value is Dictionary:
+				continue
+			var entry: Dictionary = Dictionary(entry_value).duplicate(true)
+			entry["status"] = "duplicate_weapon_assignment_reconciled"
+			entry["weapon_id"] = String(entry.get("weapon_id", entry.get("stable_id", "")))
+			entry["stable_id"] = entry["weapon_id"]
+			entry["kept_raider_id"] = String(entry.get("kept_raider_id", ""))
+			entry["current_holder_id"] = entry["kept_raider_id"]
+			entry["cleared_raider_ids"] = _unique_string_array(
+				entry.get("cleared_raider_ids", [])
+			)
+			entry["message"] = String(entry.get("message", ""))
+			duplicate_assignments.append(entry)
+	diagnostics["duplicate_weapon_assignments"] = duplicate_assignments
 	if diagnostics.has("migrated_from_schema_version"):
 		diagnostics["migrated_from_schema_version"] = int(
 			diagnostics["migrated_from_schema_version"]
@@ -260,6 +281,37 @@ func check_equip(
 		return _result(
 			false, "not_crafted", "Weapon '%s' has not been crafted." % weapon.display_name
 		)
+	var holder_id := get_weapon_holder_id(campaign, weapon_id)
+	if holder_id == raider_id:
+		return {
+			"ok": false,
+			"status": "already_equipped",
+			"message": "Weapon is already equipped by this raider.",
+			"raider_id": raider_id,
+			"weapon_id": weapon_id,
+			"holder_id": holder_id,
+			"current_holder_id": holder_id,
+		}
+	if not holder_id.is_empty():
+		return {
+			"ok": false,
+			"status": "assigned_elsewhere",
+			"message": "Weapon is assigned to '%s'; unequip it there first." % holder_id,
+			"raider_id": raider_id,
+			"weapon_id": weapon_id,
+			"holder_id": holder_id,
+			"current_holder_id": holder_id,
+		}
+	if not Array(campaign.get("raid_plan", {}).get("active_member_ids", [])).has(raider_id):
+		return {
+			"ok": false,
+			"status": "reserve_cannot_equip",
+			"message": "Reserve raiders cannot receive weapon assignments.",
+			"raider_id": raider_id,
+			"weapon_id": weapon_id,
+			"holder_id": "",
+			"current_holder_id": "",
+		}
 	var state: Dictionary = state_result.get("state", {})
 	var class_id := _effective_class_id(state)
 	if not ProgressionCatalog.is_family_compatible(class_id, weapon.family_id):
@@ -271,6 +323,8 @@ func check_equip(
 			"weapon_id": weapon_id,
 			"class_id": class_id,
 			"family_id": weapon.family_id,
+			"holder_id": "",
+			"current_holder_id": "",
 		}
 	return {
 		"ok": true,
@@ -280,6 +334,8 @@ func check_equip(
 		"weapon_id": weapon_id,
 		"class_id": class_id,
 		"family_id": weapon.family_id,
+		"holder_id": "",
+		"current_holder_id": "",
 	}
 
 
@@ -289,13 +345,88 @@ func equip(campaign: Dictionary, raider_id: String, weapon_id: String) -> Dictio
 		return validation
 	var states: Dictionary = campaign.get("raider_states", {})
 	var state: Dictionary = Dictionary(states[raider_id]).duplicate(true)
+	var previous_weapon_id := String(state.get("equipped_weapon_id", ""))
 	state["equipped_weapon_id"] = weapon_id
 	states[raider_id] = state
 	campaign["raider_states"] = states
 	validation["ok"] = true
 	validation["status"] = "equipped"
 	validation["message"] = "Weapon equipped."
+	validation["previous_weapon_id"] = previous_weapon_id
 	return validation
+
+
+static func get_weapon_holder_id(campaign: Dictionary, weapon_id: String) -> String:
+	if weapon_id.is_empty():
+		return ""
+	var states_value: Variant = campaign.get("raider_states", {})
+	if not states_value is Dictionary:
+		return ""
+	var states: Dictionary = states_value
+	for raider_id in _ordered_raider_ids(campaign, states):
+		var state_value: Variant = states.get(raider_id, {})
+		if (
+			state_value is Dictionary
+			and String(state_value.get("equipped_weapon_id", "")) == weapon_id
+		):
+			return raider_id
+	return ""
+
+
+static func reconcile_duplicate_weapon_assignments(
+	campaign: Dictionary
+) -> Array[Dictionary]:
+	var reconciliations: Array[Dictionary] = []
+	var states_value: Variant = campaign.get("raider_states", {})
+	if not states_value is Dictionary:
+		return reconciliations
+	var states: Dictionary = states_value
+	var kept_by_weapon: Dictionary = {}
+	var cleared_by_weapon: Dictionary = {}
+	for raider_id in _ordered_raider_ids(campaign, states):
+		var state_value: Variant = states.get(raider_id, {})
+		if not state_value is Dictionary:
+			continue
+		var weapon_id := String(state_value.get("equipped_weapon_id", ""))
+		if weapon_id.is_empty():
+			continue
+		if not kept_by_weapon.has(weapon_id):
+			kept_by_weapon[weapon_id] = raider_id
+			continue
+		var state: Dictionary = Dictionary(state_value).duplicate(true)
+		state["equipped_weapon_id"] = ""
+		states[raider_id] = state
+		var cleared_ids: Array = cleared_by_weapon.get(weapon_id, [])
+		cleared_ids.append(raider_id)
+		cleared_by_weapon[weapon_id] = cleared_ids
+	campaign["raider_states"] = states
+	for weapon_id_value in cleared_by_weapon:
+		var weapon_id := String(weapon_id_value)
+		var kept_id := String(kept_by_weapon.get(weapon_id, ""))
+		var cleared_ids: Array = Array(cleared_by_weapon[weapon_id_value]).duplicate()
+		reconciliations.append({
+			"status": "duplicate_weapon_assignment_reconciled",
+			"weapon_id": weapon_id,
+			"stable_id": weapon_id,
+			"kept_raider_id": kept_id,
+			"current_holder_id": kept_id,
+			"cleared_raider_ids": cleared_ids,
+			"message": "Kept '%s' as holder of '%s' and cleared: %s." % [
+				kept_id, weapon_id, ", ".join(cleared_ids),
+			],
+		})
+	if reconciliations.is_empty():
+		return reconciliations
+	var progression: Dictionary = sanitize_progression(campaign.get("progression", {}))
+	var diagnostics: Dictionary = Dictionary(
+		progression.get("migration_diagnostics", {})
+	).duplicate(true)
+	var stored: Array = Array(diagnostics.get("duplicate_weapon_assignments", [])).duplicate(true)
+	stored.append_array(reconciliations)
+	diagnostics["duplicate_weapon_assignments"] = stored
+	progression["migration_diagnostics"] = diagnostics
+	campaign["progression"] = progression
+	return reconciliations
 
 
 func unequip(campaign: Dictionary, raider_id: String) -> Dictionary:
@@ -383,6 +514,10 @@ func get_missing_content_diagnostics(campaign: Dictionary) -> Array[Dictionary]:
 		for minor_id in state.get("minor_trait_ids", []):
 			if not String(minor_id).is_empty() and ProgressionCatalog.get_raider_trait(String(minor_id)) == null:
 				diagnostics.append(_missing("raider_states.%s.minor_trait_ids" % raider_id, String(minor_id)))
+	var migration_diagnostics: Dictionary = progression.get("migration_diagnostics", {})
+	for reconciliation_value in migration_diagnostics.get("duplicate_weapon_assignments", []):
+		if reconciliation_value is Dictionary:
+			diagnostics.append(Dictionary(reconciliation_value).duplicate(true))
 	return diagnostics
 
 
@@ -515,6 +650,24 @@ static func _unique_string_array(value: Variant) -> Array[String]:
 static func _append_unique_string(values: Array, value: String) -> void:
 	if not value.is_empty() and not values.has(value):
 		values.append(value)
+
+
+static func _ordered_raider_ids(
+	campaign: Dictionary, states: Dictionary
+) -> Array[String]:
+	var result: Array[String] = []
+	for raider_id_value in campaign.get("raid_plan", {}).get("active_member_ids", []):
+		_append_unique_string(result, String(raider_id_value))
+	for raider_id_value in campaign.get("campaign_cast", {}).get("selected_raider_ids", []):
+		_append_unique_string(result, String(raider_id_value))
+	var remaining: Array[String] = []
+	for raider_id_value in states:
+		var raider_id := String(raider_id_value)
+		if not result.has(raider_id):
+			remaining.append(raider_id)
+	remaining.sort()
+	result.append_array(remaining)
+	return result
 
 
 static func _sanitize_reward_receipt(source: Dictionary) -> Dictionary:

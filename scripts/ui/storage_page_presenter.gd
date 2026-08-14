@@ -83,7 +83,7 @@ func _add_intro(page: VBoxContainer) -> void:
 	intro.name = "StorageReadOnlyNotice"
 	intro.text = (
 		"Review permanent tokens, recovered materials, unlocked designs, and forged arms. "
-		+ "Camp Stores is read-only; crafting and equipment management are not available here."
+		+ "Camp Stores is read-only; visit the Rudimentary Smith to craft and manage weapons."
 	)
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intro.add_theme_color_override("font_color", Color("b9b29f"))
@@ -384,7 +384,7 @@ func _empty_state(view_id: String, filters: Dictionary) -> String:
 		"recipes":
 			return "No recipes unlocked yet. A boss's first clear unlocks both of its designs."
 		"weapons":
-			return "No weapons crafted yet. Crafted ownership will appear here when created outside this read-only page."
+			return "No weapons crafted yet. Visit the Rudimentary Smith to forge an unlocked design."
 	return "No progression entries yet."
 
 
