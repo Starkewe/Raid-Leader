@@ -9,9 +9,9 @@ signal transcription_failed(reason: String)
 @export var use_settings_menu_model: bool = true
 @export_file("*.bin") var fallback_model_path: String = "res://tools/whisper.cpp/models/ggml-base.en.bin"
 
-@export var max_queued_transcriptions: int = 3
-@export var transcription_ttl_seconds: float = 8.0
-@export var transcription_process_timeout_seconds: float = 15.0
+@export var max_queued_transcriptions: int
+@export var transcription_ttl_seconds: float
+@export var transcription_process_timeout_seconds: float
 var _is_transcribing: bool = false
 var _pending_transcriptions: Array[Dictionary] = []
 var _active_wav_path: String = ""
@@ -23,6 +23,13 @@ var _active_output_txt_path: String = ""
 var _active_paused_processing_seconds: float = 0.0
 var _held_completion: Dictionary = {}
 var _held_delivery_remaining_seconds: float = 0.0
+
+
+func _init() -> void:
+	var voice_tuning := TuningCatalogAccess.get_voice()
+	max_queued_transcriptions = voice_tuning.max_queued_transcriptions
+	transcription_ttl_seconds = voice_tuning.transcription_ttl_seconds
+	transcription_process_timeout_seconds = voice_tuning.transcription_process_timeout_seconds
 
 
 func _ready() -> void:

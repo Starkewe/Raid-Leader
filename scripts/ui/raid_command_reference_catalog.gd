@@ -2,7 +2,6 @@ extends RefCounted
 class_name RaidCommandReferenceCatalog
 
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
-const GameStateScript := preload("res://scripts/core/game_state.gd")
 const ClassVisualCatalogScript := preload("res://scripts/ui/class_visual_catalog.gd")
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
 const VoiceCommandVocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
@@ -61,7 +60,7 @@ static func get_who_entries(
 			"Roles"
 		))
 
-	var group_count := ceili(float(GameStateScript.MAX_RAID_SIZE) / 5.0)
+	var group_count := TuningCatalogAccess.get_raid_campaign().get_raid_group_count()
 
 	for group_number in range(1, group_count + 1):
 		entries.append(_entry(
@@ -470,7 +469,7 @@ static func _get_healing_entries(
 			section
 		))
 
-	var group_count := ceili(float(GameStateScript.MAX_RAID_SIZE) / 5.0)
+	var group_count := TuningCatalogAccess.get_raid_campaign().get_raid_group_count()
 
 	for group_number in range(1, group_count + 1):
 		entries.append(_entry(

@@ -1,9 +1,13 @@
 extends RefCounted
 class_name CombatMeasurements
 
-const PIXELS_PER_RANGE_UNIT: float = 20.0
-const DEFAULT_BOSS_COMBAT_RADIUS_PIXELS: float = 128.0
-const BASE_MOVEMENT_SPEED_RANGE_UNITS_PER_SECOND: float = 7.0
+static var PIXELS_PER_RANGE_UNIT: float = TuningCatalogAccess.get_combat().pixels_per_range_unit
+static var DEFAULT_BOSS_COMBAT_RADIUS_PIXELS: float = (
+	TuningCatalogAccess.get_combat().default_boss_combat_radius_pixels
+)
+static var BASE_MOVEMENT_SPEED_RANGE_UNITS_PER_SECOND: float = (
+	TuningCatalogAccess.get_combat().base_movement_speed_range_units_per_second
+)
 
 
 static func range_units_to_pixels(range_units: float) -> float:

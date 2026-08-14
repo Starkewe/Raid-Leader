@@ -15,7 +15,6 @@ const CampConversationStateScript := preload(
 	"res://scripts/data/camp_conversation_state.gd"
 )
 const CampContentCatalogScript := preload("res://scripts/core/camp_content_catalog.gd")
-const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
 const RaidPlanValidatorScript := preload("res://scripts/core/raid_plan_validator.gd")
 const CampaignPersistenceServiceScript := preload(
 	"res://scripts/core/campaign_persistence_service.gd"
@@ -42,12 +41,12 @@ signal relationship_threshold_reached(event: Dictionary)
 
 const SAVE_PATH := "user://raid_leader_saves/autosave.json"
 const SCHEMA_VERSION := 10
-const ACTIVE_RAID_SIZE := 20
-const ATTEMPT_HISTORY_LIMIT := 5
+var ACTIVE_RAID_SIZE: int
+var ATTEMPT_HISTORY_LIMIT: int
 const FIRST_REGION_ID := "beast_crucible"
 const DEFAULT_FORMATION_NAME := "Default"
-const QUARTERS_ROOM_COUNT := 20
-const QUARTERS_ROOM_CAPACITY := 4
+var QUARTERS_ROOM_COUNT: int
+var QUARTERS_ROOM_CAPACITY: int
 
 var _campaign: Dictionary = {}
 var _persistence_service = CampaignPersistenceServiceScript.new()
@@ -55,6 +54,14 @@ var _roster_service = CampaignRosterServiceScript.new()
 var _raid_plan_service = CampaignRaidPlanServiceScript.new()
 var _progression_service = CampaignProgressionServiceScript.new()
 var _social_memory_service = CampaignSocialMemoryServiceScript.new()
+
+
+func _enter_tree() -> void:
+	var tuning := TuningCatalogAccess.get_raid_campaign()
+	ACTIVE_RAID_SIZE = tuning.maximum_raid_size
+	ATTEMPT_HISTORY_LIMIT = tuning.attempt_history_limit
+	QUARTERS_ROOM_COUNT = tuning.quarters_room_count
+	QUARTERS_ROOM_CAPACITY = tuning.quarters_room_capacity
 
 
 func _ready() -> void:
@@ -1504,7 +1511,7 @@ func get_camp_v2_integration_debug_report() -> Dictionary:
 		).duplicate(true),
 		"master_raider_validation": validate_master_raider_definitions(),
 		"camp_content_validation": CampContentCatalogScript.get_validation_report(),
-		"central_tuning": CampV2TuningScript.get_summary(),
+		"central_tuning": TuningCatalogAccess.get_camp().get_summary(),
 	}
 
 
@@ -1876,7 +1883,7 @@ func _sanitize_current_raider_data(sanitized: Dictionary, defaults: Dictionary) 
 	for generated_id in _string_array(
 		defaults.get("campaign_cast", {}).get("selected_raider_ids", [])
 	):
-		if selected_ids.size() >= CampaignCastGeneratorScript.CAST_SIZE:
+		if selected_ids.size() >= TuningCatalogAccess.get_raid_campaign().campaign_cast_size:
 			break
 		_append_unique_id(selected_ids, generated_id)
 
@@ -1886,19 +1893,19 @@ func _sanitize_current_raider_data(sanitized: Dictionary, defaults: Dictionary) 
 	for generated_id in _string_array(
 		defaults.get("campaign_cast", {}).get("initial_raider_ids", [])
 	):
-		if initial_ids.size() >= CampaignCastGeneratorScript.INITIAL_SIZE:
+		if initial_ids.size() >= TuningCatalogAccess.get_raid_campaign().initial_roster_size:
 			break
 
 		if selected_ids.has(generated_id):
 			_append_unique_id(initial_ids, generated_id)
 
 	for raider_id in selected_ids:
-		if initial_ids.size() >= CampaignCastGeneratorScript.INITIAL_SIZE:
+		if initial_ids.size() >= TuningCatalogAccess.get_raid_campaign().initial_roster_size:
 			break
 		_append_unique_id(initial_ids, raider_id)
 
-	if initial_ids.size() > CampaignCastGeneratorScript.INITIAL_SIZE:
-		initial_ids = initial_ids.slice(0, CampaignCastGeneratorScript.INITIAL_SIZE)
+	if initial_ids.size() > TuningCatalogAccess.get_raid_campaign().initial_roster_size:
+		initial_ids = initial_ids.slice(0, TuningCatalogAccess.get_raid_campaign().initial_roster_size)
 
 	var stored_future := _only_selected_ids(
 		_unique_string_array(cast.get("future_raider_ids", [])), selected_ids
@@ -1957,10 +1964,10 @@ func _sanitize_current_raider_data(sanitized: Dictionary, defaults: Dictionary) 
 	sanitized["raid_plan"]["active_member_ids"] = valid_active_ids
 	var warnings := _unique_string_array(cast.get("generation_warnings", []))
 
-	if selected_ids.size() != CampaignCastGeneratorScript.CAST_SIZE:
+	if selected_ids.size() != TuningCatalogAccess.get_raid_campaign().campaign_cast_size:
 		warnings.append(
 			"Stored cast contains %d raiders instead of %d."
-			% [selected_ids.size(), CampaignCastGeneratorScript.CAST_SIZE]
+			% [selected_ids.size(), TuningCatalogAccess.get_raid_campaign().campaign_cast_size]
 		)
 
 	sanitized["campaign_cast"] = {

@@ -1,7 +1,15 @@
 extends Node2D
 class_name MovementDestinationVisualizer
 
-const DodgeTuningScript := preload("res://scripts/combat/dodge_tuning.gd")
+const PATH_PRESENTATION_LINE_THICKNESS := 1.5
+const PATH_PRESENTATION_DASH_LENGTH := 10.0
+const PATH_PRESENTATION_GAP_LENGTH := 7.0
+const PATH_PRESENTATION_LINE_OPACITY := 0.24
+const PATH_PRESENTATION_UPDATE_INTERVAL_SECONDS := 0.0
+const PATH_PRESENTATION_FLAG_SIZE := 9.0
+const PATH_PRESENTATION_FLAG_OPACITY := 0.48
+const PATH_PRESENTATION_ENDPOINT_SIZE := 3.5
+const PATH_PRESENTATION_ENDPOINT_OPACITY := 0.72
 
 var tracked_units: Array = []
 var redraw_timer: float = 0.0
@@ -18,10 +26,10 @@ func clear() -> void:
 
 
 func _process(delta: float) -> void:
-	if DodgeTuningScript.DESTINATION_UPDATE_INTERVAL > 0.0:
+	if PATH_PRESENTATION_UPDATE_INTERVAL_SECONDS > 0.0:
 		redraw_timer += delta
 
-		if redraw_timer < DodgeTuningScript.DESTINATION_UPDATE_INTERVAL:
+		if redraw_timer < PATH_PRESENTATION_UPDATE_INTERVAL_SECONDS:
 			return
 
 		redraw_timer = 0.0
@@ -79,11 +87,11 @@ func _draw_dashed_segment(start: Vector2, finish: Vector2) -> void:
 		return
 
 	var direction := start.direction_to(finish)
-	var dash_length := maxf(DodgeTuningScript.DESTINATION_LINE_DASH_LENGTH, 1.0)
-	var gap_length := maxf(DodgeTuningScript.DESTINATION_LINE_GAP_LENGTH, 0.0)
+	var dash_length := maxf(PATH_PRESENTATION_DASH_LENGTH, 1.0)
+	var gap_length := maxf(PATH_PRESENTATION_GAP_LENGTH, 0.0)
 	var step_length := dash_length + gap_length
 	var traveled := 0.0
-	var line_color := Color(1.0, 0.84, 0.26, DodgeTuningScript.DESTINATION_LINE_OPACITY)
+	var line_color := Color(1.0, 0.84, 0.26, PATH_PRESENTATION_LINE_OPACITY)
 
 	while traveled < distance:
 		var dash_end := minf(traveled + dash_length, distance)
@@ -91,7 +99,7 @@ func _draw_dashed_segment(start: Vector2, finish: Vector2) -> void:
 			start + direction * traveled,
 			start + direction * dash_end,
 			line_color,
-			DodgeTuningScript.DESTINATION_LINE_THICKNESS,
+			PATH_PRESENTATION_LINE_THICKNESS,
 			true
 		)
 		traveled += step_length
@@ -102,24 +110,24 @@ func _draw_path_origin(position: Vector2) -> void:
 		1.0,
 		0.84,
 		0.26,
-		DodgeTuningScript.DESTINATION_ENDPOINT_OPACITY
+		PATH_PRESENTATION_ENDPOINT_OPACITY
 	)
-	draw_circle(position, DodgeTuningScript.DESTINATION_ENDPOINT_SIZE, color)
+	draw_circle(position, PATH_PRESENTATION_ENDPOINT_SIZE, color)
 
 
 func _draw_path_endpoint(position: Vector2) -> void:
-	var size := DodgeTuningScript.DESTINATION_ENDPOINT_SIZE
+	var size := PATH_PRESENTATION_ENDPOINT_SIZE
 	var color := Color(
 		1.0,
 		0.84,
 		0.26,
-		DodgeTuningScript.DESTINATION_ENDPOINT_OPACITY
+		PATH_PRESENTATION_ENDPOINT_OPACITY
 	)
 	var outline := Color(
 		0.12,
 		0.10,
 		0.05,
-		DodgeTuningScript.DESTINATION_ENDPOINT_OPACITY
+		PATH_PRESENTATION_ENDPOINT_OPACITY
 	)
 
 	draw_circle(position, size, color)
@@ -127,9 +135,9 @@ func _draw_path_endpoint(position: Vector2) -> void:
 
 
 func _draw_destination_flag(position: Vector2) -> void:
-	var size := DodgeTuningScript.DESTINATION_FLAG_SIZE
-	var color := Color(1.0, 0.78, 0.12, DodgeTuningScript.DESTINATION_FLAG_OPACITY)
-	var outline := Color(0.12, 0.10, 0.05, DodgeTuningScript.DESTINATION_FLAG_OPACITY)
+	var size := PATH_PRESENTATION_FLAG_SIZE
+	var color := Color(1.0, 0.78, 0.12, PATH_PRESENTATION_FLAG_OPACITY)
+	var outline := Color(0.12, 0.10, 0.05, PATH_PRESENTATION_FLAG_OPACITY)
 	var points := PackedVector2Array([
 		position + Vector2(0.0, -size),
 		position + Vector2(size, 0.0),

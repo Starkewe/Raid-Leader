@@ -38,7 +38,7 @@ class CountingAutoPositioner:
 		)
 
 
-const CLEARANCE := 12.0 + MovementSlotResolver.MINI_REGION_ENTRY_MARGIN_PIXELS
+var clearance := 12.0 + MovementSlotResolver.MINI_REGION_ENTRY_MARGIN_PIXELS
 
 var boss: DummyBoss = null
 var owned_nodes: Array[Node] = []
@@ -160,7 +160,7 @@ func _test_safe_route_segments_and_overlap_escape() -> bool:
 		boss,
 		source,
 		target,
-		CLEARANCE,
+		clearance,
 		hazards
 	)
 
@@ -176,7 +176,7 @@ func _test_safe_route_segments_and_overlap_escape() -> bool:
 			previous,
 			waypoint,
 			boss,
-			CLEARANCE,
+			clearance,
 			hazards
 		):
 			return _fail("An automatic route segment intersected an avoidable hazard.")
@@ -191,7 +191,7 @@ func _test_safe_route_segments_and_overlap_escape() -> bool:
 	var escape := unit.combat_auto_positioner.get_ground_hazard_escape_step(
 		unit,
 		boss,
-		CLEARANCE
+		clearance
 	)
 
 	if not bool(escape.get("handled", false)):
@@ -248,7 +248,7 @@ func _test_cached_escape_replans_only_when_invalid() -> bool:
 	_add_hazard(center, 72.0)
 	var mage := _new_mage(center)
 	var positioner := _install_counting_positioner(mage)
-	var first_step := positioner.get_ground_hazard_escape_step(mage, boss, CLEARANCE)
+	var first_step := positioner.get_ground_hazard_escape_step(mage, boss, clearance)
 
 	if (
 		positioner.escape_plan_build_count != 1
@@ -257,7 +257,7 @@ func _test_cached_escape_replans_only_when_invalid() -> bool:
 		return _fail("Initial hazard overlap did not create one cached escape plan.")
 
 	_add_hazard(center + Vector2(3000.0, 3000.0), 16.0)
-	positioner.get_ground_hazard_escape_step(mage, boss, CLEARANCE)
+	positioner.get_ground_hazard_escape_step(mage, boss, clearance)
 
 	if positioner.escape_plan_build_count != 1:
 		return _fail("An unrelated hazard caused a valid cached route to be rebuilt.")
@@ -271,12 +271,12 @@ func _test_cached_escape_replans_only_when_invalid() -> bool:
 		return _fail("The cached route did not retain its current destination.")
 
 	_add_hazard(mage.global_position.lerp(destination_value, 0.5), 8.0)
-	positioner.get_ground_hazard_escape_step(mage, boss, CLEARANCE)
+	positioner.get_ground_hazard_escape_step(mage, boss, clearance)
 
 	if positioner.escape_plan_build_count != 2:
 		return _fail("A hazard blocking the cached segment did not cause exactly one replan.")
 
-	positioner.get_ground_hazard_escape_step(mage, boss, CLEARANCE)
+	positioner.get_ground_hazard_escape_step(mage, boss, clearance)
 
 	if positioner.escape_plan_build_count != 2:
 		return _fail("The replacement escape route was rebuilt without invalidation.")
@@ -346,7 +346,7 @@ func _test_support_uses_safe_action_position() -> bool:
 	if not CombatAutoPositioner.is_position_safe(
 		destination_value,
 		boss,
-		CLEARANCE,
+		clearance,
 		CombatAutoPositioner.get_active_avoidable_hazards(boss)
 	):
 		return _fail("Healer routed into the avoidable area around its target.")
@@ -357,7 +357,7 @@ func _test_support_uses_safe_action_position() -> bool:
 		priest,
 		boss,
 		target,
-		CLEARANCE,
+		clearance,
 		200.0
 	)
 
@@ -400,14 +400,14 @@ func _test_hazard_expiration_releases_constraint() -> bool:
 		boss,
 		source,
 		target,
-		CLEARANCE
+		clearance
 	)
 	hazard.cleaned_up = true
 	var released := CombatAutoPositioner.build_safe_route_to_position(
 		boss,
 		source,
 		target,
-		CLEARANCE
+		clearance
 	)
 
 	if not bool(constrained.get("found", false)) or not bool(released.get("found", false)):
@@ -420,12 +420,12 @@ func _test_hazard_expiration_releases_constraint() -> bool:
 	var escape_hazard := _add_hazard(source, 72.0)
 	var unit := _new_mage(source)
 	var positioner := _install_counting_positioner(unit)
-	positioner.get_ground_hazard_escape_step(unit, boss, CLEARANCE)
+	positioner.get_ground_hazard_escape_step(unit, boss, clearance)
 	escape_hazard.cleaned_up = true
 	var released_escape := positioner.get_ground_hazard_escape_step(
 		unit,
 		boss,
-		CLEARANCE
+		clearance
 	)
 
 	if (

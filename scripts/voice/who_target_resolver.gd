@@ -2,11 +2,10 @@ extends RefCounted
 class_name WhoTargetResolver
 
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
-const TuningScript := preload("res://scripts/voice/who_resolver_tuning.gd")
 const VocabularyScript := preload("res://scripts/voice/voice_command_vocabulary.gd")
 const VoiceTextSimilarityScript := preload("res://scripts/voice/voice_text_similarity.gd")
+static var TUNING: VoiceTuning = TuningCatalogAccess.get_voice()
 
-const GROUP_SIZE: int = 5
 const FILLER_WORDS: Array[String] = [
 	"a", "an", "can", "could", "hey", "the", "you"
 ]
@@ -401,7 +400,7 @@ func format_diagnostics(result: Dictionary) -> String:
 		lines.append("  excluded: " + ", ".join(exclusion_parts))
 
 	var candidate_scores: Array = result.get("candidate_scores", [])
-	var top_count := mini(TuningScript.DEBUG_TOP_CANDIDATE_COUNT, candidate_scores.size())
+	var top_count := mini(TUNING.resolver_debug_top_candidate_count, candidate_scores.size())
 
 	for index in range(top_count):
 		var score: Dictionary = candidate_scores[index]
@@ -499,13 +498,14 @@ func _add_role_candidates() -> void:
 
 
 func _add_row_candidates() -> void:
-	var group_count := ceili(float(party_members.size()) / float(GROUP_SIZE))
+	var group_size := TuningCatalogAccess.get_raid_campaign().raid_group_size
+	var group_count := ceili(float(party_members.size()) / float(group_size))
 
 	for group_number in range(1, group_count + 1):
-		var start_index := (group_number - 1) * GROUP_SIZE
+		var start_index := (group_number - 1) * group_size
 		var group_units: Array = []
 
-		for index in range(start_index, mini(start_index + GROUP_SIZE, party_members.size())):
+		for index in range(start_index, mini(start_index + group_size, party_members.size())):
 			var unit = party_members[index]
 
 			if unit is Node:
@@ -631,14 +631,14 @@ func _score_candidate(
 	var structural_fit := _get_structural_fit(target_type, inferred_structure, requested_number)
 	var number_agreement := _get_number_agreement(candidate, requested_number)
 	var plural_agreement := _get_plural_agreement(target_type, plural_evidence)
-	var static_prior := TuningScript.get_category_prior(target_type)
+	var static_prior := TUNING.get_target_category_prior(target_type)
 	var command_compatibility := _get_command_compatibility(candidate, command_context)
 	var base_score := (
 		identity_score
-		+ structural_fit * TuningScript.WEIGHT_STRUCTURAL_FIT
-		+ number_agreement * TuningScript.WEIGHT_NUMBER_AGREEMENT
-		+ plural_agreement * TuningScript.WEIGHT_PLURAL_AGREEMENT
-		+ command_compatibility * TuningScript.WEIGHT_COMMAND_COMPATIBILITY
+		+ structural_fit * TUNING.structural_fit_weight
+		+ number_agreement * TUNING.number_agreement_weight
+		+ plural_agreement * TUNING.plural_agreement_weight
+		+ command_compatibility * TUNING.command_compatibility_weight
 		+ static_prior
 	)
 
@@ -737,13 +737,13 @@ func _best_identity_match(identity_text: String, candidate: Dictionary) -> Dicti
 func _get_identity_score(identity_match: Dictionary) -> float:
 	return (
 		float(identity_match.get("identity_text_similarity", 0.0))
-		* TuningScript.WEIGHT_IDENTITY_TEXT_SIMILARITY
+		* TUNING.identity_text_similarity_weight
 		+ float(identity_match.get("identity_phonetic_similarity", 0.0))
-		* TuningScript.WEIGHT_IDENTITY_PHONETIC_SIMILARITY
+		* TUNING.identity_phonetic_similarity_weight
 		+ float(identity_match.get("identity_exact_evidence", 0.0))
-		* TuningScript.WEIGHT_IDENTITY_EXACT_EVIDENCE
+		* TUNING.identity_exact_evidence_weight
 		+ float(identity_match.get("identity_partial_evidence", 0.0))
-		* TuningScript.WEIGHT_IDENTITY_PARTIAL_EVIDENCE
+		* TUNING.identity_partial_evidence_weight
 	)
 
 
@@ -798,7 +798,7 @@ func _filter_eligible_candidates(
 				)
 
 	var row_has_identity_evidence := (
-		row_identity_score >= TuningScript.ROW_COMPETITION_MIN_IDENTITY_SCORE
+		row_identity_score >= TUNING.row_competition_min_identity_score
 	)
 
 	for candidate in candidates:
@@ -853,7 +853,7 @@ func _apply_recent_use_tiebreaker(scored_candidates: Array[Dictionary]) -> void:
 		var identity_gap := (
 			best_identity_score - float(score.get("identity_score", 0.0))
 		)
-		var recent_tie_eligible := identity_gap <= TuningScript.RECENT_IDENTITY_TIE_WINDOW
+		var recent_tie_eligible := identity_gap <= TUNING.recent_identity_tie_window
 		var recent_prior := (
 			_get_recent_use_prior(String(score.get("key", "")))
 			if recent_tie_eligible
@@ -1140,7 +1140,7 @@ func _get_recent_use_prior(candidate_key: String) -> float:
 	return (
 		float(use_count)
 		/ float(recent_target_keys.size())
-		* TuningScript.MAX_RECENT_USE_PRIOR
+		* TUNING.max_recent_use_prior
 	)
 
 
@@ -1150,7 +1150,7 @@ func _record_target_key(candidate_key: String) -> void:
 
 	recent_target_keys.append(candidate_key)
 
-	while recent_target_keys.size() > TuningScript.RECENT_SELECTION_LIMIT:
+	while recent_target_keys.size() > TUNING.recent_selection_limit:
 		recent_target_keys.pop_front()
 
 

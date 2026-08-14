@@ -68,16 +68,18 @@ const REGION_DIRECTIONS := {
 	REGION_NORTHWEST: Vector2(-1, -1)
 }
 
-const DEFAULT_BOSS_COMBAT_RADIUS: float = 90.0
-
-const CLOSE_SLOT_RANGE_UNITS: float = 5.0
-const MID_SLOT_RANGE_UNITS: float = 20.0
-const FAR_SLOT_RANGE_UNITS: float = 40.0
-const MINI_REGION_HALF_ANGLE: float = PI / 8.0
-const MINI_REGION_ENTRY_MARGIN_PIXELS: float = 1.0
+static var CLOSE_SLOT_RANGE_UNITS: float = TuningCatalogAccess.get_combat().close_range_units
+static var MID_SLOT_RANGE_UNITS: float = TuningCatalogAccess.get_combat().mid_range_units
+static var FAR_SLOT_RANGE_UNITS: float = TuningCatalogAccess.get_combat().far_range_units
+static var MINI_REGION_HALF_ANGLE: float = TuningCatalogAccess.get_combat().mini_region_half_angle_radians
+static var MINI_REGION_ENTRY_MARGIN_PIXELS: float = (
+	TuningCatalogAccess.get_combat().mini_region_entry_margin_pixels
+)
 const MINI_REGION_GEOMETRY_EPSILON_PIXELS: float = 0.01
 # Keeps the widest 60-pixel raider silhouettes readable with slight overlap.
-const RAIDER_FORMATION_SPACING_PIXELS: float = 48.0
+static var RAIDER_FORMATION_SPACING_PIXELS: float = (
+	TuningCatalogAccess.get_combat().raider_formation_spacing_pixels
+)
 
 
 static func get_mini_region_spacing_pixels() -> float:

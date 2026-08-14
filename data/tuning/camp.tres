@@ -1,0 +1,160 @@
+[gd_resource type="Resource" script_class="CampTuning" load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tuning/camp_tuning.gd" id="1_camp"]
+[ext_resource type="Script" path="res://scripts/data/tuning/camp_memory_tuning.gd" id="2_memory"]
+[ext_resource type="Script" path="res://scripts/data/tuning/camp_relationship_tuning.gd" id="3_relationships"]
+[ext_resource type="Script" path="res://scripts/data/tuning/camp_conversation_tuning.gd" id="4_conversations"]
+[ext_resource type="Script" path="res://scripts/data/tuning/camp_activity_tuning.gd" id="5_activities"]
+[ext_resource type="Script" path="res://scripts/data/tuning/camp_movement_tuning.gd" id="6_movement"]
+
+[sub_resource type="Resource" id="CampMemory"]
+script = ExtResource("2_memory")
+day_seconds = 86400
+normal_reinforcement_ceiling_days = 120
+self_reinforcement_limit = 3
+rejection_limit = 120
+life_memory_capacity = 12
+latent_multiplier = 2
+duplicate_episode_window_days = 10
+diminishing_extension_rate = 0.85
+resolution_external_reinforcements = 4
+identity_promotion_strength = 0.88
+selection_state_weights = {"active": 1.0, "latent": 0.55, "permanent": 0.85}
+selection_strength_weight = 1.4
+selection_reinforcement_weight = 0.12
+selection_reinforcement_score_cap = 0.8
+selection_recency_window_days = 90.0
+category_capacities = {"combat": 5, "social": 6, "roster": 3, "camp_life": 3, "personal_reflection": 4}
+category_active_days = {"combat": 28, "social": 42, "roster": 30, "camp_life": 32, "personal_reflection": 50}
+category_latent_days = {"combat": 90, "social": 130, "roster": 100, "camp_life": 95, "personal_reflection": 150}
+
+[sub_resource type="Resource" id="CampRelationships"]
+script = ExtResource("3_relationships")
+value_minimum = -100
+value_maximum = 100
+pair_memory_limit = 20
+permanent_pair_memory_limit = 8
+recent_conversation_limit = 8
+shared_context_history_limit = 16
+thresholds = Array[int]([-75, -50, -25, 25, 50, 75])
+routine_activity_changes_relationships = false
+maximum_normal_dimension_delta = 8
+qualifying_event_minimum_significance = 60
+permanent_memory_threshold_magnitude = 50
+standard_threshold_event_significance = 60
+high_threshold_event_significance = 75
+close_friend_minimum_affinity = 60
+close_friend_minimum_trust = 55
+close_friend_reciprocal_minimum_affinity = 45
+close_friend_reciprocal_minimum_trust = 40
+trusted_companion_minimum_trust = 55
+trusted_companion_minimum_respect = 20
+respectful_rival_minimum_respect = 50
+respectful_rival_minimum_tension = 20
+respectful_rival_maximum_affinity_exclusive = 40
+fond_minimum_affinity = 35
+fond_maximum_trust_exclusive = 20
+strained_minimum_tension = 50
+strained_maximum_affinity = -30
+strained_maximum_trust = -35
+becoming_friend_minimum_affinity = 20
+becoming_friend_minimum_trust = 15
+
+[sub_resource type="Resource" id="CampConversations"]
+script = ExtResource("4_conversations")
+summary_limit = 160
+pressure_source_limit = 40
+initial_pressure = 18.0
+first_conversation_delay_seconds = 14.0
+minimum_cooldown_seconds = 14.0
+baseline_cooldown_seconds = 50.0
+maximum_cooldown_seconds = 80.0
+pressure_decay_per_second = 0.065
+concurrent_conversation_pressure_decay_per_second = 0.03
+focused_completion_pressure_reduction = 13.0
+embedded_completion_pressure_reduction = 7.0
+schedule_miss_pressure_reduction = 0.5
+schedule_miss_retry_seconds = 7.0
+schedule_miss_debounce_seconds = 5.0
+bubble_duration_seconds = 3.8
+minimum_bubble_duration_seconds = 2.8
+pause_between_bubbles_seconds = 0.8
+default_frame_cooldown_seconds = 60.0
+participant_conversation_radius_pixels = 120.0
+participant_conversation_spacing_pixels = 48.0
+lore_schedule_chance = 0.16
+debug_history_limit = 100
+population_for_second_conversation = 25
+maximum_conversations_small_camp = 1
+maximum_conversations_large_camp = 2
+recent_summary_limit = 12
+recent_frame_window = 8
+recent_pair_window = 6
+recent_context_window = 5
+recent_frame_repetition_multiplier = 0.35
+recent_pair_repetition_multiplier = 0.55
+recent_context_repetition_multiplier = 0.65
+minimum_repetition_multiplier = 0.05
+roommate_selection_multiplier = 1.25
+authored_connection_selection_multiplier = 1.35
+pressure_by_event = {"raider_recruited": 24.0, "raider_added_to_active_roster": 9.0, "raider_moved_to_reserve": 9.0, "boss_attempt_completed": 10.0, "boss_defeated": 26.0, "class_advanced": 18.0, "memory_promoted": 11.0, "relationship_threshold_reached": 15.0, "lore_learned": 12.0}
+pressure_by_visit = {"normal": 0.0, "wipe": 20.0, "first_victory": 32.0, "repeat_victory": 18.0, "recruitment": 26.0, "roster_change": 12.0, "apex_victory": 38.0}
+
+[sub_resource type="Resource" id="CampActivities"]
+script = ExtResource("5_activities")
+accelerated_timing_multiplier = 6.0
+ambient_bubble_cap = 3
+routine_memory_reinforcement_chance = 0.06
+shared_activity_chance = 0.68
+roommate_shared_activity_bonus = 0.65
+shared_favored_class_bonus = 1.0
+shared_personality_preference_bonus = 0.75
+profile_refresh_seconds = 0.75
+initial_activity_delay_min_seconds = 0.4
+initial_activity_delay_max_seconds = 4.0
+visit_reaction_initial_delay_seconds = 2.0
+visit_reaction_interval_min_seconds = 3.5
+visit_reaction_interval_max_seconds = 6.5
+visit_reaction_bubble_duration_seconds = 5.5
+activity_feedback_chance = 0.12
+activity_feedback_bubble_duration_seconds = 4.5
+navigation_failure_cooldown_seconds = 2.0
+repeated_activity_weight_multiplier = 0.25
+favored_class_weight_multiplier = 1.65
+favored_role_weight_multiplier = 1.2
+favored_attribute_weight_multiplier = 1.3
+personality_preference_weight_multiplier = 1.15
+preferred_activity_weight_multiplier = 1.25
+wipe_activity_weight_multiplier = 1.8
+victory_social_weight_multiplier = 2.3
+roster_change_activity_weight_multiplier = 1.7
+distance_weight_numerator = 1.15
+distance_weight_scale_pixels = 4200.0
+distance_weight_minimum = 0.55
+distance_weight_maximum = 1.15
+
+[sub_resource type="Resource" id="CampMovement"]
+script = ExtResource("6_movement")
+player_speed_pixels_per_second = 360.0
+member_speed_pixels_per_second = 150.0
+population_collision_margin_pixels = 26.0
+population_occupancy_distance_pixels = 38.0
+waypoint_arrival_distance_pixels = 5.0
+redundant_waypoint_distance_pixels = 18.0
+navigation_timeout_seconds = 24.0
+conversation_anchor_arrival_distance_pixels = 8.0
+interrupted_idle_delay_min_seconds = 0.8
+interrupted_idle_delay_max_seconds = 2.0
+conversation_end_idle_delay_min_seconds = 0.8
+conversation_end_idle_delay_max_seconds = 1.8
+
+[resource]
+script = ExtResource("1_camp")
+notable_event_record_limit = 200
+raid_chronicle_limit = 100
+memory = SubResource("CampMemory")
+relationships = SubResource("CampRelationships")
+conversations = SubResource("CampConversations")
+activities = SubResource("CampActivities")
+movement = SubResource("CampMovement")
+facility_interaction_radii_pixels = {"command_tent": 225.0, "archive": 205.0, "quarters": 170.0, "formation_yard": 190.0}

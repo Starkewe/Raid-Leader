@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RaidCampaignTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tuning/raid_campaign_tuning.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+minimum_active_raid_size = 1
+maximum_raid_size = 20
+raid_group_size = 5
+campaign_cast_size = 60
+initial_roster_size = 20
+attempt_history_limit = 5
+quarters_room_count = 20
+quarters_room_capacity = 4
+initial_class_requirements = {"Warrior": 2, "Priest": 5, "Rogue": 6, "Mage": 7}
+campaign_class_requirements = {"Warrior": 15, "Priest": 15, "Rogue": 15, "Mage": 15}

@@ -2,13 +2,21 @@ extends RefCounted
 class_name MovementCommandExecutor
 
 const MovementSlotResolverScript := preload("res://scripts/combat/movement_slot_resolver.gd")
-const LOCAL_DESTINATION_SPACING: float = (
+static var LOCAL_DESTINATION_SPACING: float = (
 	MovementSlotResolverScript.RAIDER_FORMATION_SPACING_PIXELS
 )
-const LOCAL_DESTINATION_MAX_ADJUSTMENT: float = LOCAL_DESTINATION_SPACING * 3.0
-const LOCAL_DESTINATION_ADJUSTMENT_STEP: float = 4.0
-const LOCAL_DESTINATION_CANDIDATE_DIRECTIONS: int = 16
-const MINI_REGION_SAFETY_BUFFER: float = 4.0
+static var LOCAL_DESTINATION_MAX_ADJUSTMENT: float = (
+	TuningCatalogAccess.get_combat().get_local_destination_max_adjustment_pixels()
+)
+static var LOCAL_DESTINATION_ADJUSTMENT_STEP: float = (
+	TuningCatalogAccess.get_combat().local_destination_adjustment_step_pixels
+)
+static var LOCAL_DESTINATION_CANDIDATE_DIRECTIONS: int = (
+	TuningCatalogAccess.get_combat().local_destination_candidate_directions
+)
+static var MINI_REGION_SAFETY_BUFFER: float = (
+	TuningCatalogAccess.get_combat().mini_region_safety_buffer_pixels
+)
 
 signal refresh_requested
 signal temporary_status_requested(unit: Node, text: String, duration: float)

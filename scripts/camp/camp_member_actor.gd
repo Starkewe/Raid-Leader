@@ -9,7 +9,9 @@ signal bubble_visibility_changed(visible_now: bool)
 const RaiderClassCatalogScript := preload(
 	"res://scripts/data/raider_class_catalog.gd"
 )
-const WAYPOINT_ARRIVAL_DISTANCE := 5.0
+static var WAYPOINT_ARRIVAL_DISTANCE: float = (
+	TuningCatalogAccess.get_camp().movement.waypoint_arrival_distance_pixels
+)
 
 var member: Dictionary = {}
 var member_id: String = ""
@@ -20,7 +22,7 @@ var path: Array[Vector2] = []
 var perform_time_remaining: float = 0.0
 var idle_time_remaining: float = 0.0
 var navigation_time_remaining: float = 0.0
-var move_speed: float = 150.0
+var move_speed: float = TuningCatalogAccess.get_camp().movement.member_speed_pixels_per_second
 var label: Label = null
 var bubble: Label = null
 var bubble_time_remaining: float = 0.0
@@ -91,7 +93,7 @@ func start_activity(
 	path = waypoints.duplicate()
 	perform_time_remaining = duration
 	activity_facing_direction = facing_direction
-	navigation_time_remaining = 24.0
+	navigation_time_remaining = TuningCatalogAccess.get_camp().movement.navigation_timeout_seconds
 	state = "walking" if not path.is_empty() else "performing"
 	queue_redraw()
 
@@ -100,7 +102,10 @@ func interrupt_activity() -> void:
 	focused_activity_snapshot.clear()
 	path.clear()
 	state = "idle"
-	idle_time_remaining = randf_range(0.8, 2.0)
+	idle_time_remaining = randf_range(
+		TuningCatalogAccess.get_camp().movement.interrupted_idle_delay_min_seconds,
+		TuningCatalogAccess.get_camp().movement.interrupted_idle_delay_max_seconds
+	)
 	current_activity_id = ""
 	current_activity_name = ""
 	conversation_target_position = Vector2.ZERO
@@ -109,9 +114,11 @@ func interrupt_activity() -> void:
 	queue_redraw()
 
 
-func show_bubble(text: String, duration: float = 4.5) -> bool:
+func show_bubble(text: String, duration: float = -1.0) -> bool:
 	if bubble == null or text.is_empty() or bubble.visible:
 		return false
+	if duration < 0.0:
+		duration = TuningCatalogAccess.get_camp().activities.activity_feedback_bubble_duration_seconds
 
 	bubble.text = text
 	bubble.visible = true
@@ -149,8 +156,12 @@ func begin_focused_conversation(
 	path.clear()
 	conversation_target_position = other_position
 	conversation_anchor_position = anchor_position
-	conversation_approach_time_remaining = 24.0
-	if anchor_position != Vector2.ZERO and global_position.distance_to(anchor_position) > 8.0:
+	conversation_approach_time_remaining = TuningCatalogAccess.get_camp().movement.navigation_timeout_seconds
+	if (
+		anchor_position != Vector2.ZERO
+		and global_position.distance_to(anchor_position)
+		> TuningCatalogAccess.get_camp().movement.conversation_anchor_arrival_distance_pixels
+	):
 		path.append(anchor_position)
 		state = "conversation_approaching"
 	else:
@@ -167,7 +178,10 @@ func end_focused_conversation() -> void:
 
 	if focused_activity_snapshot.is_empty():
 		state = "idle"
-		idle_time_remaining = randf_range(0.8, 1.8)
+		idle_time_remaining = randf_range(
+			TuningCatalogAccess.get_camp().movement.conversation_end_idle_delay_min_seconds,
+			TuningCatalogAccess.get_camp().movement.conversation_end_idle_delay_max_seconds
+		)
 	else:
 		state = String(focused_activity_snapshot.get("state", "idle"))
 		path.clear()
@@ -176,7 +190,12 @@ func end_focused_conversation() -> void:
 				path.append(waypoint)
 		perform_time_remaining = float(focused_activity_snapshot.get("perform_time_remaining", 0.0))
 		idle_time_remaining = float(focused_activity_snapshot.get("idle_time_remaining", 1.0))
-		navigation_time_remaining = float(focused_activity_snapshot.get("navigation_time_remaining", 24.0))
+		navigation_time_remaining = float(
+			focused_activity_snapshot.get(
+				"navigation_time_remaining",
+				TuningCatalogAccess.get_camp().movement.navigation_timeout_seconds
+			)
+		)
 		current_activity_id = String(focused_activity_snapshot.get("current_activity_id", ""))
 		current_activity_name = String(focused_activity_snapshot.get("current_activity_name", ""))
 		activity_facing_direction = focused_activity_snapshot.get(

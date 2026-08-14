@@ -1,19 +1,16 @@
 extends RefCounted
 class_name RaiderMemoryStore
 
-const CampV2TuningScript := preload("res://scripts/core/camp_v2_tuning.gd")
-const TUNING := CampV2TuningScript.MEMORY
-const DAY_SECONDS: int = TUNING["day_seconds"]
-const NORMAL_REINFORCEMENT_CEILING_DAYS: int = TUNING[
-	"normal_reinforcement_ceiling_days"
-]
-const SELF_REINFORCEMENT_LIMIT: int = TUNING["self_reinforcement_limit"]
-const REJECTION_LIMIT: int = TUNING["rejection_limit"]
-const LIFE_MEMORY_CAPACITY: int = TUNING["life_memory_capacity"]
-const LATENT_MULTIPLIER: int = TUNING["latent_multiplier"]
-const CATEGORY_CAPACITIES: Dictionary = TUNING["category_capacities"]
-const CATEGORY_ACTIVE_DAYS: Dictionary = TUNING["category_active_days"]
-const CATEGORY_LATENT_DAYS: Dictionary = TUNING["category_latent_days"]
+static var TUNING: CampMemoryTuning = TuningCatalogAccess.get_camp().memory
+static var DAY_SECONDS: int = TUNING.day_seconds
+static var NORMAL_REINFORCEMENT_CEILING_DAYS: int = TUNING.normal_reinforcement_ceiling_days
+static var SELF_REINFORCEMENT_LIMIT: int = TUNING.self_reinforcement_limit
+static var REJECTION_LIMIT: int = TUNING.rejection_limit
+static var LIFE_MEMORY_CAPACITY: int = TUNING.life_memory_capacity
+static var LATENT_MULTIPLIER: int = TUNING.latent_multiplier
+static var CATEGORY_CAPACITIES: Dictionary = TUNING.category_capacities
+static var CATEGORY_ACTIVE_DAYS: Dictionary = TUNING.category_active_days
+static var CATEGORY_LATENT_DAYS: Dictionary = TUNING.category_latent_days
 
 
 static func create_store() -> Dictionary:
@@ -163,7 +160,7 @@ static func select_relevant_thread(
 		criteria.get("states", ["active", "latent", "permanent"])
 	)
 	var state_weights: Dictionary = Dictionary(
-		TUNING.get("selection_state_weights", {})
+		TUNING.selection_state_weights
 	)
 	var best: Dictionary = {}
 	var best_score := -1.0
@@ -186,16 +183,16 @@ static func select_relevant_thread(
 			0.0
 		)
 		var recency_window := maxf(
-			float(TUNING.get("selection_recency_window_days", 90.0)), 1.0
+			TUNING.selection_recency_window_days, 1.0
 		)
 		var score := float(state_weights.get(state, 0.25))
 		score += float(thread.get("strength", 0.0)) * float(
-			TUNING.get("selection_strength_weight", 1.4)
+			TUNING.selection_strength_weight
 		)
 		score += minf(
 			float(thread.get("reinforcement_count", 0))
-			* float(TUNING.get("selection_reinforcement_weight", 0.12)),
-			0.8
+			* TUNING.selection_reinforcement_weight,
+			TUNING.selection_reinforcement_score_cap
 		)
 		score += maxf(1.0 - age_days / recency_window, 0.0)
 		if score > best_score:
@@ -297,7 +294,7 @@ static func _reinforce_thread(
 		/ (
 			1.0
 			+ float(reinforcement_count)
-			* float(TUNING.get("diminishing_extension_rate", 0.85))
+			* TUNING.diminishing_extension_rate
 		)
 	)
 	var ceiling := int(thread.get("normal_ceiling_at", now))
@@ -402,7 +399,7 @@ static func _should_suppress_duplicate_episode(
 			String(episode.get("thread_id", "")) == thread_id
 			and String(episode.get("event_type", "")) == String(event.get("event_type", ""))
 			and now - int(episode.get("occurred_at", 0))
-			<= int(TUNING.get("duplicate_episode_window_days", 10)) * DAY_SECONDS
+			<= TUNING.duplicate_episode_window_days * DAY_SECONDS
 		):
 			return true
 
@@ -418,7 +415,7 @@ static func _promotion_reason(thread: Dictionary, event: Dictionary) -> String:
 	if (
 		bool(event.get("structured_data", {}).get("resolves_thread", false))
 		and int(thread.get("external_reinforcement_count", 0))
-		>= int(TUNING.get("resolution_external_reinforcements", 4))
+		>= TUNING.resolution_external_reinforcements
 	):
 		return "repeated_pattern_resolved"
 
@@ -426,7 +423,7 @@ static func _promotion_reason(thread: Dictionary, event: Dictionary) -> String:
 		int(thread.get("self_reinforcement_count", 0)) >= SELF_REINFORCEMENT_LIMIT
 		and bool(event.get("authored_significance", false))
 		and float(thread.get("strength", 0.0))
-		>= float(TUNING.get("identity_promotion_strength", 0.88))
+		>= TUNING.identity_promotion_strength
 	):
 		return "repeated_reflection_became_identity"
 

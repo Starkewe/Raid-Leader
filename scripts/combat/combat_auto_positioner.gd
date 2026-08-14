@@ -8,9 +8,13 @@ const MovementSlotResolverScript := preload(
 
 const PERSONAL_REACTION_OWNER := "raider_personal"
 const AVOID_AREA_RESPONSE := "avoid_area"
-const ROUTE_ARRIVAL_DISTANCE := 10.0
-const CANDIDATE_RADIAL_STEP := 64.0
-const CANDIDATE_DIRECTIONS := 24
+static var ROUTE_ARRIVAL_DISTANCE: float = (
+	TuningCatalogAccess.get_combat().automatic_route_arrival_distance_pixels
+)
+static var CANDIDATE_RADIAL_STEP: float = (
+	TuningCatalogAccess.get_combat().automatic_candidate_radial_step_pixels
+)
+static var CANDIDATE_DIRECTIONS: int = TuningCatalogAccess.get_combat().automatic_candidate_directions
 
 var support_transition: Dictionary = {}
 var support_target_instance_id: int = 0
@@ -490,7 +494,11 @@ static func find_nearest_safe_escape_position(
 
 	var radial_distance := CANDIDATE_RADIAL_STEP
 
-	while radial_distance <= maximum_radius + CANDIDATE_RADIAL_STEP * 4.0:
+	while (
+		radial_distance
+		<= maximum_radius
+		+ CANDIDATE_RADIAL_STEP * TuningCatalogAccess.get_combat().automatic_candidate_extra_radial_steps
+	):
 		for direction_index in range(CANDIDATE_DIRECTIONS):
 			var direction := Vector2.from_angle(
 				TAU * float(direction_index) / float(CANDIDATE_DIRECTIONS)

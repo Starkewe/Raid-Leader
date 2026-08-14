@@ -18,7 +18,7 @@ const EncounterSessionScript := preload("res://scripts/combat/encounter_session.
 
 @export var voice_transcriber_path: NodePath
 @export var voice_command_parser_path: NodePath
-@export var max_combat_log_entries: int = 10000
+@export var max_combat_log_entries: int
 
 var voice_coordinator: VoiceCommandCoordinator = null
 
@@ -40,6 +40,10 @@ var combat_started_at_msec: int = 0
 var attempt_recorder: AttemptRecorder = null
 var last_attempt_summary: Dictionary = {}
 var formation_changed_after_failure: bool = false
+
+
+func _init() -> void:
+	max_combat_log_entries = TuningCatalogAccess.get_runtime_limits().combat_log_entries
 
 func _ready():
 	print("CombatManager loaded")

@@ -1,10 +1,14 @@
 extends CharacterBody2D
 class_name CampPlayer
 
-@export var speed: float = 360.0
+@export var speed: float
 @export var movement_bounds: Rect2 = Rect2(120, 120, 2760, 1860)
 
 var movement_enabled: bool = true
+
+
+func _init() -> void:
+	speed = TuningCatalogAccess.get_camp().movement.player_speed_pixels_per_second
 
 
 func _ready() -> void:

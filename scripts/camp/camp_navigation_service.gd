@@ -157,7 +157,10 @@ func _remove_redundant_waypoints(
 	var result: Array[Vector2] = []
 	var previous := from_position
 	for waypoint in source:
-		if previous.distance_to(waypoint) > 18.0:
+		if (
+			previous.distance_to(waypoint)
+			> TuningCatalogAccess.get_camp().movement.redundant_waypoint_distance_pixels
+		):
 			result.append(waypoint)
 			previous = waypoint
 	return result

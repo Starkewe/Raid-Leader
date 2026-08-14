@@ -4,24 +4,8 @@ class_name CampaignCastGenerator
 const RaiderClassCatalogScript := preload(
 	"res://scripts/data/raider_class_catalog.gd"
 )
-const CAST_SIZE := 60
-const INITIAL_SIZE := 20
-const RESERVE_SIZE := CAST_SIZE - INITIAL_SIZE
-const INITIAL_CLASS_REQUIREMENTS := {
-	"Warrior": 2,
-	"Priest": 5,
-	"Rogue": 6,
-	"Mage": 7,
-}
-const WRIT_CLASS_REQUIREMENTS := {
-	"Warrior": 15,
-	"Priest": 15,
-	"Rogue": 15,
-	"Mage": 15,
-}
-
-
 static func generate(campaign_seed: int, definitions: Array[Dictionary]) -> Dictionary:
+	var tuning := TuningCatalogAccess.get_raid_campaign()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = campaign_seed
 	var remaining := definitions.duplicate(true)
@@ -32,7 +16,7 @@ static func generate(campaign_seed: int, definitions: Array[Dictionary]) -> Dict
 	var class_counts: Dictionary = {}
 
 	for unit_class in RaiderClassCatalogScript.get_campaign_generation_class_names():
-		var required := int(INITIAL_CLASS_REQUIREMENTS[unit_class])
+		var required := int(tuning.initial_class_requirements[unit_class])
 
 		for _slot in range(required):
 			var candidates := _initial_candidates(remaining, unit_class)
@@ -50,8 +34,8 @@ static func generate(campaign_seed: int, definitions: Array[Dictionary]) -> Dict
 
 	for unit_class in RaiderClassCatalogScript.get_campaign_generation_class_names():
 		var future_required := (
-			int(WRIT_CLASS_REQUIREMENTS[unit_class])
-			- int(INITIAL_CLASS_REQUIREMENTS[unit_class])
+			int(tuning.campaign_class_requirements[unit_class])
+			- int(tuning.initial_class_requirements[unit_class])
 		)
 
 		for _slot in range(future_required):
@@ -190,6 +174,7 @@ static func _validate_result(
 	future: Array[Dictionary],
 	warnings: Array[String]
 ) -> void:
+	var tuning := TuningCatalogAccess.get_raid_campaign()
 	var unique_ids: Dictionary = {}
 
 	for raider_id in selected_ids:
@@ -197,20 +182,22 @@ static func _validate_result(
 			warnings.append("Campaign cast contains duplicate raider_id: " + raider_id)
 		unique_ids[raider_id] = true
 
-	if selected_ids.size() != CAST_SIZE:
+	if selected_ids.size() != tuning.campaign_cast_size:
 		warnings.append(
-			"Campaign cast contains %d raiders instead of %d." % [selected_ids.size(), CAST_SIZE]
+			"Campaign cast contains %d raiders instead of %d."
+			% [selected_ids.size(), tuning.campaign_cast_size]
 		)
 
-	if initial.size() != INITIAL_SIZE:
+	if initial.size() != tuning.initial_roster_size:
 		warnings.append(
-			"Initial cast contains %d raiders instead of %d." % [initial.size(), INITIAL_SIZE]
+			"Initial cast contains %d raiders instead of %d."
+			% [initial.size(), tuning.initial_roster_size]
 		)
 
-	if future.size() != RESERVE_SIZE:
+	if future.size() != tuning.get_reserve_roster_size():
 		warnings.append(
 			"Reserve cast contains %d raiders instead of %d."
-			% [future.size(), RESERVE_SIZE]
+			% [future.size(), tuning.get_reserve_roster_size()]
 		)
 
 	var counts: Dictionary = {}
@@ -220,13 +207,13 @@ static func _validate_result(
 		counts[unit_class] = int(counts.get(unit_class, 0)) + 1
 
 	for unit_class in RaiderClassCatalogScript.get_campaign_generation_class_names():
-		if int(counts.get(unit_class, 0)) != int(INITIAL_CLASS_REQUIREMENTS[unit_class]):
+		if int(counts.get(unit_class, 0)) != int(tuning.initial_class_requirements[unit_class]):
 			warnings.append(
 				"Initial %s count is %d; expected %d."
 				% [
 					unit_class,
 					int(counts.get(unit_class, 0)),
-					int(INITIAL_CLASS_REQUIREMENTS[unit_class]),
+					int(tuning.initial_class_requirements[unit_class]),
 				]
 			)
 
@@ -237,12 +224,12 @@ static func _validate_result(
 		writ_counts[unit_class] = int(writ_counts.get(unit_class, 0)) + 1
 
 	for unit_class in RaiderClassCatalogScript.get_campaign_generation_class_names():
-		if int(writ_counts.get(unit_class, 0)) != int(WRIT_CLASS_REQUIREMENTS[unit_class]):
+		if int(writ_counts.get(unit_class, 0)) != int(tuning.campaign_class_requirements[unit_class]):
 			warnings.append(
 				"Writ %s count is %d; expected %d."
 				% [
 					unit_class,
 					int(writ_counts.get(unit_class, 0)),
-					int(WRIT_CLASS_REQUIREMENTS[unit_class]),
+					int(tuning.campaign_class_requirements[unit_class]),
 				]
 			)

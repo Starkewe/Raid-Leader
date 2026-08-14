@@ -3,8 +3,6 @@ class_name CommandTargetResolver
 
 const CommandSchemaScript := preload("res://scripts/commands/command_schema.gd")
 
-const GROUP_SIZE: int = 5
-
 const SELECTOR_EVERYONE := CommandSchemaScript.SELECTOR_EVERYONE
 const SELECTOR_CLASS := CommandSchemaScript.SELECTOR_CLASS
 const SELECTOR_GROUP := CommandSchemaScript.SELECTOR_GROUP
@@ -119,12 +117,13 @@ func get_living_units_by_class(class_name_value: String) -> Array:
 
 func get_living_units_by_group(group_number: int) -> Array:
 	var matching_units: Array = []
+	var group_size := TuningCatalogAccess.get_raid_campaign().raid_group_size
 
 	if group_number <= 0:
 		return matching_units
 
-	var start_index: int = (group_number - 1) * GROUP_SIZE
-	var end_index: int = start_index + GROUP_SIZE
+	var start_index: int = (group_number - 1) * group_size
+	var end_index: int = start_index + group_size
 
 	for index in range(start_index, end_index):
 		if index < 0 or index >= party_members.size():

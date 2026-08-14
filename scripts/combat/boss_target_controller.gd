@@ -3,16 +3,17 @@ class_name BossTargetController
 
 signal target_changed(target: Node)
 
-const NORMAL_SWITCH_THRESHOLD := 1.10
-const TAUNT_THREAT_MULTIPLIER := 1.20
-const TAUNT_FORCED_TARGET_DURATION := 3.0
-const TANK_ROLE_MULTIPLIER := 2.0
-const CLASS_THREAT_MULTIPLIERS := {
-	"warrior": 1.3,
-	"rogue": 0.9,
-	"mage": 1.1,
-	"priest": 0.7
-}
+static var NORMAL_SWITCH_THRESHOLD: float = (
+	TuningCatalogAccess.get_combat().normal_threat_switch_multiplier
+)
+static var TAUNT_THREAT_MULTIPLIER: float = TuningCatalogAccess.get_combat().taunt_threat_multiplier
+static var TAUNT_FORCED_TARGET_DURATION: float = (
+	TuningCatalogAccess.get_combat().taunt_forced_target_duration_seconds
+)
+static var TANK_ROLE_MULTIPLIER: float = TuningCatalogAccess.get_combat().tank_role_threat_multiplier
+static var CLASS_THREAT_MULTIPLIERS: Dictionary = (
+	TuningCatalogAccess.get_combat().class_threat_multipliers
+)
 
 var party_members: Array = []
 var threat_table: Dictionary = {}
