@@ -1481,15 +1481,15 @@ func get_progression_diagnostics() -> Array[Dictionary]:
 	return _progression_service.get_missing_content_diagnostics(_campaign)
 
 
+func get_weapon_holder_id(weapon_id: String) -> String:
+	return _progression_service.get_weapon_holder_id(_campaign, weapon_id)
+
+
 func get_equipped_raider_ids(weapon_id: String) -> Array[String]:
 	var result: Array[String] = []
-	for raider_id_value in _campaign.get("raider_states", {}):
-		var state_value: Variant = _campaign["raider_states"][raider_id_value]
-		if (
-			state_value is Dictionary
-			and String(state_value.get("equipped_weapon_id", "")) == weapon_id
-		):
-			result.append(String(raider_id_value))
+	var holder_id := get_weapon_holder_id(weapon_id)
+	if not holder_id.is_empty():
+		result.append(holder_id)
 	return result
 
 
@@ -2092,6 +2092,7 @@ func _sanitize_current_campaign(source: Dictionary) -> Dictionary:
 	sanitized["progression"] = CampaignProgressionServiceScript.sanitize_progression(
 		sanitized.get("progression", {})
 	)
+	CampaignProgressionServiceScript.reconcile_duplicate_weapon_assignments(sanitized)
 	var latest_reward_attempt_id := String(
 		sanitized.get("latest_victory", {}).get("attempt_id", "")
 	)

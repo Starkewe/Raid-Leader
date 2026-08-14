@@ -157,4 +157,4 @@ relationships = SubResource("CampRelationships")
 conversations = SubResource("CampConversations")
 activities = SubResource("CampActivities")
 movement = SubResource("CampMovement")
-facility_interaction_radii_pixels = {"command_tent": 225.0, "archive": 205.0, "quarters": 170.0, "formation_yard": 190.0, "storage": 190.0}
+facility_interaction_radii_pixels = {"command_tent": 225.0, "archive": 205.0, "smith": 190.0, "quarters": 170.0, "formation_yard": 190.0, "storage": 190.0}

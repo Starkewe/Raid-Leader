@@ -162,6 +162,9 @@ func _validate_rendered_accessibility(
 
 
 func _validate_debug_boundary(journal: CampJournal, failures: Array[String]) -> void:
+	var notice := journal.find_child("StorageReadOnlyNotice", true, false) as Label
+	if notice == null or not String(notice.text).contains("Rudimentary Smith"):
+		failures.append("Camp Stores did not direct crafting and equipment management to the Smith.")
 	var debug_panel := journal.find_child("StorageDebugControls", true, false)
 	if OS.is_debug_build() and debug_panel == null:
 		failures.append("Debug build omitted Camp Stores backend exercise controls.")

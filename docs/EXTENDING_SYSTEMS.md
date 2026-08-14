@@ -56,8 +56,11 @@ To extend progression content:
 `CampaignRewardService` owns idempotent victory transactions and receipt generation.
 `CampaignProgressionService` owns crafting, equipment, trait slots, recovery
 diagnostics, and inventory reads. `CampaignState` remains their public facade.
-Crafted weapon IDs represent reusable definitions rather than item instances, so one
-owned weapon can be equipped by multiple compatible raiders.
+Each crafted weapon ID represents one unique owned arm and may be assigned to at most
+one raider. Equipping an available weapon releases that raider's previous weapon;
+transfers between raiders require the current holder to unequip first. Load
+sanitization repairs legacy duplicate assignments by favoring active-party order and
+then stable roster order, and records the repair in progression diagnostics.
 
 Combat receives only the validated runtime weapon projection on a raid-member record.
 `WeaponStatAdapter` is the common power/timing/range calculation seam for all four
@@ -65,9 +68,11 @@ base unit controllers. Weapon-trait hooks are descriptive metadata and have no c
 effect in this pass. Raider traits are a separate major/two-minor scaffold; the
 production catalog intentionally authors none. `doctrine_id` is persistence-only.
 
-Camp Stores presents progression through `StoragePagePresenter`. Production views are
-read-only. Any fixture grant, seeded reward, craft, equip, or trait inspection control
-must remain inside `OS.is_debug_build()` and the `storage_debug_mutation` group.
+The Rudimentary Smith presents production Forge and Equip views through
+`SmithPagePresenter`. Camp Stores presents read-only progression through
+`StoragePagePresenter`; any fixture grant, seeded reward, craft, equip, or trait
+inspection control there must remain inside `OS.is_debug_build()` and the
+`storage_debug_mutation` group.
 
 ## Campaign state
 
