@@ -245,6 +245,10 @@ func _validate_equipment(
 		or not String(assigned_entry.get("disabled_reason", "")).contains("unequip")
 	):
 		failures.append("Held weapon did not remain visible and disabled with manual-transfer direction.")
+	armory = journal.find_child("SmithReturnToArmory", true, false) as SmithArmoryDropZone
+	if armory == null:
+		failures.append("Smith live refresh did not rebuild Return to Armory.")
+		return
 	armory._drop_data(drop_point, {
 		"type": "smith_equipped_weapon",
 		"source_raider_id": first_id,
