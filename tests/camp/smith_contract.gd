@@ -180,9 +180,17 @@ func _validate_equipment(
 ) -> void:
 	presenter.current_view_id = "equip"
 	journal.call("_refresh_current_facility")
-	await get_tree().process_frame
-	if journal.find_child("SmithRaiderSelector", true, false) == null:
-		failures.append("Equip view did not render its raider selector.")
+	await _wait_frames(2)
+	if journal.find_child("SmithRaiderSelector", true, false) != null:
+		failures.append("Smith Equip retained the duplicate in-menu active raider selector.")
+	var drawer := get_tree().get_first_node_in_group("camp_raid_drawer") as CampRaidDrawer
+	var armory := journal.find_child("SmithReturnToArmory", true, false) as SmithArmoryDropZone
+	if drawer == null or not drawer.is_locked_open():
+		failures.append("Smith Equip did not force the camp raid drawer open and lock it.")
+	if armory == null:
+		failures.append("Smith Equip did not render its Return to Armory drop target.")
+	if drawer == null or armory == null:
+		return
 	var equip := presenter.build_equip_view_model()
 	var weapon_id := "earthgnasher_heartmaul"
 	if not CampaignState.owns_crafted_weapon(weapon_id):
@@ -205,10 +213,28 @@ func _validate_equipment(
 		return
 	var first_id := compatible_ids[0]
 	var second_id := compatible_ids[1]
-	presenter.selected_raider_id = first_id
-	if presenter.equip_selected_weapon(weapon_id).get("status") != "equipped":
-		failures.append("Active compatible raider could not equip an unassigned crafted weapon.")
-	presenter.selected_raider_id = second_id
+	var armory_card := journal.find_child("SmithWeapon_" + weapon_id, true, false) as SmithDragSource
+	if armory_card == null or not armory_card.drag_enabled:
+		failures.append("Unassigned crafted weapon was not rendered as a draggable armory card.")
+		return
+	var drop_point := Vector2(180, 24)
+	var first_frame := drawer.find_child("CampRaidFrame_" + first_id, true, false) as CampRaidFrame
+	var second_frame := drawer.find_child("CampRaidFrame_" + second_id, true, false) as CampRaidFrame
+	if (
+		first_frame == null
+		or not first_frame._can_drop_data(drop_point, armory_card.drag_payload)
+	):
+		failures.append("Compatible active raid frame rejected an unassigned crafted weapon drag.")
+		return
+	first_frame._drop_data(drop_point, armory_card.drag_payload)
+	await _wait_frames(2)
+	if CampaignState.get_weapon_holder_id(weapon_id) != first_id:
+		failures.append("Dropping an armory weapon on a raid frame did not equip it.")
+	second_frame = drawer.find_child("CampRaidFrame_" + second_id, true, false) as CampRaidFrame
+	if second_frame != null and second_frame._can_drop_data(
+		drop_point, {"type": "smith_armory_weapon", "weapon_id": weapon_id}
+	):
+		failures.append("An already-held unique weapon remained droppable on another raid frame.")
 	var assigned_entry := _entry_by_id(
 		presenter.build_equip_view_model().get("weapons", []), "weapon_id", weapon_id
 	)
@@ -219,39 +245,86 @@ func _validate_equipment(
 		or not String(assigned_entry.get("disabled_reason", "")).contains("unequip")
 	):
 		failures.append("Held weapon did not remain visible and disabled with manual-transfer direction.")
-	if presenter.equip_selected_weapon(weapon_id).get("status") != "assigned_elsewhere":
-		failures.append("Second raider claimed a weapon without manual unequip.")
-	presenter.selected_raider_id = first_id
-	presenter.unequip_selected_weapon()
-	presenter.selected_raider_id = second_id
-	if presenter.equip_selected_weapon(weapon_id).get("status") != "equipped":
-		failures.append("Weapon was not claimable after its current holder manually unequipped it.")
+	armory = journal.find_child("SmithReturnToArmory", true, false) as SmithArmoryDropZone
+	if armory == null:
+		failures.append("Smith live refresh did not rebuild Return to Armory.")
+		return
+	armory._drop_data(drop_point, {
+		"type": "smith_equipped_weapon",
+		"source_raider_id": first_id,
+		"weapon_id": weapon_id,
+	})
+	await _wait_frames(2)
+	if not CampaignState.get_weapon_holder_id(weapon_id).is_empty():
+		failures.append("Return to Armory did not manually unequip the current holder.")
+	second_frame = drawer.find_child("CampRaidFrame_" + second_id, true, false) as CampRaidFrame
+	if second_frame == null:
+		failures.append("Second compatible raider frame disappeared during equipment refresh.")
+		return
+	second_frame._drop_data(
+		drop_point, {"type": "smith_armory_weapon", "weapon_id": weapon_id}
+	)
+	await _wait_frames(2)
+	if CampaignState.get_weapon_holder_id(weapon_id) != second_id:
+		failures.append("Weapon was not claimable by drag after its holder manually unequipped it.")
 
 	var replacement_recipe := presenter._build_recipe_entry("craft_faultline_cudgel")
 	_grant_recipe_cost(replacement_recipe)
 	if CampaignState.craft("craft_faultline_cudgel").get("status") != "crafted":
 		failures.append("Smith replacement fixture could not be crafted.")
-	elif presenter.equip_selected_weapon("faultline_cudgel").get("status") != "equipped":
-		failures.append("Selected raider could not equip a compatible replacement weapon.")
-	elif not CampaignState.get_weapon_holder_id(weapon_id).is_empty():
-		failures.append("Equipping a replacement did not release the previous weapon.")
+	else:
+		await _wait_frames(2)
+		second_frame = drawer.find_child("CampRaidFrame_" + second_id, true, false) as CampRaidFrame
+		second_frame._drop_data(
+			drop_point,
+			{"type": "smith_armory_weapon", "weapon_id": "faultline_cudgel"}
+		)
+		await _wait_frames(2)
+		if CampaignState.get_weapon_holder_id("faultline_cudgel") != second_id:
+			failures.append("Dropping a replacement weapon did not equip the selected raid frame.")
+		if not CampaignState.get_weapon_holder_id(weapon_id).is_empty():
+			failures.append("Equipping a replacement did not return the previous weapon to the armory.")
+
+	first_frame = drawer.find_child("CampRaidFrame_" + first_id, true, false) as CampRaidFrame
+	first_frame._drop_data(
+		drop_point, {"type": "smith_armory_weapon", "weapon_id": weapon_id}
+	)
+	await _wait_frames(2)
+	first_frame = drawer.find_child("CampRaidFrame_" + first_id, true, false) as CampRaidFrame
+	second_frame = drawer.find_child("CampRaidFrame_" + second_id, true, false) as CampRaidFrame
+	var swap_payload := first_frame.get_drag_payload(drop_point)
+	if not second_frame._can_drop_data(drop_point, swap_payload):
+		failures.append("Compatible equipped raid frames did not accept a weapon swap drag.")
+	else:
+		second_frame._drop_data(drop_point, swap_payload)
+		await _wait_frames(2)
+		if (
+			CampaignState.get_weapon_holder_id(weapon_id) != second_id
+			or CampaignState.get_weapon_holder_id("faultline_cudgel") != first_id
+		):
+			failures.append("Frame-to-frame drag did not swap both compatible weapons atomically.")
+		second_frame = drawer.find_child("CampRaidFrame_" + second_id, true, false) as CampRaidFrame
+		first_frame = drawer.find_child("CampRaidFrame_" + first_id, true, false) as CampRaidFrame
+		first_frame._drop_data(drop_point, second_frame.get_drag_payload(drop_point))
+		await _wait_frames(2)
 
 	if not CampaignState.remove_active_member(second_id):
 		failures.append("Could not create a reserve-holder fixture.")
 		return
+	await _wait_frames(2)
 	equip = presenter.build_equip_view_model()
 	var reserve := _entry_by_id(equip.get("raiders", []), "raider_id", second_id)
 	if reserve.is_empty() or not bool(reserve.get("reserve_holder", false)) or not String(reserve.get("label", "")).contains("Reserve holder"):
 		failures.append("Reserve weapon holder was hidden or unlabeled in Equip.")
-	presenter.selected_raider_id = second_id
-	equip = presenter.build_equip_view_model()
-	for entry_value in equip.get("weapons", []):
-		var entry: Dictionary = entry_value
-		if bool(entry.get("can_equip", false)):
-			failures.append("Reserve holder could receive a new weapon assignment.")
-			break
-	if presenter.unequip_selected_weapon().get("status") != "unequipped":
-		failures.append("Reserve holder could not unequip the current weapon.")
+	if drawer.find_child("CampRaidFrame_" + second_id, true, false) != null:
+		failures.append("Reserve holder incorrectly retained an assignment drop target in the raid drawer.")
+	var reserve_card := journal.find_child("SmithReserve_" + second_id, true, false) as SmithDragSource
+	if reserve_card == null or not reserve_card.drag_enabled:
+		failures.append("Reserve holder did not render as a recovery-only drag source.")
+	else:
+		armory = journal.find_child("SmithReturnToArmory", true, false) as SmithArmoryDropZone
+		armory._drop_data(drop_point, reserve_card.drag_payload)
+		await _wait_frames(2)
 	if not _entry_by_id(presenter.build_equip_view_model().get("raiders", []), "raider_id", second_id).is_empty():
 		failures.append("Unarmed reserve raider remained in the Equip raider list.")
 
@@ -260,7 +333,7 @@ func _validate_equipment(
 	if not CampaignState.debug_replace_raider_states(states):
 		failures.append("Could not install Smith missing-content recovery fixture.")
 		return
-	presenter.selected_raider_id = second_id
+	await _wait_frames(2)
 	equip = presenter.build_equip_view_model()
 	var missing := _entry_by_id(equip.get("weapons", []), "weapon_id", "returning_content_weapon")
 	if (
@@ -270,8 +343,15 @@ func _validate_equipment(
 		or not String(missing.get("disabled_reason", "")).contains("Unequip")
 	):
 		failures.append("Missing-content weapon was not visible as an inactive recovery entry.")
-	if presenter.unequip_selected_weapon().get("status") != "unequipped":
-		failures.append("Missing-content reserve weapon could not be unequipped.")
+	reserve_card = journal.find_child("SmithReserve_" + second_id, true, false) as SmithDragSource
+	armory = journal.find_child("SmithReturnToArmory", true, false) as SmithArmoryDropZone
+	if reserve_card == null or armory == null:
+		failures.append("Missing-content reserve holder did not remain recoverable through drag-and-drop.")
+	else:
+		armory._drop_data(drop_point, reserve_card.drag_payload)
+		await _wait_frames(2)
+		if not String(CampaignState.get_member(second_id).get("equipped_weapon_id", "")).is_empty():
+			failures.append("Missing-content recovery drag did not clear the saved equipment slot.")
 
 
 func _grant_recipe_cost(recipe: Dictionary) -> void:
@@ -296,6 +376,11 @@ func _entry_by_id(entries: Array, field_name: String, stable_id: String) -> Dict
 		if entry_value is Dictionary and String(entry_value.get(field_name, "")) == stable_id:
 			return Dictionary(entry_value)
 	return {}
+
+
+func _wait_frames(count: int) -> void:
+	for _index in range(count):
+		await get_tree().process_frame
 
 
 func _finish(camp: Node, failures: Array[String]) -> void:

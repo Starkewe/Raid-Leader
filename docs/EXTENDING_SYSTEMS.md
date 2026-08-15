@@ -28,6 +28,14 @@ Commands, boss frames, lifecycle coordination, and attempt recording consume `En
 
 Adding a station or route node does not require editing `CampPopulationController`. Actor lifecycle, reservations/activity scheduling, and conversation coordination are separate services while the controller retains its existing debug facade.
 
+`CampRaidDrawer` is the camp's shared active-party presentation surface. It reads
+active-party order from `CampaignState`, groups frames using raid-campaign tuning,
+and delegates hover highlights to `CampPopulationController`. The drawer starts
+retracted, remembers the player's manual open state, and is forced open only while a
+contextual Journal page is active. `CampRaidFrame` supplies the context accessory:
+Smith shows a crafted/default weapon icon and Formation Yard shows the raider's
+direction/range sector. Keep reserve-only workflows out of this active-party drawer.
+
 ## Boss rewards and equipment progression
 
 `data/progression/catalog.tres` is the authoritative progression content root. The
@@ -58,9 +66,11 @@ To extend progression content:
 diagnostics, and inventory reads. `CampaignState` remains their public facade.
 Each crafted weapon ID represents one unique owned arm and may be assigned to at most
 one raider. Equipping an available weapon releases that raider's previous weapon;
-transfers between raiders require the current holder to unequip first. Load
-sanitization repairs legacy duplicate assignments by favoring active-party order and
-then stable roster order, and records the repair in progression diagnostics.
+active raid frames can atomically move or swap their compatible equipped weapons.
+Armory cards never silently take a weapon from another holder, and reserve holders
+may only return their current weapon to the armory. Load sanitization repairs legacy
+duplicate assignments by favoring active-party order and then stable roster order,
+and records the repair in progression diagnostics.
 
 Combat receives only the validated runtime weapon projection on a raid-member record.
 `WeaponStatAdapter` is the common power/timing/range calculation seam for all four
@@ -69,7 +79,10 @@ effect in this pass. Raider traits are a separate major/two-minor scaffold; the
 production catalog intentionally authors none. `doctrine_id` is persistence-only.
 
 The Rudimentary Smith presents production Forge and Equip views through
-`SmithPagePresenter`. Camp Stores presents read-only progression through
+`SmithPagePresenter`. Equip uses drag sources in the Journal and drop targets on the
+camp raid drawer; reserve holders appear only as recovery sources. Weapon definitions
+own crafted-item icons, while `RaiderClassCatalog` resolves one default-weapon icon
+per base or advanced class. Camp Stores presents read-only progression through
 `StoragePagePresenter`; any fixture grant, seeded reward, craft, equip, or trait
 inspection control there must remain inside `OS.is_debug_build()` and the
 `storage_debug_mutation` group.

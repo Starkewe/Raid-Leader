@@ -1447,6 +1447,26 @@ func equip_weapon(raider_id: String, weapon_id: String) -> Dictionary:
 	return result
 
 
+func check_move_or_swap_equipped_weapon(
+	source_raider_id: String, destination_raider_id: String
+) -> Dictionary:
+	return _progression_service.check_move_or_swap_equipped_weapon(
+		_campaign, source_raider_id, destination_raider_id
+	)
+
+
+func move_or_swap_equipped_weapon(
+	source_raider_id: String, destination_raider_id: String
+) -> Dictionary:
+	var result := _progression_service.move_or_swap_equipped_weapon(
+		_campaign, source_raider_id, destination_raider_id
+	)
+	if bool(result.get("ok", false)):
+		roster_changed.emit()
+		state_changed.emit()
+	return result
+
+
 func unequip_weapon(raider_id: String) -> Dictionary:
 	var result := _progression_service.unequip(_campaign, raider_id)
 	if bool(result.get("ok", false)):

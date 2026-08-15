@@ -34,6 +34,7 @@ var member_quarters_panel: MemberQuartersPanel = null
 var formation_editor: FormationEditorPanel = null
 var formation_preset_dropdown: OptionButton = null
 var page_presenters: Dictionary = {}
+var shell_center: CenterContainer = null
 
 
 func _ready() -> void:
@@ -71,6 +72,7 @@ func close_journal() -> void:
 
 	visible = false
 	current_facility_id = ""
+	_sync_raid_drawer_context()
 	journal_visibility_changed.emit(false)
 
 
@@ -93,13 +95,13 @@ func _build_shell() -> void:
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	center.offset_left = 55
-	center.offset_top = 40
-	center.offset_right = -55
-	center.offset_bottom = -40
-	add_child(center)
+	shell_center = CenterContainer.new()
+	shell_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shell_center.offset_left = 55
+	shell_center.offset_top = 40
+	shell_center.offset_right = -55
+	shell_center.offset_bottom = -40
+	add_child(shell_center)
 
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(1540, 920)
@@ -109,7 +111,7 @@ func _build_shell() -> void:
 	panel_style.set_border_width_all(3)
 	panel_style.set_corner_radius_all(5)
 	panel.add_theme_stylebox_override("panel", panel_style)
-	center.add_child(panel)
+	shell_center.add_child(panel)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 28)
@@ -165,6 +167,22 @@ func _refresh_current_facility() -> void:
 	var presenter = page_presenters.get(current_facility_id)
 	if presenter != null:
 		presenter.present(self)
+	_sync_raid_drawer_context()
+
+
+func _sync_raid_drawer_context() -> void:
+	var drawer := get_tree().get_first_node_in_group("camp_raid_drawer")
+	var smith_equip := false
+	if current_facility_id == "smith":
+		var smith_presenter = page_presenters.get("smith")
+		if smith_presenter != null:
+			smith_equip = String(smith_presenter.get("current_view_id")) == "equip"
+	if drawer != null and drawer.has_method("set_menu_context"):
+		drawer.call("set_menu_context", current_facility_id, smith_equip)
+	if shell_center != null:
+		shell_center.offset_left = (
+			245.0 if current_facility_id in ["smith", "formation_yard"] else 55.0
+		)
 
 
 func _begin_scrolling_page() -> VBoxContainer:
@@ -489,7 +507,7 @@ func build_formation_yard_page() -> void:
 	formation_editor.set_map_header_builder(
 		_build_formation_name_controls.bind(formation_preset_dropdown)
 	)
-	formation_editor.configure("", true, false, false)
+	formation_editor.configure("", false, false, false, false)
 	formation_page.add_child(formation_editor)
 
 

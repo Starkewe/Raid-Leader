@@ -3,6 +3,10 @@ class_name SmithPagePresenter
 
 const VIEW_IDS: Array[String] = ["forge", "equip"]
 const VIEW_LABELS := {"forge": "Forge", "equip": "Equip"}
+const SmithDragSourceScript := preload("res://scripts/ui/smith_drag_source.gd")
+const SmithArmoryDropZoneScript := preload(
+	"res://scripts/ui/smith_armory_drop_zone.gd"
+)
 
 var current_view_id: String = "forge"
 var selected_recipe_id: String = ""
@@ -422,10 +426,15 @@ func _build_weapon_entry(weapon_id: String, selected_raider: Dictionary) -> Dict
 			"equip_status": "unknown_definition",
 			"disabled_reason": "Missing content is inactive. Select its holder and Unequip to recover the slot.",
 			"selected_raider_holds": not selected_id.is_empty() and selected_id == holder_id,
+			"icon_resource": null,
+			"compatible_raider_names": [],
+			"can_drag": false,
+			"drag_disabled_reason": "Missing content may only be returned from its current holder.",
 		}
 	var family := ProgressionCatalog.get_weapon_family(weapon.family_id)
 	var weapon_trait := ProgressionCatalog.get_weapon_trait(weapon.trait_id)
 	var family_name := weapon.family_id if family == null else family.display_name
+	var compatible_raider_names := _compatible_active_member_names(weapon.family_id)
 	var class_id := String(selected_raider.get("class_id", ""))
 	var compatible := not class_id.is_empty() and ProgressionCatalog.is_family_compatible(
 		class_id, weapon.family_id
@@ -476,7 +485,29 @@ func _build_weapon_entry(weapon_id: String, selected_raider: Dictionary) -> Dict
 		"equip_status": String(validation.get("status", "unknown")),
 		"disabled_reason": "" if bool(validation.get("ok", false)) else _equip_disabled_reason(validation),
 		"selected_raider_holds": not selected_id.is_empty() and selected_id == holder_id,
+		"icon_resource": weapon.icon_resource,
+		"compatible_raider_names": compatible_raider_names,
+		"can_drag": holder_id.is_empty() and not compatible_raider_names.is_empty(),
+		"drag_disabled_reason": (
+			"Assigned to %s. Drag its raid-frame icon to move or swap it." % holder_name
+			if not holder_id.is_empty()
+			else "No active raider is compatible with this weapon family."
+			if compatible_raider_names.is_empty()
+			else ""
+		),
 	}
+
+
+func _compatible_active_member_names(family_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for member in CampaignState.get_active_members():
+		var advanced_id := String(member.get("advanced_class_id", ""))
+		var class_id := RaiderClassCatalog.normalize_class_id(
+			advanced_id if not advanced_id.is_empty() else String(member.get("unit_class", ""))
+		)
+		if ProgressionCatalog.is_family_compatible(class_id, family_id):
+			result.append(String(member.get("display_name", member.get("member_id", "Raider"))))
+	return result
 
 
 func _add_intro(page: VBoxContainer) -> void:
@@ -613,40 +644,28 @@ func _add_recipe_details(parent: HBoxContainer, recipe: Dictionary) -> void:
 
 
 func _add_equip_view(page: VBoxContainer, model: Dictionary) -> void:
-	var raiders: Array = model.get("raiders", [])
-	if raiders.is_empty():
-		var empty := _make_muted_label(String(model.get("empty_state", "No raiders available.")))
-		empty.name = "SmithEquipEmptyState"
-		page.add_child(empty)
-		return
-	var selector := OptionButton.new()
-	selector.name = "SmithRaiderSelector"
-	selector.custom_minimum_size = Vector2(520, 42)
-	for raider_value in raiders:
-		var raider: Dictionary = raider_value
-		var index := selector.item_count
-		selector.add_item(String(raider.get("label", raider.get("display_name", "Raider"))))
-		selector.set_item_metadata(index, String(raider.get("raider_id", "")))
-		if String(raider.get("raider_id", "")) == selected_raider_id:
-			selector.select(index)
-	selector.item_selected.connect(_on_raider_selected.bind(selector))
-	page.add_child(selector)
-	var selected: Dictionary = model.get("selected_raider", {})
-	var current_text := "Current weapon: %s" % String(selected.get("equipped_weapon_name", "None"))
-	if bool(selected.get("reserve_holder", false)):
-		current_text += " · Reserve holder (inspect/unequip only)"
-	_add_wrapped_label(page, "%s · %s\n%s" % [
-		String(selected.get("display_name", "Raider")),
-		String(selected.get("class_name", selected.get("class_id", "Unknown class"))),
-		current_text,
-	], Color("c9b37b"))
-	if not String(selected.get("equipped_weapon_id", "")).is_empty():
-		var unequip_button := Button.new()
-		unequip_button.name = "SmithUnequipButton"
-		unequip_button.text = "Unequip current weapon"
-		unequip_button.custom_minimum_size = Vector2(280, 42)
-		unequip_button.pressed.connect(unequip_selected_weapon)
-		page.add_child(unequip_button)
+	_add_drag_equip_view(page, model)
+
+
+func _add_drag_equip_view(page: VBoxContainer, model: Dictionary) -> void:
+	_add_wrapped_label(
+		page,
+		"Drag an unassigned weapon onto a raid-frame slot. Drag an equipped slot to another frame to move or swap it. Return equipped weapons to the armory below.",
+		Color("c9b37b")
+	)
+	var armory_zone := SmithArmoryDropZoneScript.new() as SmithArmoryDropZone
+	armory_zone.name = "SmithReturnToArmory"
+	armory_zone.custom_minimum_size = Vector2(0, 72)
+	armory_zone.equipment_action_completed.connect(_on_drag_equipment_action)
+	page.add_child(armory_zone)
+	var armory_label := Label.new()
+	armory_label.text = "RETURN TO ARMORY\nDrop an equipped raid-frame or reserve-holder weapon here"
+	armory_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	armory_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	armory_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	armory_label.add_theme_color_override("font_color", Color("d8c78e"))
+	armory_zone.add_child(armory_label)
+	_add_reserve_recovery(page, model.get("raiders", []))
 	var weapons: Array = model.get("weapons", [])
 	if weapons.is_empty():
 		var no_weapons := _make_muted_label(String(model.get("empty_state", "No crafted weapons.")))
@@ -659,12 +678,12 @@ func _add_equip_view(page: VBoxContainer, model: Dictionary) -> void:
 	list.add_theme_constant_override("separation", 8)
 	page.add_child(list)
 	for weapon_value in weapons:
-		_add_weapon_card(list, Dictionary(weapon_value))
+		_add_drag_weapon_card(list, Dictionary(weapon_value))
 	_add_action_message(page)
 
 
-func _add_weapon_card(parent: VBoxContainer, weapon: Dictionary) -> void:
-	var panel := PanelContainer.new()
+func _add_drag_weapon_card(parent: VBoxContainer, weapon: Dictionary) -> void:
+	var panel := SmithDragSourceScript.new() as SmithDragSource
 	panel.name = "SmithWeapon_" + String(weapon.get("weapon_id", "weapon"))
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("202b31")
@@ -673,39 +692,134 @@ func _add_weapon_card(parent: VBoxContainer, weapon: Dictionary) -> void:
 	style.set_corner_radius_all(4)
 	panel.add_theme_stylebox_override("panel", style)
 	parent.add_child(panel)
+	panel.configure_drag(
+		{
+			"type": "smith_armory_weapon",
+			"weapon_id": String(weapon.get("weapon_id", "")),
+		},
+		String(weapon.get("display_name", "Weapon")),
+		weapon.get("icon_resource") as Texture2D,
+		bool(weapon.get("can_drag", false))
+	)
+	panel.tooltip_text = (
+		"Drag to a compatible raid-frame weapon slot."
+		if bool(weapon.get("can_drag", false))
+		else String(weapon.get("drag_disabled_reason", "Unavailable."))
+	)
 	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_theme_constant_override("margin_left", 14)
 	margin.add_theme_constant_override("margin_right", 14)
 	margin.add_theme_constant_override("margin_top", 10)
 	margin.add_theme_constant_override("margin_bottom", 10)
 	panel.add_child(margin)
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 12)
+	margin.add_child(row)
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(64, 64)
+	icon.texture = weapon.get("icon_resource") as Texture2D
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(icon)
 	var column := VBoxContainer.new()
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_theme_constant_override("separation", 4)
-	margin.add_child(column)
-	_add_heading(column, String(weapon.get("display_name", "Unknown weapon")), 19)
-	_add_wrapped_label(column, "%s · Power %+.0f%% · Speed %+.0f%% · Range %+.1f units" % [
+	row.add_child(column)
+	var title := _add_heading(column, String(weapon.get("display_name", "Unknown weapon")), 19)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var attributes := _add_wrapped_label(column, "%s · Power %+.0f%% · Speed %+.0f%% · Range %+.1f units" % [
 		String(weapon.get("family_name", "Unknown family")),
 		float(weapon.get("power_percentage", 0.0)),
 		float(weapon.get("speed_percentage", 0.0)),
 		float(weapon.get("range_units", 0.0)),
 	], Color("c7cbc6"))
-	_add_wrapped_label(column, String(weapon.get("description", "")), Color("9ca4a5"))
-	_add_wrapped_label(column, String(weapon.get("trait_text", "")), Color("9aa5aa"))
-	_add_wrapped_label(column, "Compatibility: %s" % (
-		"Compatible" if bool(weapon.get("compatible", false)) else "Incompatible or unavailable"
+	attributes.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var description := _add_wrapped_label(column, String(weapon.get("description", "")), Color("9ca4a5"))
+	description.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var trait_label := _add_wrapped_label(
+		column, String(weapon.get("trait_text", "")), Color("9aa5aa")
+	)
+	trait_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var compatible_names: Array = weapon.get("compatible_raider_names", [])
+	var compatibility := _add_wrapped_label(column, "Compatible active raiders: %s" % (
+		", ".join(compatible_names) if not compatible_names.is_empty() else "None"
 	), Color("9ca4a5"))
-	_add_wrapped_label(column, "Current holder: %s" % String(weapon.get("holder_name", "Unassigned")), Color("c9b37b"))
-	var button := Button.new()
-	button.name = "SmithEquip_" + String(weapon.get("weapon_id", "weapon"))
-	button.text = "Equip"
-	button.disabled = not bool(weapon.get("can_equip", false))
-	button.custom_minimum_size = Vector2(180, 40)
-	button.pressed.connect(equip_selected_weapon.bind(String(weapon.get("weapon_id", ""))))
-	column.add_child(button)
-	if button.disabled:
-		var reason := _make_muted_label(String(weapon.get("disabled_reason", "Unavailable.")))
+	compatibility.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var holder := _add_wrapped_label(column, "Current holder: %s" % String(weapon.get("holder_name", "Unassigned")), Color("c9b37b"))
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if not bool(weapon.get("can_drag", false)):
+		var reason := _make_muted_label(String(weapon.get("drag_disabled_reason", "Unavailable.")))
 		reason.name = "SmithEquipDisabledReason"
+		reason.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		column.add_child(reason)
+
+
+func _add_reserve_recovery(parent: VBoxContainer, raiders: Array) -> void:
+	var reserve_holders: Array[Dictionary] = []
+	for raider_value in raiders:
+		var raider: Dictionary = raider_value
+		if bool(raider.get("reserve_holder", false)):
+			reserve_holders.append(raider)
+	if reserve_holders.is_empty():
+		return
+	_add_heading(parent, "Reserve Holders — Recovery Only", 18)
+	_add_wrapped_label(
+		parent,
+		"These reserve raiders cannot receive assignments. Drag their current weapon to Return to Armory.",
+		Color("9ca4a5")
+	)
+	var list := HBoxContainer.new()
+	list.name = "SmithReserveRecoveryList"
+	list.add_theme_constant_override("separation", 8)
+	parent.add_child(list)
+	for raider in reserve_holders:
+		var raider_id := String(raider.get("raider_id", ""))
+		var weapon_id := String(raider.get("equipped_weapon_id", ""))
+		var weapon := ProgressionCatalog.get_weapon(weapon_id)
+		var card := SmithDragSourceScript.new() as SmithDragSource
+		card.name = "SmithReserve_" + raider_id
+		card.custom_minimum_size = Vector2(245, 58)
+		card.configure_drag(
+			{
+				"type": "smith_reserve_weapon",
+				"source_raider_id": raider_id,
+				"weapon_id": weapon_id,
+			},
+			String(raider.get("display_name", "Reserve holder")),
+			null if weapon == null else weapon.icon_resource,
+			true
+		)
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color("20272b")
+		style.border_color = Color("6f6652")
+		style.set_border_width_all(1)
+		card.add_theme_stylebox_override("panel", style)
+		list.add_child(card)
+		var label := Label.new()
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.text = "%s — Reserve holder\n%s" % [
+			String(raider.get("display_name", "Raider")),
+			String(raider.get("equipped_weapon_name", weapon_id)),
+		]
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		card.add_child(label)
+
+
+func _on_drag_equipment_action(result: Dictionary) -> void:
+	last_action_result = result.duplicate(true)
+	action_message = String(result.get("message", "Equipment action failed."))
+	var drawer := (
+		_journal.get_tree().get_first_node_in_group("camp_raid_drawer")
+		if _journal != null else null
+	)
+	if drawer != null and drawer.has_method("show_equipment_feedback"):
+		drawer.call("show_equipment_feedback", result)
+	_queue_refresh()
 
 
 func _add_action_message(page: VBoxContainer) -> void:
@@ -738,11 +852,6 @@ func _on_tab_pressed(view_id: String) -> void:
 
 func _on_recipe_selected(recipe_id: String) -> void:
 	selected_recipe_id = recipe_id
-	_queue_refresh()
-
-
-func _on_raider_selected(index: int, selector: OptionButton) -> void:
-	selected_raider_id = String(selector.get_item_metadata(index))
 	_queue_refresh()
 
 

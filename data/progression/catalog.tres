@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ProgressionCatalogResource" load_steps=136 format=3]
+[gd_resource type="Resource" script_class="ProgressionCatalogResource" load_steps=144 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/progression/progression_catalog_resource.gd" id="1_catalog"]
 [ext_resource type="Script" path="res://scripts/data/progression/progression_region_definition.gd" id="2_region"]
@@ -15,6 +15,14 @@
 [ext_resource type="Script" path="res://scripts/data/progression/weapon_definition.gd" id="13_weapon"]
 [ext_resource type="Script" path="res://scripts/data/progression/crafting_ingredient_definition.gd" id="14_ingredient"]
 [ext_resource type="Script" path="res://scripts/data/progression/crafting_recipe_definition.gd" id="15_recipe"]
+[ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_earthgnasher_heartmaul.png" id="16_heartmaul_icon"]
+[ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_faultline_cudgel.png" id="17_cudgel_icon"]
+[ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_litany_of_links.png" id="18_litany_icon"]
+[ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_collarhook_blade.png" id="19_collarhook_icon"]
+[ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_carrion_resonator.png" id="20_resonator_icon"]
+[ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_crashbone_longbow.png" id="21_longbow_icon"]
+[ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_twin_fang_knives.png" id="22_knives_icon"]
+[ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_rampage_maul.png" id="23_rampage_icon"]
 
 [sub_resource type="Resource" id="RarityCommon"]
 script = ExtResource("6_rarity")
@@ -340,6 +348,7 @@ source_encounter_id = "ogre"
 recipe_id = "craft_earthgnasher_heartmaul"
 stat_profile = SubResource("StatsHeartmaul")
 trait_id = "aftershock"
+icon_resource = ExtResource("16_heartmaul_icon")
 description = "A heartstone maul built to carry Earthgnasher's impact."
 
 [sub_resource type="Resource" id="WeaponCudgel"]
@@ -351,6 +360,7 @@ source_encounter_id = "ogre"
 recipe_id = "craft_faultline_cudgel"
 stat_profile = SubResource("StatsCudgel")
 trait_id = "faultline"
+icon_resource = ExtResource("17_cudgel_icon")
 description = "A compact cudgel veined with controlled fault lines."
 
 [sub_resource type="Resource" id="WeaponLitany"]
@@ -362,6 +372,7 @@ source_encounter_id = "chainmaster"
 recipe_id = "craft_litany_of_links"
 stat_profile = SubResource("StatsLitany")
 trait_id = "binding_liturgy"
+icon_resource = ExtResource("18_litany_icon")
 description = "A ritual chain whose links carry a litany of restraint."
 
 [sub_resource type="Resource" id="WeaponCollarhook"]
@@ -373,6 +384,7 @@ source_encounter_id = "chainmaster"
 recipe_id = "craft_collarhook_blade"
 stat_profile = SubResource("StatsCollarhook")
 trait_id = "barbed_recall"
+icon_resource = ExtResource("19_collarhook_icon")
 description = "A hooked blade assembled around Chainmaster's collar core."
 
 [sub_resource type="Resource" id="WeaponResonator"]
@@ -384,6 +396,7 @@ source_encounter_id = "carrion_roc"
 recipe_id = "craft_carrion_resonator"
 stat_profile = SubResource("StatsResonator")
 trait_id = "carrion_bloom"
+icon_resource = ExtResource("20_resonator_icon")
 description = "An arcane focus driven by the Carrion Roc's stress heart."
 
 [sub_resource type="Resource" id="WeaponLongbow"]
@@ -395,6 +408,7 @@ source_encounter_id = "carrion_roc"
 recipe_id = "craft_crashbone_longbow"
 stat_profile = SubResource("StatsLongbow")
 trait_id = "crash_mark"
+icon_resource = ExtResource("21_longbow_icon")
 description = "A longbow tuned to the Roc's violent diving resonance."
 
 [sub_resource type="Resource" id="WeaponKnives"]
@@ -406,6 +420,7 @@ source_encounter_id = "twin_maulers"
 recipe_id = "craft_twin_fang_knives"
 stat_profile = SubResource("StatsKnives")
 trait_id = "paired_fury"
+icon_resource = ExtResource("22_knives_icon")
 description = "Matched knives shaped around the Maulers' paired fangs."
 
 [sub_resource type="Resource" id="WeaponRampage"]
@@ -417,6 +432,7 @@ source_encounter_id = "twin_maulers"
 recipe_id = "craft_rampage_maul"
 stat_profile = SubResource("StatsRampage")
 trait_id = "exhausting_blow"
+icon_resource = ExtResource("23_rampage_icon")
 description = "A maul balanced at the boundary between rampage and exhaustion."
 
 [sub_resource type="Resource" id="IngHeartmaulRare"]

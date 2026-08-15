@@ -200,6 +200,12 @@ func get_actor_count() -> int:
 	return actors_by_id.size()
 
 
+func set_raid_drawer_highlight(member_id: String, active: bool) -> void:
+	var actor := actors_by_id.get(member_id) as CampMemberActor
+	if actor != null and is_instance_valid(actor):
+		actor.set_raid_drawer_highlighted(active)
+
+
 func get_activity_slot_debug_data() -> Array[Dictionary]:
 	# Activity slots are authored by station definitions.  The legacy facility
 	# offsets are intentionally not consulted here because actors reserve and

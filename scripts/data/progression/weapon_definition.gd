@@ -8,4 +8,5 @@ class_name WeaponDefinition
 @export var recipe_id: String = ""
 @export var stat_profile: WeaponStatProfile
 @export var trait_id: String = ""
+@export var icon_resource: Texture2D
 @export_multiline var description: String = ""
