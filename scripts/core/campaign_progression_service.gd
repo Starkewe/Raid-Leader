@@ -356,6 +356,115 @@ func equip(campaign: Dictionary, raider_id: String, weapon_id: String) -> Dictio
 	return validation
 
 
+func check_move_or_swap_equipped_weapon(
+	campaign: Dictionary, source_raider_id: String, destination_raider_id: String
+) -> Dictionary:
+	if source_raider_id == destination_raider_id:
+		return _result(false, "same_raider", "Choose a different raider as the destination.")
+	var source_result := _get_raider_state(campaign, source_raider_id)
+	if not bool(source_result.get("ok", false)):
+		return source_result
+	var destination_result := _get_raider_state(campaign, destination_raider_id)
+	if not bool(destination_result.get("ok", false)):
+		return destination_result
+	var active_ids: Array = campaign.get("raid_plan", {}).get("active_member_ids", [])
+	if not active_ids.has(source_raider_id):
+		return _result(
+			false, "source_not_active", "Reserve-held weapons may only be returned to the armory."
+		)
+	if not active_ids.has(destination_raider_id):
+		return _result(
+			false, "destination_not_active", "Reserve raiders cannot receive weapon assignments."
+		)
+	var source_state: Dictionary = source_result.get("state", {})
+	var destination_state: Dictionary = destination_result.get("state", {})
+	var source_weapon_id := String(source_state.get("equipped_weapon_id", ""))
+	var destination_weapon_id := String(destination_state.get("equipped_weapon_id", ""))
+	if source_weapon_id.is_empty():
+		return _result(false, "source_unarmed", "Default weapons are not transferable inventory.")
+	var source_weapon := ProgressionCatalog.get_weapon(source_weapon_id)
+	if source_weapon == null:
+		return _result(
+			false, "source_weapon_missing",
+			"The source weapon definition is missing; return it to the armory for recovery."
+		)
+	var progression := sanitize_progression(campaign.get("progression", {}))
+	var crafted_ids: Array = progression.get("crafted_weapon_ids", [])
+	if not crafted_ids.has(source_weapon_id):
+		return _result(false, "source_not_crafted", "The source weapon is not in the crafted armory.")
+	var destination_class_id := _effective_class_id(destination_state)
+	if not ProgressionCatalog.is_family_compatible(
+		destination_class_id, source_weapon.family_id
+	):
+		return {
+			"ok": false,
+			"status": "source_incompatible_with_destination",
+			"message": "%s cannot use %s." % [destination_class_id, source_weapon.display_name],
+			"source_raider_id": source_raider_id,
+			"destination_raider_id": destination_raider_id,
+			"source_weapon_id": source_weapon_id,
+			"destination_weapon_id": destination_weapon_id,
+		}
+	if not destination_weapon_id.is_empty():
+		var destination_weapon := ProgressionCatalog.get_weapon(destination_weapon_id)
+		if destination_weapon == null:
+			return _result(
+				false, "destination_weapon_missing",
+				"The destination weapon definition is missing; return it to the armory first."
+			)
+		if not crafted_ids.has(destination_weapon_id):
+			return _result(
+				false, "destination_not_crafted", "The destination weapon is not in the crafted armory."
+			)
+		var source_class_id := _effective_class_id(source_state)
+		if not ProgressionCatalog.is_family_compatible(
+			source_class_id, destination_weapon.family_id
+		):
+			return {
+				"ok": false,
+				"status": "destination_incompatible_with_source",
+				"message": "%s cannot use %s." % [source_class_id, destination_weapon.display_name],
+				"source_raider_id": source_raider_id,
+				"destination_raider_id": destination_raider_id,
+				"source_weapon_id": source_weapon_id,
+				"destination_weapon_id": destination_weapon_id,
+			}
+	return {
+		"ok": true,
+		"status": "swappable" if not destination_weapon_id.is_empty() else "movable",
+		"message": "Weapons can be swapped." if not destination_weapon_id.is_empty() else "Weapon can be moved.",
+		"source_raider_id": source_raider_id,
+		"destination_raider_id": destination_raider_id,
+		"source_weapon_id": source_weapon_id,
+		"destination_weapon_id": destination_weapon_id,
+	}
+
+
+func move_or_swap_equipped_weapon(
+	campaign: Dictionary, source_raider_id: String, destination_raider_id: String
+) -> Dictionary:
+	var validation := check_move_or_swap_equipped_weapon(
+		campaign, source_raider_id, destination_raider_id
+	)
+	if not bool(validation.get("ok", false)):
+		return validation
+	var states: Dictionary = campaign.get("raider_states", {})
+	var source_state: Dictionary = Dictionary(states[source_raider_id]).duplicate(true)
+	var destination_state: Dictionary = Dictionary(states[destination_raider_id]).duplicate(true)
+	var source_weapon_id := String(validation.get("source_weapon_id", ""))
+	var destination_weapon_id := String(validation.get("destination_weapon_id", ""))
+	source_state["equipped_weapon_id"] = destination_weapon_id
+	destination_state["equipped_weapon_id"] = source_weapon_id
+	states[source_raider_id] = source_state
+	states[destination_raider_id] = destination_state
+	campaign["raider_states"] = states
+	validation["status"] = "swapped" if not destination_weapon_id.is_empty() else "moved"
+	validation["message"] = (
+		"Weapons swapped." if not destination_weapon_id.is_empty() else "Weapon moved."
+	)
+	return validation
+
+
 static func get_weapon_holder_id(campaign: Dictionary, weapon_id: String) -> String:
 	if weapon_id.is_empty():
 		return ""

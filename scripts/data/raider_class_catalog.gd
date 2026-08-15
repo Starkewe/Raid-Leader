@@ -20,6 +20,7 @@ const ADVANCED_CLASS_ORDER: Array[String] = [
 ]
 const ICON_ROOT := "res://icons/class_visuals/"
 const COMPACT_ICON_ROOT := "res://icons/class_visuals/compact/"
+const DEFAULT_WEAPON_ICON_ROOT := "res://icons/weapon_visuals/default_"
 const NEUTRAL_MAIN_COLOR := Color(0.28, 0.30, 0.33, 1.0)
 const NEUTRAL_ACCENT_COLOR := Color(0.0, 0.0, 0.0, 0.0)
 
@@ -143,6 +144,11 @@ static func get_camp_color(class_id: String) -> Color:
 	return definition.get("camp_color", Color("79818a")) as Color
 
 
+static func get_default_weapon_icon(class_id: String) -> Texture2D:
+	var definition := get_definition(class_id)
+	return definition.get("default_weapon_icon") as Texture2D
+
+
 static func resolve_visual(
 	base_class_id: String, advanced_class_id: String = ""
 ) -> ClassVisualDefinition:
@@ -238,6 +244,7 @@ static func _register_base(
 		"camp_color": Color(camp_color_hex),
 		"campaign_generation_order": campaign_generation_order,
 		"runtime_script": null,
+		"default_weapon_icon": _load_default_weapon_icon(class_id),
 		"advanced": false,
 	})
 
@@ -264,6 +271,7 @@ static func _register_advanced(
 		"visual": visual,
 		"camp_color": parent.get("camp_color", visual.main_color),
 		"runtime_script": null,
+		"default_weapon_icon": _load_default_weapon_icon(class_id),
 		"advanced": true,
 	})
 
@@ -283,6 +291,10 @@ static func _load_icon(icon_name: String) -> Texture2D:
 
 static func _load_compact_icon(icon_name: String) -> Texture2D:
 	return load(COMPACT_ICON_ROOT + icon_name) as Texture2D
+
+
+static func _load_default_weapon_icon(class_id: String) -> Texture2D:
+	return load(DEFAULT_WEAPON_ICON_ROOT + class_id + ".png") as Texture2D
 
 
 static func _normalize_lookup(value: String) -> String:

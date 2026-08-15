@@ -67,6 +67,10 @@ func _validate_production_content(
 		if actual != expected:
 			failures.append("Compatibility drift for '%s': %s != %s" % [class_id, actual, expected])
 
+	for class_id in RaiderClassCatalog.get_all_class_ids():
+		if RaiderClassCatalog.get_default_weapon_icon(class_id) == null:
+			failures.append("Class '%s' is missing its default weapon icon." % class_id)
+
 	var expected_stats := {
 		"earthgnasher_heartmaul": [1.15, 0.90, 0.5],
 		"faultline_cudgel": [1.08, 1.00, 0.0],
@@ -83,6 +87,8 @@ func _validate_production_content(
 		if weapon == null or weapon.stat_profile == null:
 			failures.append("Missing weapon/stat profile: " + String(weapon_id_value))
 			continue
+		if weapon.icon_resource == null:
+			failures.append("Crafted weapon '%s' is missing its inventory icon." % weapon_id_value)
 		if (
 			not is_equal_approx(weapon.stat_profile.power_multiplier, expected[0])
 			or not is_equal_approx(weapon.stat_profile.speed_multiplier, expected[1])

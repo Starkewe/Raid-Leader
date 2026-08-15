@@ -136,7 +136,9 @@ Boss progression is authored in `data/progression/catalog.tres`. Victories produ
 replay-safe material receipts and one-time tokens/recipe unlocks. The Rudimentary
 Smith provides production weapon crafting and assignment: each crafted weapon is a
 unique arm that can be held by at most one raider. Camp Stores remains a read-only
-inventory browser.
+inventory browser. In camp, the retractable raid drawer is the shared active-party
+surface for Smith equipment drops and Formation Yard placement drags, replacing
+duplicate raider lists inside those Journal pages.
 
 ## Current Development Focus
 

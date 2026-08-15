@@ -14,6 +14,7 @@ var note_text: String = ""
 var allow_reorder: bool = true
 var show_map_heading: bool = true
 var show_validation: bool = true
+var show_member_roster: bool = true
 var map_header_builder: Callable = Callable()
 var refresh_queued: bool = false
 var preserve_preset_name: bool = false
@@ -25,12 +26,14 @@ func configure(
 	new_note_text: String = "",
 	new_allow_reorder: bool = true,
 	new_show_map_heading: bool = true,
-	new_show_validation: bool = true
+	new_show_validation: bool = true,
+	new_show_member_roster: bool = true
 ) -> void:
 	note_text = new_note_text
 	allow_reorder = new_allow_reorder
 	show_map_heading = new_show_map_heading
 	show_validation = new_show_validation
+	show_member_roster = new_show_member_roster
 	_rebuild()
 
 
@@ -126,6 +129,11 @@ func _rebuild() -> void:
 			card.member_reorder_requested.connect(_on_member_reorder_requested)
 
 		roster_cards.add_child(card)
+
+	if not show_member_roster:
+		editor_row.remove_child(member_column)
+		member_column.queue_free()
+		roster_scroll = null
 
 	var map_column := VBoxContainer.new()
 	map_column.custom_minimum_size = Vector2(720, 580)

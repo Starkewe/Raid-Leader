@@ -128,6 +128,41 @@ func _validate_equipment(
 		if CampaignState.equip_weapon(warrior_a, "earthgnasher_heartmaul").get("status") != "equipped":
 			failures.append("Released previous weapon could not be assigned to another raider.")
 
+	var swap_check := CampaignState.check_move_or_swap_equipped_weapon(warrior_a, warrior_b)
+	if swap_check.get("status") != "swappable":
+		failures.append("Two compatible equipped raid frames did not report swappable.")
+	else:
+		var swapped := CampaignState.move_or_swap_equipped_weapon(warrior_a, warrior_b)
+		if swapped.get("status") != "swapped":
+			failures.append("Compatible raid-frame weapons did not swap atomically.")
+		elif (
+			CampaignState.get_weapon_holder_id("earthgnasher_heartmaul") != warrior_b
+			or CampaignState.get_weapon_holder_id("faultline_cudgel") != warrior_a
+		):
+			failures.append("Atomic swap wrote the wrong weapon holders.")
+		if CampaignState.move_or_swap_equipped_weapon(warrior_b, warrior_a).get("status") != "swapped":
+			failures.append("The compatible swap could not be reversed for persistence coverage.")
+
+	var before_incompatible: Dictionary = Dictionary(
+		CampaignState.get_campaign_snapshot().get("raider_states", {})
+	).duplicate(true)
+	var incompatible_move := CampaignState.move_or_swap_equipped_weapon(warrior_a, mage_id)
+	if incompatible_move.get("status") != "source_incompatible_with_destination":
+		failures.append("Frame transfer to an incompatible raider did not report its source incompatibility.")
+	if CampaignState.get_campaign_snapshot().get("raider_states", {}) != before_incompatible:
+		failures.append("Rejected frame transfer partially mutated raider equipment.")
+
+	if CampaignState.unequip_weapon(warrior_b).get("status") != "unequipped":
+		failures.append("Move fixture could not clear the destination frame.")
+	elif CampaignState.move_or_swap_equipped_weapon(warrior_a, warrior_b).get("status") != "moved":
+		failures.append("Equipped weapon did not move atomically to an empty compatible frame.")
+	elif not String(CampaignState.get_member(warrior_a).get("equipped_weapon_id", "")).is_empty():
+		failures.append("Atomic move did not clear its source frame.")
+	elif CampaignState.move_or_swap_equipped_weapon(warrior_b, warrior_a).get("status") != "moved":
+		failures.append("Moved weapon could not be returned to its original holder.")
+	if CampaignState.equip_weapon(warrior_b, "faultline_cudgel").get("status") != "equipped":
+		failures.append("Move/swap contract could not restore the replacement weapon fixture.")
+
 	var states: Dictionary = CampaignState.get_campaign_snapshot().get("raider_states", {})
 	states[warrior_b]["equipped_weapon_id"] = "returning_content_weapon"
 	if not CampaignState.debug_replace_raider_states(states):

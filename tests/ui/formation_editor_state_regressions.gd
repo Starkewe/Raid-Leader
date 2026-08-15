@@ -32,6 +32,10 @@ func _run() -> void:
 	if dropdown == null or editor == null:
 		_finish()
 		return
+	_expect(
+		editor.roster_scroll == null,
+		"The Formation Yard still rendered the duplicate active-raider roster instead of using the camp raid drawer."
+	)
 
 	_expect(
 		String(dropdown.get_item_metadata(dropdown.selected)) == "Saved Draft",
@@ -39,9 +43,6 @@ func _run() -> void:
 	)
 
 	var member_id := String(CampaignState.get_active_member_ids()[0])
-	if editor.roster_scroll != null:
-		editor.roster_scroll.scroll_vertical = 120
-	var scroll_before := editor.roster_scroll.scroll_vertical if editor.roster_scroll != null else 0
 	editor._on_member_dropped(member_id, "north", "far")
 	await _wait_frames(3)
 
@@ -53,11 +54,6 @@ func _run() -> void:
 		String(CampaignState.get_formation().get("preset_name", "")) == "Saved Draft",
 		"The displayed formation name and active formation diverged."
 	)
-	if editor.roster_scroll != null:
-		_expect(
-			abs(editor.roster_scroll.scroll_vertical - scroll_before) <= 1,
-			"Editing a formation reset the active roster table scroll position."
-		)
 
 	var default_index := _dropdown_index(dropdown, CampaignState.DEFAULT_FORMATION_NAME)
 	if default_index >= 0:

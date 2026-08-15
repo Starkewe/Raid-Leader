@@ -36,6 +36,7 @@ var focused_facing_left: bool = false
 var conversation_target_position: Vector2 = Vector2.ZERO
 var conversation_anchor_position: Vector2 = Vector2.ZERO
 var conversation_approach_time_remaining: float = 0.0
+var raid_drawer_highlighted: bool = false
 
 
 func _ready() -> void:
@@ -248,6 +249,15 @@ func get_member_data() -> Dictionary:
 	return member.duplicate(true)
 
 
+func set_raid_drawer_highlighted(value: bool) -> void:
+	if raid_drawer_highlighted == value:
+		return
+	raid_drawer_highlighted = value
+	if label != null:
+		label.visible = value
+	queue_redraw()
+
+
 func get_debug_sprite_bounds() -> Rect2:
 	return Rect2(-10, -17, 30, 36)
 
@@ -256,6 +266,8 @@ func _process(delta: float) -> void:
 	delta *= timing_multiplier
 	_update_hover_label()
 	_update_bubble(delta)
+	if raid_drawer_highlighted:
+		queue_redraw()
 	z_index = clampi(int(global_position.y / 3.0), 0, 1000)
 
 	match state:
@@ -354,7 +366,7 @@ func _update_hover_label() -> void:
 		return
 
 	var hovered := get_global_mouse_position().distance_to(global_position) <= 22.0
-	label.visible = hovered
+	label.visible = hovered or raid_drawer_highlighted
 
 
 func _update_bubble(delta: float) -> void:
@@ -403,6 +415,10 @@ func _draw() -> void:
 	var unit_class := String(member.get("unit_class", "Mage"))
 	var accent := RaiderClassCatalogScript.get_camp_color(unit_class)
 	var leg_offset := 0
+	if raid_drawer_highlighted:
+		var pulse := 0.72 + 0.18 * sin(Time.get_ticks_msec() * 0.008)
+		draw_circle(Vector2(0, 1), 25.0, Color(1.0, 0.78, 0.25, 0.12 * pulse))
+		draw_arc(Vector2(0, 1), 23.0, 0.0, TAU, 40, Color(1.0, 0.82, 0.34, pulse), 3.0, true)
 
 	if state == "walking":
 		leg_offset = int(round(sin(step_phase) * 2.0))

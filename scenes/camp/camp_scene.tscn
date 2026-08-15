@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/camp_journal.tscn" id="6_journal"]
 [ext_resource type="Script" uid="uid://bdo8044ox5ptc" path="res://scripts/camp/camp_atmosphere.gd" id="7_atmosphere"]
 [ext_resource type="Script" path="res://scripts/camp/camp_debug_visuals.gd" id="8_debug_visuals"]
+[ext_resource type="Script" path="res://scripts/ui/camp_raid_drawer.gd" id="9_raid_drawer"]
 
 [sub_resource type="CapsuleShape2D" id="Capsule_player"]
 radius = 12.0
@@ -217,5 +218,14 @@ theme_override_font_sizes/font_size = 22
 text = "E  Interact"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="CampRaidDrawer" type="Control" parent="CampHUD"]
+layout_mode = 3
+anchors_preset = 6
+anchor_bottom = 1.0
+offset_right = 244.0
+grow_vertical = 2
+mouse_filter = 1
+script = ExtResource("9_raid_drawer")
 
 [node name="CampJournal" parent="CampHUD" unique_id=1823932498 instance=ExtResource("6_journal")]
