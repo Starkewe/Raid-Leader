@@ -5,7 +5,7 @@ signal member_hovered(member_id: String)
 signal member_unhovered(member_id: String)
 signal equipment_action_completed(result: Dictionary)
 
-const BASE_SIZE := Vector2(154, 50)
+const BASE_SIZE := Vector2(154, 45)
 const ACCESSORY_SIZE := 44.0
 const ACCESSORY_GAP := 4.0
 const FULL_WIDTH := BASE_SIZE.x + ACCESSORY_GAP + ACCESSORY_SIZE
@@ -36,6 +36,7 @@ var drop_reason: String = ""
 
 
 func _ready() -> void:
+	add_to_group("camp_raid_frames")
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	mouse_entered.connect(_on_mouse_entered)
@@ -73,13 +74,14 @@ func _draw() -> void:
 	_draw_base_frame()
 	if context == "smith":
 		_draw_weapon_slot()
+		_draw_equipment_drop_highlight()
 	elif context == "formation_yard":
 		_draw_formation_badge()
 
 
 func _draw_base_frame() -> void:
-	var icon_rect := Rect2(2, 3, 44, 44)
-	var bar_rect := Rect2(48, 2, 104, 46)
+	var icon_rect := Rect2(2, 0.5, 44, 44)
+	var bar_rect := Rect2(48, 0.5, 104, 44)
 	var class_color := (
 		visual_definition.main_color
 		if visual_definition != null
@@ -98,7 +100,7 @@ func _draw_base_frame() -> void:
 		draw_rect(Rect2(Vector2(0.5, 0.5), BASE_SIZE - Vector2.ONE), Color("050506"), false, 1.0)
 	draw_string(
 		ThemeDB.fallback_font,
-		Vector2(50, 29),
+		Vector2(50, 27),
 		display_name,
 		HORIZONTAL_ALIGNMENT_CENTER,
 		100,
@@ -131,6 +133,17 @@ func _draw_weapon_slot() -> void:
 	if not drop_reason.is_empty():
 		border_color = Color("78bd7c") if drop_allowed else Color("d36f68")
 	draw_rect(slot_rect, border_color, false, 2.0)
+
+
+func _draw_equipment_drop_highlight() -> void:
+	if drop_reason.is_empty():
+		return
+	var state_color := Color("78bd7c") if drop_allowed else Color("d36f68")
+	var fill_color := state_color
+	fill_color.a = 0.14
+	draw_rect(_smith_drop_rect(), fill_color)
+	draw_rect(_smith_drop_rect().grow(-1), state_color, false, 2.0)
+	draw_rect(_accessory_rect().grow(-1), state_color, false, 3.0)
 
 
 func _draw_formation_badge() -> void:
@@ -181,6 +194,7 @@ func _get_drag_data(at_position: Vector2) -> Variant:
 		return null
 	if String(payload.get("type", "")) == "formation_member":
 		var preview := Label.new()
+		_configure_drag_preview(preview)
 		preview.text = display_name
 		preview.add_theme_font_size_override("font_size", 16)
 		preview.add_theme_color_override("font_color", Color("f0e5c8"))
@@ -193,6 +207,7 @@ func _get_drag_data(at_position: Vector2) -> Variant:
 	var preview: Control
 	if weapon != null and weapon.icon_resource != null:
 		var texture_preview := TextureRect.new()
+		_configure_drag_preview(texture_preview)
 		texture_preview.custom_minimum_size = Vector2.ONE * ACCESSORY_SIZE
 		texture_preview.texture = weapon.icon_resource
 		texture_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -200,6 +215,7 @@ func _get_drag_data(at_position: Vector2) -> Variant:
 		preview = texture_preview
 	else:
 		var recovery_preview := Label.new()
+		_configure_drag_preview(recovery_preview)
 		recovery_preview.text = "Missing weapon\nReturn to Armory"
 		recovery_preview.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		recovery_preview.add_theme_color_override("font_color", Color("e08b85"))
@@ -224,16 +240,15 @@ func get_drag_payload(at_position: Vector2) -> Dictionary:
 
 
 func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
-	drop_reason = ""
-	drop_allowed = false
+	clear_drop_feedback()
 	if (
 		context != "smith"
 		or not equipment_enabled
-		or not _accessory_rect().has_point(at_position)
+		or not _smith_drop_rect().has_point(at_position)
 		or not data is Dictionary
 	):
-		queue_redraw()
 		return false
+	_clear_other_frame_drop_feedback()
 	var drag_type := String(data.get("type", ""))
 	var validation: Dictionary = {}
 	if drag_type == "smith_armory_weapon":
@@ -244,8 +259,11 @@ func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
 		validation = CampaignState.check_move_or_swap_equipped_weapon(
 			String(data.get("source_raider_id", "")), member_id
 		)
+	elif drag_type == "smith_reserve_weapon":
+		validation = CampaignState.check_reclaim_reserve_weapon(
+			String(data.get("source_raider_id", "")), member_id
+		)
 	else:
-		queue_redraw()
 		return false
 	drop_allowed = bool(validation.get("ok", false))
 	drop_reason = String(validation.get("message", "Unavailable."))
@@ -260,6 +278,10 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 	var result: Dictionary
 	if String(data.get("type", "")) == "smith_armory_weapon":
 		result = CampaignState.equip_weapon(member_id, String(data.get("weapon_id", "")))
+	elif String(data.get("type", "")) == "smith_reserve_weapon":
+		result = CampaignState.reclaim_reserve_weapon(
+			String(data.get("source_raider_id", "")), member_id
+		)
 	else:
 		result = CampaignState.move_or_swap_equipped_weapon(
 			String(data.get("source_raider_id", "")), member_id
@@ -273,10 +295,7 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_DRAG_END and not drop_reason.is_empty():
-		drop_reason = ""
-		drop_allowed = false
-		tooltip_text = _base_tooltip()
-		queue_redraw()
+		clear_drop_feedback()
 
 
 func _on_mouse_entered() -> void:
@@ -287,12 +306,38 @@ func _on_mouse_entered() -> void:
 
 func _on_mouse_exited() -> void:
 	hovered = false
+	clear_drop_feedback()
 	member_unhovered.emit(member_id)
 	queue_redraw()
 
 
+func clear_drop_feedback() -> void:
+	if drop_reason.is_empty() and not drop_allowed:
+		return
+	drop_reason = ""
+	drop_allowed = false
+	tooltip_text = _base_tooltip()
+	queue_redraw()
+
+
+func _clear_other_frame_drop_feedback() -> void:
+	for node in get_tree().get_nodes_in_group("camp_raid_frames"):
+		if node != self and node is CampRaidFrame:
+			(node as CampRaidFrame).clear_drop_feedback()
+
+
 func _accessory_rect() -> Rect2:
-	return Rect2(BASE_SIZE.x + ACCESSORY_GAP, 3, ACCESSORY_SIZE, ACCESSORY_SIZE)
+	return Rect2(BASE_SIZE.x + ACCESSORY_GAP, 0.5, ACCESSORY_SIZE, ACCESSORY_SIZE)
+
+
+func _smith_drop_rect() -> Rect2:
+	return Rect2(Vector2.ZERO, Vector2(FULL_WIDTH, BASE_SIZE.y))
+
+
+func _configure_drag_preview(preview: Control) -> void:
+	preview.z_as_relative = false
+	preview.z_index = RenderingServer.CANVAS_ITEM_Z_MAX
+	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
 func _effective_class_id() -> String:

@@ -135,7 +135,8 @@ Every test runs with `--raid-test` and its own `user://` directory. The runner r
 Boss progression is authored in `data/progression/catalog.tres`. Victories produce
 replay-safe material receipts and one-time tokens/recipe unlocks. The Rudimentary
 Smith provides production weapon crafting and assignment: each crafted weapon is a
-unique arm that can be held by at most one raider. Camp Stores remains a read-only
+fungible counted copy, and the same definition can be held by multiple raiders while
+copies remain available. Camp Stores remains a read-only
 inventory browser. In camp, the retractable raid drawer is the shared active-party
 surface for Smith equipment drops and Formation Yard placement drags, replacing
 duplicate raider lists inside those Journal pages.

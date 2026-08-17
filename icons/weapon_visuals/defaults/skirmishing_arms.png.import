@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://beqkgdxrsj6h3"
-path="res://.godot/imported/default_phasehand.png-4c6616983050585440ba863d9ae4ce35.ctex"
+uid="uid://ba2upm3ourma5"
+path="res://.godot/imported/skirmishing_arms.png-de9844e18fad9625b1e11976410ea54f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://icons/weapon_visuals/default_phasehand.png"
-dest_files=["res://.godot/imported/default_phasehand.png-4c6616983050585440ba863d9ae4ce35.ctex"]
+source_file="res://icons/weapon_visuals/defaults/skirmishing_arms.png"
+dest_files=["res://.godot/imported/skirmishing_arms.png-de9844e18fad9625b1e11976410ea54f.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

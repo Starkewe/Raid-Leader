@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://sey4lrfbp2j0"
-path="res://.godot/imported/default_rift_tailor.png-10e26d018bbac0009ff50f447de60675.ctex"
+uid="uid://dqnio7ax8h3gm"
+path="res://.godot/imported/ritual_implements.png-872e03a86872ccb7f219eeedd27e83db.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://icons/weapon_visuals/default_rift_tailor.png"
-dest_files=["res://.godot/imported/default_rift_tailor.png-10e26d018bbac0009ff50f447de60675.ctex"]
+source_file="res://icons/weapon_visuals/defaults/ritual_implements.png"
+dest_files=["res://.godot/imported/ritual_implements.png-872e03a86872ccb7f219eeedd27e83db.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

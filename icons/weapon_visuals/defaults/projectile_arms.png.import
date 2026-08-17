@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dlyyiqvtoc7n4"
-path="res://.godot/imported/default_drift_knife.png-d6289b4a1d9598b781d0e32e35e80b74.ctex"
+uid="uid://d770r6lqjfv6"
+path="res://.godot/imported/projectile_arms.png-04cb5a085f1081688d4867b9b3ac0471.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://icons/weapon_visuals/default_drift_knife.png"
-dest_files=["res://.godot/imported/default_drift_knife.png-d6289b4a1d9598b781d0e32e35e80b74.ctex"]
+source_file="res://icons/weapon_visuals/defaults/projectile_arms.png"
+dest_files=["res://.godot/imported/projectile_arms.png-04cb5a085f1081688d4867b9b3ac0471.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

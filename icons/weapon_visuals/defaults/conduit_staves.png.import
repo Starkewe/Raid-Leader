@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b7sv3w4q5yen4"
-path="res://.godot/imported/default_rune_slinger.png-91c90c6ff5705eff14fc08bcda25f441.ctex"
+uid="uid://p1r5xc5skbpa"
+path="res://.godot/imported/conduit_staves.png-a47bc5b481d7773be91558d57fd229ec.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://icons/weapon_visuals/default_rune_slinger.png"
-dest_files=["res://.godot/imported/default_rune_slinger.png-91c90c6ff5705eff14fc08bcda25f441.ctex"]
+source_file="res://icons/weapon_visuals/defaults/conduit_staves.png"
+dest_files=["res://.godot/imported/conduit_staves.png-a47bc5b481d7773be91558d57fd229ec.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

@@ -1424,6 +1424,14 @@ func owns_crafted_weapon(weapon_id: String) -> bool:
 	return get_crafted_weapon_ids().has(weapon_id)
 
 
+func get_crafted_weapon_count(weapon_id: String) -> int:
+	return _progression_service.get_crafted_weapon_count(_campaign, weapon_id)
+
+
+func get_available_weapon_count(weapon_id: String) -> int:
+	return _progression_service.get_available_weapon_count(_campaign, weapon_id)
+
+
 func check_craft(recipe_id: String) -> Dictionary:
 	return _progression_service.check_craft(_campaign, recipe_id)
 
@@ -1459,6 +1467,26 @@ func move_or_swap_equipped_weapon(
 	source_raider_id: String, destination_raider_id: String
 ) -> Dictionary:
 	var result := _progression_service.move_or_swap_equipped_weapon(
+		_campaign, source_raider_id, destination_raider_id
+	)
+	if bool(result.get("ok", false)):
+		roster_changed.emit()
+		state_changed.emit()
+	return result
+
+
+func check_reclaim_reserve_weapon(
+	source_raider_id: String, destination_raider_id: String
+) -> Dictionary:
+	return _progression_service.check_reclaim_reserve_weapon(
+		_campaign, source_raider_id, destination_raider_id
+	)
+
+
+func reclaim_reserve_weapon(
+	source_raider_id: String, destination_raider_id: String
+) -> Dictionary:
+	var result := _progression_service.reclaim_reserve_weapon(
 		_campaign, source_raider_id, destination_raider_id
 	)
 	if bool(result.get("ok", false)):
@@ -1506,11 +1534,7 @@ func get_weapon_holder_id(weapon_id: String) -> String:
 
 
 func get_equipped_raider_ids(weapon_id: String) -> Array[String]:
-	var result: Array[String] = []
-	var holder_id := get_weapon_holder_id(weapon_id)
-	if not holder_id.is_empty():
-		result.append(holder_id)
-	return result
+	return _progression_service.get_equipped_raider_ids(_campaign, weapon_id)
 
 
 func debug_grant_progression_materials(grants: Dictionary) -> Dictionary:
