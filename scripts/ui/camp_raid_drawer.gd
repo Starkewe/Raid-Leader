@@ -11,7 +11,6 @@ const SLIDE_DURATION := 0.22
 const REQUIRED_CONTEXTS := ["smith", "formation_yard"]
 
 var menu_context: String = ""
-var smith_equip_enabled: bool = false
 var manual_open: bool = false
 var open_now: bool = false
 var locked: bool = false
@@ -19,8 +18,7 @@ var highlighted_member_id: String = ""
 var refresh_queued: bool = false
 var feedback_generation: int = 0
 var slide_tween: Tween = null
-var content_panel: Panel = null
-var scroll: ScrollContainer = null
+var content_panel: Control = null
 var stack: VBoxContainer = null
 var handle: Button = null
 var feedback: Label = null
@@ -30,7 +28,9 @@ func _ready() -> void:
 	name = "CampRaidDrawer"
 	add_to_group("camp_raid_drawer")
 	z_index = 120
-	mouse_filter = Control.MOUSE_FILTER_PASS
+	# The drawer is the final CampHUD sibling so its interactive children receive
+	# GUI input above the full-screen Journal. Keep the transparent shell inert.
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_shell()
 	CampaignState.state_changed.connect(_queue_refresh)
 	call_deferred("_finish_initial_layout")
@@ -42,17 +42,15 @@ func _finish_initial_layout() -> void:
 	_set_open(false, false)
 
 
-func set_menu_context(facility_id: String, equip_enabled: bool = false) -> void:
+func set_menu_context(facility_id: String) -> void:
 	var required := REQUIRED_CONTEXTS.has(facility_id)
 	var context_changed := menu_context != facility_id
-	var equipment_changed := smith_equip_enabled != equip_enabled
 	if required and not locked:
 		locked = true
 	elif not required and locked:
 		locked = false
 	menu_context = facility_id if required else ""
-	smith_equip_enabled = equip_enabled if facility_id == "smith" else false
-	if context_changed or equipment_changed:
+	if context_changed:
 		_layout_shell()
 		_rebuild()
 	_update_handle()
@@ -79,23 +77,15 @@ func set_open_for_test(value: bool, animate: bool = false) -> void:
 
 
 func _build_shell() -> void:
-	content_panel = Panel.new()
-	content_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color("11171cf2")
-	panel_style.border_color = Color("595a50")
-	panel_style.set_border_width_all(2)
-	content_panel.add_theme_stylebox_override("panel", panel_style)
+	content_panel = Control.new()
+	content_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(content_panel)
 
-	scroll = ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	content_panel.add_child(scroll)
-
 	stack = VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stack.add_theme_constant_override("separation", 0)
-	scroll.add_child(stack)
+	content_panel.add_child(stack)
 
 	handle = Button.new()
 	handle.name = "RaidDrawerHandle"
@@ -132,12 +122,12 @@ func _layout_shell() -> void:
 	var content_width := _content_width()
 	content_panel.position = Vector2.ZERO
 	content_panel.size = Vector2(content_width, size.y)
-	scroll.position = Vector2(3, 2)
-	scroll.size = Vector2(content_width - 6, maxf(size.y - 4, 1))
+	stack.position = Vector2(3, 2)
+	stack.size = Vector2(content_width - 6, maxf(size.y - 4, 1))
 	stack.custom_minimum_size = Vector2(content_width - 8, 0)
 	handle.position = Vector2(
 		content_width,
-		maxf((size.y - HANDLE_HEIGHT) * 0.45, 8.0)
+		maxf((size.y - HANDLE_HEIGHT) * 0.5, 8.0)
 	)
 	handle.size = Vector2(HANDLE_WIDTH, HANDLE_HEIGHT)
 	feedback.position = handle.position + Vector2(HANDLE_WIDTH + 8, 8)
@@ -156,6 +146,7 @@ func _rebuild() -> void:
 	if members.is_empty():
 		var empty := Label.new()
 		empty.text = "No active raiders"
+		empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		empty.custom_minimum_size = Vector2(_content_width() - 8, 60)
 		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		empty.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -169,8 +160,9 @@ func _rebuild() -> void:
 		if member_index % group_size == 0:
 			var group_label := Label.new()
 			group_label.text = "Group %d" % (floori(float(member_index) / group_size) + 1)
-			group_label.custom_minimum_size = Vector2(_content_width() - 8, 14)
-			group_label.add_theme_font_size_override("font_size", 10)
+			group_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			group_label.custom_minimum_size = Vector2(_content_width() - 8, 12)
+			group_label.add_theme_font_size_override("font_size", 9)
 			group_label.add_theme_color_override("font_color", Color("aaa797"))
 			stack.add_child(group_label)
 		var member: Dictionary = members[member_index]
@@ -181,7 +173,7 @@ func _rebuild() -> void:
 		)
 		var frame := CampRaidFrameScript.new() as CampRaidFrame
 		frame.name = "CampRaidFrame_" + member_id
-		frame.configure(member, menu_context, smith_equip_enabled, member_placement)
+		frame.configure(member, menu_context, menu_context == "smith", member_placement)
 		frame.member_hovered.connect(_on_member_hovered)
 		frame.member_unhovered.connect(_on_member_unhovered)
 		frame.equipment_action_completed.connect(_on_equipment_action_completed)

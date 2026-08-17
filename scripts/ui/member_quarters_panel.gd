@@ -1,4 +1,4 @@
-extends HBoxContainer
+extends VBoxContainer
 class_name MemberQuartersPanel
 
 const ProfilePresenterScript := preload(
@@ -65,7 +65,9 @@ func get_selected_raider_id() -> String:
 
 func _build_interface() -> void:
 	var left := VBoxContainer.new()
-	left.custom_minimum_size = Vector2(610, 720)
+	left.name = "QuartersRosterSection"
+	left.custom_minimum_size = Vector2(0, 330)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left.add_theme_constant_override("separation", 9)
 	add_child(left)
@@ -159,18 +161,19 @@ func _build_interface() -> void:
 	roster_tree.item_selected.connect(_on_roster_item_selected)
 	roster_margin.add_child(roster_tree)
 
-	var separator := VSeparator.new()
-	separator.custom_minimum_size = Vector2(2, 0)
+	var separator := HSeparator.new()
+	separator.custom_minimum_size = Vector2(0, 2)
 	add_child(separator)
 
 	var right_scroll := ScrollContainer.new()
-	right_scroll.custom_minimum_size = Vector2(780, 720)
+	right_scroll.name = "QuartersProfileScroll"
+	right_scroll.custom_minimum_size = Vector2(0, 350)
 	right_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	right_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(right_scroll)
 	profile_column = VBoxContainer.new()
-	profile_column.custom_minimum_size = Vector2(755, 0)
+	profile_column.custom_minimum_size = Vector2(0, 0)
 	profile_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	profile_column.add_theme_constant_override("separation", 11)
 	right_scroll.add_child(profile_column)
@@ -415,7 +418,6 @@ func _build_visual(profile: Dictionary) -> Control:
 	if loaded is Texture2D:
 		var texture := TextureRect.new()
 		texture.texture = loaded as Texture2D
-		texture.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		margin.add_child(texture)

@@ -219,13 +219,13 @@ text = "E  Interact"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="CampJournal" parent="CampHUD" unique_id=1823932498 instance=ExtResource("6_journal")]
+
 [node name="CampRaidDrawer" type="Control" parent="CampHUD"]
 layout_mode = 3
-anchors_preset = 6
+anchors_preset = 9
 anchor_bottom = 1.0
 offset_right = 244.0
 grow_vertical = 2
-mouse_filter = 1
+mouse_filter = 2
 script = ExtResource("9_raid_drawer")
-
-[node name="CampJournal" parent="CampHUD" unique_id=1823932498 instance=ExtResource("6_journal")]

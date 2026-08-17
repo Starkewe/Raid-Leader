@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cmyovx802486x"
-path="res://.godot/imported/default_sunder_clerk.png-d4c6d17729b6b5bb84b4163e8d59ab85.ctex"
+uid="uid://5fxe5v6x0bng"
+path="res://.godot/imported/arcane_foci.png-3fe8ea189ba900d3c4c448528f201011.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://icons/weapon_visuals/default_sunder_clerk.png"
-dest_files=["res://.godot/imported/default_sunder_clerk.png-d4c6d17729b6b5bb84b4163e8d59ab85.ctex"]
+source_file="res://icons/weapon_visuals/defaults/arcane_foci.png"
+dest_files=["res://.godot/imported/arcane_foci.png-3fe8ea189ba900d3c4c448528f201011.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

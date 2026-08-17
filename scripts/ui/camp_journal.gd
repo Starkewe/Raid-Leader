@@ -17,8 +17,8 @@ const QuartersPagePresenterScript := preload("res://scripts/ui/quarters_page_pre
 const StoragePagePresenterScript := preload("res://scripts/ui/storage_page_presenter.gd")
 const SmithPagePresenterScript := preload("res://scripts/ui/smith_page_presenter.gd")
 
-const COMMAND_CLASS_COLUMN_WIDTH := 170.0
-const COMMAND_NAME_COLUMN_WIDTH := 300.0
+const COMMAND_CLASS_COLUMN_WIDTH := 100.0
+const COMMAND_NAME_COLUMN_WIDTH := 205.0
 
 signal journal_visibility_changed(visible_now: bool)
 signal embark_requested
@@ -34,7 +34,7 @@ var member_quarters_panel: MemberQuartersPanel = null
 var formation_editor: FormationEditorPanel = null
 var formation_preset_dropdown: OptionButton = null
 var page_presenters: Dictionary = {}
-var shell_center: CenterContainer = null
+var shell_center: MarginContainer = null
 
 
 func _ready() -> void:
@@ -86,25 +86,36 @@ func close_for_escape() -> void:
 
 func _build_shell() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	z_index = 100
 
 	var dim := ColorRect.new()
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.name = "CampJournalRightHalfDim"
+	dim.anchor_left = 0.5
+	dim.anchor_top = 0.0
+	dim.anchor_right = 1.0
+	dim.anchor_bottom = 1.0
 	dim.color = Color("090e12c7")
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
-	shell_center = CenterContainer.new()
-	shell_center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shell_center.offset_left = 55
-	shell_center.offset_top = 40
-	shell_center.offset_right = -55
-	shell_center.offset_bottom = -40
+	shell_center = MarginContainer.new()
+	shell_center.name = "CampJournalRightHalfShell"
+	shell_center.anchor_left = 0.5
+	shell_center.anchor_top = 0.0
+	shell_center.anchor_right = 1.0
+	shell_center.anchor_bottom = 1.0
+	shell_center.add_theme_constant_override("margin_left", 18)
+	shell_center.add_theme_constant_override("margin_right", 18)
+	shell_center.add_theme_constant_override("margin_top", 18)
+	shell_center.add_theme_constant_override("margin_bottom", 18)
+	shell_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(shell_center)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(1540, 920)
+	panel.name = "CampJournalPanel"
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color("172027")
 	panel_style.border_color = Color("77694f")
@@ -143,7 +154,6 @@ func _build_shell() -> void:
 	root.add_child(HSeparator.new())
 
 	body = VBoxContainer.new()
-	body.custom_minimum_size = Vector2(1450, 760)
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 12)
@@ -172,17 +182,8 @@ func _refresh_current_facility() -> void:
 
 func _sync_raid_drawer_context() -> void:
 	var drawer := get_tree().get_first_node_in_group("camp_raid_drawer")
-	var smith_equip := false
-	if current_facility_id == "smith":
-		var smith_presenter = page_presenters.get("smith")
-		if smith_presenter != null:
-			smith_equip = String(smith_presenter.get("current_view_id")) == "equip"
 	if drawer != null and drawer.has_method("set_menu_context"):
-		drawer.call("set_menu_context", current_facility_id, smith_equip)
-	if shell_center != null:
-		shell_center.offset_left = (
-			245.0 if current_facility_id in ["smith", "formation_yard"] else 55.0
-		)
+		drawer.call("set_menu_context", current_facility_id)
 
 
 func _begin_scrolling_page() -> VBoxContainer:
@@ -193,12 +194,29 @@ func _begin_scrolling_page() -> VBoxContainer:
 	body.add_child(scroll)
 
 	var result := VBoxContainer.new()
-	result.custom_minimum_size = Vector2(1420, 0)
 	result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	result.add_theme_constant_override("separation", 12)
 	scroll.add_child(result)
 	page = result
 	return result
+
+
+func popup_in_right_half(popup: Window) -> void:
+	if popup == null:
+		return
+	popup.popup_centered(Vector2i(460, 270))
+	call_deferred("_position_popup_in_right_half", popup)
+
+
+func _position_popup_in_right_half(popup: Window) -> void:
+	if popup == null or not is_instance_valid(popup):
+		return
+	var viewport_size := get_viewport_rect().size
+	var popup_size := Vector2(popup.size)
+	popup.position = Vector2i(
+		roundi(viewport_size.x * 0.5 + (viewport_size.x * 0.5 - popup_size.x) * 0.5),
+		roundi((viewport_size.y - popup_size.y) * 0.5)
+	)
 
 
 func build_command_tent_page() -> void:
@@ -209,8 +227,9 @@ func build_command_tent_page() -> void:
 		"Drag members between Active and Reserves. A raid may embark with any active size from 1 to 20."
 	)
 
-	var target_row := HBoxContainer.new()
-	target_row.add_theme_constant_override("separation", 12)
+	var target_row := HFlowContainer.new()
+	target_row.add_theme_constant_override("h_separation", 12)
+	target_row.add_theme_constant_override("v_separation", 8)
 	command_page.add_child(target_row)
 	_add_section_label_to(target_row, "Battle map")
 
@@ -221,7 +240,8 @@ func build_command_tent_page() -> void:
 	target_row.add_child(region_label)
 
 	var encounter_dropdown := OptionButton.new()
-	encounter_dropdown.custom_minimum_size = Vector2(330, 42)
+	encounter_dropdown.name = "CommandEncounterSelector"
+	encounter_dropdown.custom_minimum_size = Vector2(260, 42)
 	var selected_encounter := CampaignState.get_selected_encounter_id()
 
 	for encounter_id in CampaignState.get_available_encounter_ids():
@@ -259,7 +279,7 @@ func build_command_tent_page() -> void:
 	roster_row.add_child(active_column)
 
 	var center_note := VBoxContainer.new()
-	center_note.custom_minimum_size = Vector2(210, 390)
+	center_note.custom_minimum_size = Vector2(70, 330)
 	center_note.alignment = BoxContainer.ALIGNMENT_CENTER
 	roster_row.add_child(center_note)
 	var arrows := Label.new()
@@ -286,7 +306,7 @@ func build_command_tent_page() -> void:
 	member_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	command_page.add_child(member_detail_label)
 
-	var intelligence_row := HBoxContainer.new()
+	var intelligence_row := VBoxContainer.new()
 	intelligence_row.add_theme_constant_override("separation", 18)
 	command_page.add_child(intelligence_row)
 	var intel_panel := _make_text_panel(
@@ -328,8 +348,8 @@ func build_command_tent_page() -> void:
 	)
 	command_page.add_child(validation_label)
 
-	var footer := HBoxContainer.new()
-	footer.alignment = BoxContainer.ALIGNMENT_END
+	var footer := HFlowContainer.new()
+	footer.alignment = FlowContainer.ALIGNMENT_END
 	footer.add_theme_constant_override("separation", 12)
 	command_page.add_child(footer)
 
@@ -367,6 +387,7 @@ func build_command_tent_page() -> void:
 		footer.add_child(debug_menu)
 
 	var embark_button := Button.new()
+	embark_button.name = "CommandEmbarkButton"
 	embark_button.text = "Embark with this Raid Plan"
 	embark_button.custom_minimum_size = Vector2(320, 52)
 	embark_button.disabled = not bool(validation.get("valid", false))
@@ -378,7 +399,8 @@ func _build_roster_column(
 	heading_text: String, zone_id: String, members: Array[Dictionary]
 ) -> VBoxContainer:
 	var column := VBoxContainer.new()
-	column.custom_minimum_size = Vector2(555, 390)
+	column.name = "CommandRoster_" + zone_id
+	column.custom_minimum_size = Vector2(340, 350)
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var heading := Label.new()
@@ -387,7 +409,7 @@ func _build_roster_column(
 	column.add_child(heading)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(540, 350)
+	panel.custom_minimum_size = Vector2(330, 320)
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("10181e")
@@ -415,7 +437,7 @@ func _build_roster_column(
 
 	var drop_zone := RosterDropZoneScript.new() as RosterDropZone
 	drop_zone.configure(zone_id)
-	drop_zone.custom_minimum_size = Vector2(505, 325)
+	drop_zone.custom_minimum_size = Vector2(315, 290)
 	drop_zone.member_dropped.connect(_on_roster_member_dropped)
 	scroll.add_child(drop_zone)
 
@@ -461,7 +483,7 @@ func _build_roster_column(
 func _make_command_roster_header() -> Control:
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 8)
-	header.custom_minimum_size = Vector2(505, 32)
+	header.custom_minimum_size = Vector2(315, 32)
 	var inset := Control.new()
 	inset.custom_minimum_size = Vector2(4, 0)
 	header.add_child(inset)
@@ -489,12 +511,14 @@ func build_formation_yard_page() -> void:
 
 	var formation := CampaignState.get_formation()
 	var current_name := String(formation.get("preset_name", "Custom"))
-	var current_formation_row := HBoxContainer.new()
-	current_formation_row.add_theme_constant_override("separation", 10)
+	var current_formation_row := HFlowContainer.new()
+	current_formation_row.add_theme_constant_override("h_separation", 10)
+	current_formation_row.add_theme_constant_override("v_separation", 8)
 	formation_page.add_child(current_formation_row)
 	_add_section_label_to(current_formation_row, "Current Formation:")
 
 	formation_preset_dropdown = OptionButton.new()
+	formation_preset_dropdown.name = "FormationPresetSelector"
 	formation_preset_dropdown.custom_minimum_size = Vector2(230, 42)
 	formation_preset_dropdown.item_selected.connect(
 		_on_saved_formation_selected.bind(formation_preset_dropdown)
@@ -503,6 +527,7 @@ func build_formation_yard_page() -> void:
 	_refresh_formation_dropdown(current_name)
 
 	formation_editor = FormationEditorPanelScript.new() as FormationEditorPanel
+	formation_editor.name = "FormationYardEditor"
 	formation_editor.set_preserve_preset_name(true)
 	formation_editor.set_map_header_builder(
 		_build_formation_name_controls.bind(formation_preset_dropdown)
@@ -569,13 +594,11 @@ func build_quarters_page() -> void:
 
 
 func _build_formation_name_controls(preset_dropdown: OptionButton) -> Control:
-	var center := CenterContainer.new()
-	center.custom_minimum_size = Vector2(0, 42)
-	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-
-	var controls := HBoxContainer.new()
-	controls.add_theme_constant_override("separation", 10)
-	center.add_child(controls)
+	var controls := HFlowContainer.new()
+	controls.custom_minimum_size = Vector2(0, 42)
+	controls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	controls.add_theme_constant_override("h_separation", 10)
+	controls.add_theme_constant_override("v_separation", 8)
 
 	var name_input := LineEdit.new()
 	name_input.placeholder_text = "New formation name"
@@ -599,7 +622,7 @@ func _build_formation_name_controls(preset_dropdown: OptionButton) -> Control:
 	delete_button.pressed.connect(_on_delete_formation_pressed.bind(preset_dropdown))
 	controls.add_child(delete_button)
 
-	return center
+	return controls
 
 
 func build_archive_page() -> void:
@@ -610,8 +633,10 @@ func build_archive_page() -> void:
 		"The archive records observed facts. Only the attempt-history panel scrolls; the target and intelligence remain anchored."
 	)
 
-	var encounter_tabs := HBoxContainer.new()
-	encounter_tabs.add_theme_constant_override("separation", 10)
+	var encounter_tabs := HFlowContainer.new()
+	encounter_tabs.name = "ArchiveEncounterControls"
+	encounter_tabs.add_theme_constant_override("h_separation", 10)
+	encounter_tabs.add_theme_constant_override("v_separation", 8)
 	body.add_child(encounter_tabs)
 
 	for encounter_id in CampaignState.get_available_encounter_ids():
@@ -623,7 +648,7 @@ func build_archive_page() -> void:
 		encounter_tabs.add_child(button)
 
 	var selected_encounter := archive_view_encounter_id
-	var content_row := HBoxContainer.new()
+	var content_row := VBoxContainer.new()
 	content_row.add_theme_constant_override("separation", 18)
 	content_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_child(content_row)
@@ -631,11 +656,13 @@ func build_archive_page() -> void:
 	var intel_panel := _make_text_panel(
 		"Discovered intelligence", _archive_intelligence_text(selected_encounter)
 	)
-	intel_panel.custom_minimum_size = Vector2(480, 650)
+	intel_panel.name = "ArchiveIntelligence"
+	intel_panel.custom_minimum_size = Vector2(0, 160)
+	intel_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content_row.add_child(intel_panel)
 
 	var history_panel := PanelContainer.new()
-	history_panel.custom_minimum_size = Vector2(930, 650)
+	history_panel.custom_minimum_size = Vector2(0, 430)
 	history_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	history_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var history_style := StyleBoxFlat.new()
@@ -663,11 +690,12 @@ func build_archive_page() -> void:
 	history_root.add_child(history_title)
 
 	var history_scroll := ScrollContainer.new()
+	history_scroll.name = "ArchiveHistoryScroll"
 	history_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	history_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	history_root.add_child(history_scroll)
 	var history_list := VBoxContainer.new()
-	history_list.custom_minimum_size = Vector2(880, 0)
+	history_list.custom_minimum_size = Vector2(0, 0)
 	history_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	history_list.add_theme_constant_override("separation", 9)
 	history_scroll.add_child(history_list)

@@ -16,7 +16,6 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 [audio]
 
-buses/default_bus_layout="res://default_bus_layout.tres"
 driver/enable_input=true
 driver/mix_rate=48000
 
@@ -105,5 +104,5 @@ toggle_raid_debug={
 
 [rendering]
 
-textures/canvas_textures/default_texture_filter=0
+textures/canvas_textures/default_texture_filter=2
 rendering_device/driver.windows="d3d12"

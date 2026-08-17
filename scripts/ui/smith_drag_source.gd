@@ -24,7 +24,15 @@ func configure_drag(
 func _get_drag_data(_at_position: Vector2) -> Variant:
 	if not drag_enabled or drag_payload.is_empty():
 		return null
+	set_drag_preview(build_drag_preview())
+	return drag_payload.duplicate(true)
+
+
+func build_drag_preview() -> Control:
 	var preview := HBoxContainer.new()
+	preview.z_as_relative = false
+	preview.z_index = RenderingServer.CANVAS_ITEM_Z_MAX
+	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	preview.add_theme_constant_override("separation", 8)
 	if drag_texture != null:
 		var icon := TextureRect.new()
@@ -32,6 +40,7 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 		icon.texture = drag_texture
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		preview.add_child(icon)
 	var label := Label.new()
 	label.text = drag_label
@@ -39,6 +48,6 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 	label.add_theme_color_override("font_color", Color("f0e5c8"))
 	label.add_theme_constant_override("outline_size", 5)
 	label.add_theme_color_override("font_outline_color", Color("11171c"))
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	preview.add_child(label)
-	set_drag_preview(preview)
-	return drag_payload.duplicate(true)
+	return preview

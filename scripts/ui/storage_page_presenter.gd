@@ -96,12 +96,13 @@ func _add_filters(page: VBoxContainer) -> void:
 	controls.add_theme_constant_override("separation", 8)
 	page.add_child(controls)
 
-	var first_row := HBoxContainer.new()
-	first_row.add_theme_constant_override("separation", 10)
+	var first_row := HFlowContainer.new()
+	first_row.add_theme_constant_override("h_separation", 10)
+	first_row.add_theme_constant_override("v_separation", 8)
 	controls.add_child(first_row)
 	var view_selector := OptionButton.new()
 	view_selector.name = "StorageViewSelector"
-	view_selector.custom_minimum_size = Vector2(260, 40)
+	view_selector.custom_minimum_size = Vector2(220, 40)
 	for view_id in VIEW_IDS:
 		var index := view_selector.item_count
 		view_selector.add_item(String(VIEW_LABELS[view_id]))
@@ -115,13 +116,14 @@ func _add_filters(page: VBoxContainer) -> void:
 	name_input.name = "StorageNameFilter"
 	name_input.placeholder_text = "Filter by name"
 	name_input.text = name_filter
-	name_input.custom_minimum_size = Vector2(340, 40)
+	name_input.custom_minimum_size = Vector2(280, 40)
 	name_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_input.text_changed.connect(_on_name_filter_changed)
 	first_row.add_child(name_input)
 
-	var second_row := HBoxContainer.new()
-	second_row.add_theme_constant_override("separation", 10)
+	var second_row := HFlowContainer.new()
+	second_row.add_theme_constant_override("h_separation", 10)
+	second_row.add_theme_constant_override("v_separation", 8)
 	controls.add_child(second_row)
 	var boss_selector := _make_filter_selector(
 		"StorageBossFilter", "All bosses", _boss_options(), boss_filter
@@ -148,9 +150,10 @@ func _add_inventory_view(page: VBoxContainer, model: Dictionary) -> void:
 	heading.add_theme_color_override("font_color", Color("e8dfc7"))
 	page.add_child(heading)
 
-	var content := VBoxContainer.new()
+	var content := HFlowContainer.new()
 	content.name = "StorageInventoryContent"
-	content.add_theme_constant_override("separation", 8)
+	content.add_theme_constant_override("h_separation", 8)
+	content.add_theme_constant_override("v_separation", 8)
 	page.add_child(content)
 	var entries: Array = model.get("entries", [])
 	if entries.is_empty():
@@ -165,9 +168,10 @@ func _add_inventory_view(page: VBoxContainer, model: Dictionary) -> void:
 		_add_entry_card(content, Dictionary(entry_value), String(model.get("view_id", "")))
 
 
-func _add_entry_card(parent: VBoxContainer, entry: Dictionary, view_id: String) -> void:
+func _add_entry_card(parent: Container, entry: Dictionary, view_id: String) -> void:
 	var panel := PanelContainer.new()
 	panel.name = "StorageEntry_" + String(entry.get("stable_id", "entry"))
+	panel.custom_minimum_size = Vector2(410, 0)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("202b31")
 	style.border_color = Color("4c5555")
@@ -318,10 +322,18 @@ func _recipe_entries() -> Array[Dictionary]:
 
 func _weapon_entries() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	var seen: Array[String] = []
 	for weapon_id in CampaignState.get_crafted_weapon_ids():
+		if seen.has(weapon_id):
+			continue
+		seen.append(weapon_id)
 		var weapon := ProgressionCatalog.get_weapon(weapon_id)
 		if weapon == null:
-			result.append(_missing_entry(weapon_id, "Crafted weapon definition is unavailable."))
+			var missing := _missing_entry(
+				weapon_id, "Crafted weapon definition is unavailable."
+			)
+			missing["detail_text"] += " Crafted ×%d." % CampaignState.get_crafted_weapon_count(weapon_id)
+			result.append(missing)
 			continue
 		var family := ProgressionCatalog.get_weapon_family(weapon.family_id)
 		var weapon_trait := ProgressionCatalog.get_weapon_trait(weapon.trait_id)
@@ -335,7 +347,10 @@ func _weapon_entries() -> Array[Dictionary]:
 			"boss_ids": [weapon.source_encounter_id],
 			"rarity_id": "",
 			"family_id": weapon.family_id,
-			"detail_text": "%s  •  Power ×%.2f  •  Speed ×%.2f  •  Range %+.1f\nEquipped: %s" % [
+			"detail_text": "Crafted ×%d · Equipped %d · Available %d\n%s  •  Power ×%.2f  •  Speed ×%.2f  •  Range %+.1f\nEquipped: %s" % [
+				CampaignState.get_crafted_weapon_count(weapon_id),
+				CampaignState.get_equipped_raider_ids(weapon_id).size(),
+				CampaignState.get_available_weapon_count(weapon_id),
 				weapon.family_id if family == null else family.display_name,
 				weapon.stat_profile.power_multiplier, weapon.stat_profile.speed_multiplier,
 				weapon.stat_profile.range_additive, equipped_text,
@@ -393,7 +408,7 @@ func _make_filter_selector(
 ) -> OptionButton:
 	var selector := OptionButton.new()
 	selector.name = node_name
-	selector.custom_minimum_size = Vector2(250, 38)
+	selector.custom_minimum_size = Vector2(210, 38)
 	selector.add_item(all_label)
 	selector.set_item_metadata(0, "")
 	for option in options:
@@ -466,8 +481,9 @@ func _add_debug_controls(page: VBoxContainer) -> void:
 	heading.text = "Debug progression fixtures"
 	heading.add_theme_color_override("font_color", Color("d9a766"))
 	debug_panel.add_child(heading)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 8)
+	row.add_theme_constant_override("v_separation", 8)
 	debug_panel.add_child(row)
 	_add_debug_button(row, "Grant Fixture Materials", _on_debug_grant_materials)
 	_add_debug_button(row, "Process Seeded Reward", _on_debug_process_reward)
@@ -481,7 +497,7 @@ func _add_debug_controls(page: VBoxContainer) -> void:
 	debug_panel.add_child(_debug_status_label)
 
 
-func _add_debug_button(parent: HBoxContainer, text_value: String, callback: Callable) -> void:
+func _add_debug_button(parent: Container, text_value: String, callback: Callable) -> void:
 	var button := Button.new()
 	button.text = text_value
 	button.add_to_group("storage_debug_mutation")

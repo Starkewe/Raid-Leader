@@ -33,9 +33,9 @@ func _validate_crafting(
 	if insufficient.get("status") != "insufficient_materials":
 		failures.append("Underfunded recipe did not report insufficient_materials.")
 	var grants := {
-		"earthgnasher_heartstone": 1,
-		"quake_marrow": 2,
-		"tempered_chainlink": 2,
+		"earthgnasher_heartstone": 3,
+		"quake_marrow": 6,
+		"tempered_chainlink": 6,
 	}
 	var grant_result := CampaignState.debug_grant_progression_materials(grants)
 	if not bool(grant_result.get("ok", false)):
@@ -43,18 +43,40 @@ func _validate_crafting(
 	var before_counts: Dictionary = {}
 	for material_id in grants:
 		before_counts[material_id] = CampaignState.get_material_count(material_id)
-	var craft_result := CampaignState.craft("craft_earthgnasher_heartmaul")
-	if craft_result.get("status") != "crafted":
-		failures.append("Atomic craft did not succeed: %s" % craft_result)
+	var per_craft_costs := {
+		"earthgnasher_heartstone": 1,
+		"quake_marrow": 2,
+		"tempered_chainlink": 2,
+	}
+	for copy_index in range(3):
+		var before_craft: Dictionary = {}
+		for material_id in per_craft_costs:
+			before_craft[material_id] = CampaignState.get_material_count(material_id)
+		var craft_result := CampaignState.craft("craft_earthgnasher_heartmaul")
+		if craft_result.get("status") != "crafted":
+			failures.append("Atomic craft %d did not succeed: %s" % [copy_index + 1, craft_result])
+			break
+		if int(craft_result.get("crafted_count", 0)) != copy_index + 1:
+			failures.append("Craft result omitted the new counted-copy total.")
+		if int(craft_result.get("available_count", -1)) != copy_index + 1:
+			failures.append("Craft result omitted the new available-copy total.")
+		for material_id in per_craft_costs:
+			if (
+				CampaignState.get_material_count(material_id)
+				!= int(before_craft[material_id]) - int(per_craft_costs[material_id])
+			):
+				failures.append("Craft %d consumed the wrong '%s' quantity." % [copy_index + 1, material_id])
 	if not CampaignState.owns_crafted_weapon("earthgnasher_heartmaul"):
 		failures.append("Crafted weapon ownership was not persisted in campaign state.")
+	if CampaignState.get_crafted_weapon_count("earthgnasher_heartmaul") != 3:
+		failures.append("Repeated crafts were not retained as three counted copies.")
 	for material_id in grants:
 		var consumed := int(grants[material_id])
 		if CampaignState.get_material_count(material_id) != int(before_counts[material_id]) - consumed:
-			failures.append("Craft did not consume exact quantity for '%s'." % material_id)
+			failures.append("Three crafts did not consume exact total quantity for '%s'." % material_id)
 	var duplicate := CampaignState.craft("craft_earthgnasher_heartmaul")
-	if duplicate.get("status") != "already_owned":
-		failures.append("Duplicate craft did not report already_owned.")
+	if duplicate.get("status") != "insufficient_materials":
+		failures.append("Crafting limits were not determined solely by remaining materials.")
 	if CampaignState.check_craft("unknown_recipe").get("status") != "unknown_definition":
 		failures.append("Unknown recipe did not report unknown_definition.")
 
@@ -65,13 +87,14 @@ func _validate_equipment(
 	var warriors: Array = class_members.get("Warrior", [])
 	var mages: Array = class_members.get("Mage", [])
 	var rogues: Array = class_members.get("Rogue", [])
-	if warriors.size() < 2 or mages.is_empty() or rogues.is_empty():
+	if warriors.size() < 2 or mages.is_empty() or rogues.size() < 2:
 		failures.append("Fixture campaign did not contain required class representatives.")
 		return
 	var warrior_a := String(warriors[0])
 	var warrior_b := String(warriors[1])
 	var mage_id := String(mages[0])
 	var rogue_id := String(rogues[0])
+	var exhaustion_candidate_id := String(rogues[1])
 	if CampaignState.check_equip_weapon(warrior_a, "faultline_cudgel").get("status") != "not_crafted":
 		failures.append("Uncrafted weapon did not report not_crafted.")
 	if CampaignState.check_equip_weapon(mage_id, "earthgnasher_heartmaul").get("status") != "incompatible_family":
@@ -83,14 +106,19 @@ func _validate_equipment(
 	if already.get("status") != "already_equipped" or already.get("holder_id") != warrior_a:
 		failures.append("Current holder did not report already_equipped with its holder ID.")
 	var assigned := CampaignState.check_equip_weapon(warrior_b, "earthgnasher_heartmaul")
-	if assigned.get("status") != "assigned_elsewhere" or assigned.get("holder_id") != warrior_a:
-		failures.append("Second raider did not see assigned_elsewhere with the current holder ID.")
-	if CampaignState.equip_weapon(warrior_b, "earthgnasher_heartmaul").get("status") != "assigned_elsewhere":
-		failures.append("A unique weapon was reused without manual unequip.")
-	if CampaignState.get_weapon_holder_id("earthgnasher_heartmaul") != warrior_a:
-		failures.append("Unique weapon holder lookup returned the wrong raider.")
-	if CampaignState.get_equipped_raider_ids("earthgnasher_heartmaul") != [warrior_a]:
-		failures.append("Compatibility getter exposed more than the unique holder.")
+	if assigned.get("status") != "equippable" or int(assigned.get("available_count", 0)) != 2:
+		failures.append("Second counted copy was not available to another compatible raider.")
+	if CampaignState.equip_weapon(warrior_b, "earthgnasher_heartmaul").get("status") != "equipped":
+		failures.append("A second counted copy could not be assigned independently.")
+	var two_holders := CampaignState.get_equipped_raider_ids("earthgnasher_heartmaul")
+	if two_holders.size() != 2 or not two_holders.has(warrior_a) or not two_holders.has(warrior_b):
+		failures.append("Multi-holder getter did not return both counted-copy holders.")
+	if CampaignState.get_weapon_holder_id("earthgnasher_heartmaul") != two_holders[0]:
+		failures.append("Compatibility holder helper did not return the first stable holder.")
+	if CampaignState.check_move_or_swap_equipped_weapon(
+		warrior_a, warrior_b
+	).get("status") != "already_equipped":
+		failures.append("Frame transfer between identical copies did not remain a no-op.")
 
 	var projected := CampaignState.get_member(warrior_a)
 	if not bool(projected.get("weapon_runtime_active", false)):
@@ -106,11 +134,23 @@ func _validate_equipment(
 		failures.append("Could not exercise independent advanced-class seam.")
 	elif CampaignState.equip_weapon(rogue_id, "earthgnasher_heartmaul").get("status") != "equipped":
 		failures.append("Echo Butcher did not receive Heavy Arms compatibility.")
+	elif CampaignState.equip_weapon(warrior_a, "earthgnasher_heartmaul").get("status") != "equipped":
+		failures.append("The third counted copy could not be assigned.")
+	else:
+		if not CampaignState.advance_raider_class(exhaustion_candidate_id, "echo_butcher"):
+			failures.append("Could not create a fourth compatible assignment candidate.")
+		var exhausted := CampaignState.check_equip_weapon(
+			exhaustion_candidate_id, "earthgnasher_heartmaul"
+		)
+		if exhausted.get("status") != "all_copies_assigned":
+			failures.append("A fourth assignment did not report all_copies_assigned.")
+		elif Array(exhausted.get("holder_ids", [])).size() != 3:
+			failures.append("Exhausted assignment did not report every current holder.")
 	if not CampaignState.owns_advancement_token("earthgnasher_warrior_token"):
 		failures.append("Equipment/class seam unexpectedly consumed the boss token.")
 	CampaignState.unequip_weapon(rogue_id)
-	if CampaignState.equip_weapon(warrior_b, "earthgnasher_heartmaul").get("status") != "equipped":
-		failures.append("Weapon did not become available after its holder manually unequipped it.")
+	if CampaignState.get_available_weapon_count("earthgnasher_heartmaul") != 1:
+		failures.append("Unequipping one counted copy did not return one available copy.")
 
 	CampaignState.debug_grant_progression_materials({
 		"earthgnasher_heartstone": 1, "quake_marrow": 2, "rage_slick_hide": 2,
@@ -123,10 +163,10 @@ func _validate_equipment(
 			failures.append("Compatible replacement weapon could not be equipped.")
 		elif replacement.get("previous_weapon_id") != "earthgnasher_heartmaul":
 			failures.append("Replacement result omitted the released previous weapon ID.")
-		if not CampaignState.get_weapon_holder_id("earthgnasher_heartmaul").is_empty():
-			failures.append("Replacing equipment did not return the previous weapon to the armory.")
-		if CampaignState.equip_weapon(warrior_a, "earthgnasher_heartmaul").get("status") != "equipped":
-			failures.append("Released previous weapon could not be assigned to another raider.")
+		if CampaignState.get_equipped_raider_ids("earthgnasher_heartmaul") != [warrior_a]:
+			failures.append("Replacing equipment changed a different counted-copy holder.")
+		if CampaignState.get_available_weapon_count("earthgnasher_heartmaul") != 2:
+			failures.append("Replacing equipment did not return exactly one counted copy.")
 
 	var swap_check := CampaignState.check_move_or_swap_equipped_weapon(warrior_a, warrior_b)
 	if swap_check.get("status") != "swappable":
@@ -162,6 +202,33 @@ func _validate_equipment(
 		failures.append("Moved weapon could not be returned to its original holder.")
 	if CampaignState.equip_weapon(warrior_b, "faultline_cudgel").get("status") != "equipped":
 		failures.append("Move/swap contract could not restore the replacement weapon fixture.")
+	if not CampaignState.remove_active_member(warrior_b):
+		failures.append("Reserve-reclamation fixture could not move its holder to reserve.")
+	else:
+		var reserve_incompatible := CampaignState.check_reclaim_reserve_weapon(
+			warrior_b, mage_id
+		)
+		if reserve_incompatible.get("status") != "source_incompatible_with_destination":
+			failures.append("Reserve reclaim did not validate destination compatibility.")
+		var reclaim_check := CampaignState.check_reclaim_reserve_weapon(
+			warrior_b, warrior_a
+		)
+		if reclaim_check.get("status") != "reclaimable":
+			failures.append("Compatible reserve-held weapon did not report reclaimable.")
+		else:
+			var reclaimed := CampaignState.reclaim_reserve_weapon(warrior_b, warrior_a)
+			if reclaimed.get("status") != "reclaimed":
+				failures.append("Reserve-held weapon was not reclaimed atomically.")
+			elif reclaimed.get("previous_weapon_id") != "earthgnasher_heartmaul":
+				failures.append("Reserve reclaim omitted the active raider's released weapon ID.")
+			if CampaignState.get_weapon_holder_id("faultline_cudgel") != warrior_a:
+				failures.append("Reserve reclaim assigned the weapon to the wrong active raider.")
+			if not String(CampaignState.get_member(warrior_b).get("equipped_weapon_id", "")).is_empty():
+				failures.append("Reserve reclaim did not clear its source holder.")
+			if not CampaignState.get_weapon_holder_id("earthgnasher_heartmaul").is_empty():
+				failures.append("Reserve reclaim did not return replaced equipment to the armory.")
+			if CampaignState.equip_weapon(warrior_a, "earthgnasher_heartmaul").get("status") != "equipped":
+				failures.append("Equipment fixture could not restore the persistence weapon after reclaim.")
 
 	var states: Dictionary = CampaignState.get_campaign_snapshot().get("raider_states", {})
 	states[warrior_b]["equipped_weapon_id"] = "returning_content_weapon"
@@ -244,6 +311,8 @@ func _validate_persistence(
 		return
 	if not CampaignState.owns_crafted_weapon("earthgnasher_heartmaul"):
 		failures.append("Crafted ownership did not survive save/load.")
+	if CampaignState.get_crafted_weapon_count("earthgnasher_heartmaul") != 3:
+		failures.append("All three repeated weapon IDs did not survive save/load.")
 	if CampaignState.get_member(warrior_id).get("equipped_weapon_id") != "earthgnasher_heartmaul":
 		failures.append("Equipped weapon did not survive save/load.")
 

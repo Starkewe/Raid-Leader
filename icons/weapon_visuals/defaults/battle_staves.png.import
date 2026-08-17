@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dacco6rkd3guu"
-path="res://.godot/imported/default_memory_apothecary.png-d9536118e6ebe3ba494f8e20a7362876.ctex"
+uid="uid://b8lvkiulyge35"
+path="res://.godot/imported/battle_staves.png-2eea549194ae457ce3aed7a9d129ac87.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://icons/weapon_visuals/default_memory_apothecary.png"
-dest_files=["res://.godot/imported/default_memory_apothecary.png-d9536118e6ebe3ba494f8e20a7362876.ctex"]
+source_file="res://icons/weapon_visuals/defaults/battle_staves.png"
+dest_files=["res://.godot/imported/battle_staves.png-2eea549194ae457ce3aed7a9d129ac87.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

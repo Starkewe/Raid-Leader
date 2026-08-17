@@ -26,6 +26,7 @@ func _run() -> void:
 		return
 
 	_validate_initial_drawer(drawer)
+	_validate_gui_input_order(drawer, journal)
 	_validate_hover_highlight(drawer, population)
 	await _validate_lock_and_restore(drawer, journal)
 	await _validate_live_refresh(drawer)
@@ -35,10 +36,30 @@ func _run() -> void:
 func _validate_initial_drawer(drawer: CampRaidDrawer) -> void:
 	_expect(not drawer.is_open(), "Raid drawer did not start retracted on camp entry.")
 	_expect(not drawer.is_locked_open(), "Raid drawer started locked without a contextual menu.")
+	var viewport_height := drawer.get_viewport_rect().size.y
+	_expect(
+		is_zero_approx(drawer.global_position.y) and is_equal_approx(drawer.size.y, viewport_height),
+		"Raid drawer did not span the viewport vertically (y=%s, height=%s, viewport=%s)."
+		% [drawer.global_position.y, drawer.size.y, viewport_height]
+	)
+	_expect(
+		drawer.content_panel != null
+		and is_zero_approx(drawer.content_panel.position.y)
+		and is_equal_approx(drawer.content_panel.size.y, drawer.size.y),
+		"Raid drawer panel did not cover the drawer's full height."
+	)
+	_expect(
+		not drawer.content_panel is Panel,
+		"Raid drawer retained its opaque full-height background panel."
+	)
 	var active_ids := CampaignState.get_active_member_ids()
 	_expect(
 		_frame_count(drawer) == active_ids.size(),
 		"Raid drawer did not render every active raider exactly once."
+	)
+	_expect(
+		drawer.find_children("*", "ScrollContainer", true, false).is_empty(),
+		"Raid drawer retained a scroll container or mouse-wheel roster."
 	)
 	var group_size := maxi(TuningCatalogAccess.get_raid_campaign().raid_group_size, 1)
 	var expected_groups := ceili(float(active_ids.size()) / float(group_size))
@@ -50,13 +71,58 @@ func _validate_initial_drawer(drawer: CampRaidDrawer) -> void:
 	if first_frame != null:
 		_expect(
 			first_frame.custom_minimum_size == CampRaidFrame.BASE_SIZE,
-			"Normal camp raid frame did not use the compact 154x50 footprint."
+			"Normal camp raid frame did not use the compact 154x45 footprint."
 		)
+		_expect(
+			is_equal_approx(first_frame.size.y, CampRaidFrame.BASE_SIZE.y),
+			"Raid-frame drawing covered only part of its allocated row (%s allocated, %s drawn)."
+			% [first_frame.size.y, CampRaidFrame.BASE_SIZE.y]
+		)
+	_expect(
+		drawer.stack.get_combined_minimum_size().y <= drawer.size.y,
+		"The maximum active raid does not fit in the fixed-height drawer (%s required, %s available)."
+		% [drawer.stack.get_combined_minimum_size().y, drawer.size.y]
+	)
+	var stack_children := drawer.stack.get_children()
+	if not stack_children.is_empty():
+		var first_child := stack_children[0] as Control
+		var last_child := stack_children[-1] as Control
+		if first_child != null and last_child != null:
+			var top_gap := first_child.position.y
+			var bottom_gap := drawer.stack.size.y - (last_child.position.y + last_child.size.y)
+			_expect(
+				is_equal_approx(top_gap, bottom_gap),
+				"Raid-frame stack was not vertically centered (%s top, %s bottom)."
+				% [top_gap, bottom_gap]
+			)
+	_expect(
+		is_equal_approx(
+			drawer.handle.position.y,
+			(drawer.size.y - CampRaidDrawer.HANDLE_HEIGHT) * 0.5
+		),
+		"Raid drawer handle was not vertically centered."
+	)
 
 	drawer.set_open_for_test(true, false)
 	_expect(drawer.is_open() and drawer.manual_open, "Raid drawer handle state did not open manually.")
 	drawer.set_open_for_test(false, false)
 	_expect(not drawer.is_open(), "Raid drawer did not retract manually.")
+
+
+func _validate_gui_input_order(
+	drawer: CampRaidDrawer, journal: CampJournal
+) -> void:
+	_expect(
+		drawer.get_parent() == journal.get_parent()
+		and drawer.get_index() > journal.get_index(),
+		"Raid drawer is not after the full-screen Journal in GUI input order."
+	)
+	_expect(
+		drawer.mouse_filter == Control.MOUSE_FILTER_IGNORE
+		and drawer.content_panel.mouse_filter == Control.MOUSE_FILTER_IGNORE
+		and drawer.stack.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"Raid drawer transparent shell intercepts Journal mouse input."
+	)
 
 
 func _validate_hover_highlight(
@@ -89,25 +155,15 @@ func _validate_lock_and_restore(
 			smith_frame.custom_minimum_size.x == CampRaidFrame.FULL_WIDTH,
 			"Smith context did not add the square weapon slot beside the raid frame."
 		)
-		_expect(not smith_frame.equipment_enabled, "Forge unexpectedly enabled equipment dragging.")
+		_expect(smith_frame.equipment_enabled, "Smith did not enable equipment dragging immediately.")
+		_expect(
+			smith_frame.mouse_filter == Control.MOUSE_FILTER_STOP,
+			"Interactive raid frames do not receive GUI input through the inert drawer shell."
+		)
 		_expect(
 			RaiderClassCatalog.get_default_weapon_icon(smith_frame._effective_class_id()) != null,
 			"Unarmed Smith frame could not resolve its class default weapon icon."
 		)
-
-	var smith_presenter := journal.page_presenters.get("smith") as SmithPagePresenter
-	if smith_presenter == null:
-		failures.append("Smith presenter was unavailable for drawer Equip context.")
-	else:
-		smith_presenter.current_view_id = "equip"
-		journal._refresh_current_facility()
-		await _wait_frames(2)
-		smith_frame = _frame(drawer, member_id)
-		_expect(
-			smith_frame != null and smith_frame.equipment_enabled,
-			"Smith Equip did not enable raid-frame weapon drop targets."
-		)
-
 	journal.close_journal()
 	await _wait_frames(2)
 	_expect(

@@ -11,6 +11,10 @@ func _ready() -> void:
 	var report := ProgressionCatalog.get_validation_report()
 	if not bool(report.get("valid", false)):
 		failures.append("Production progression catalog is invalid: %s" % report.get("errors", []))
+	if int(ProjectSettings.get_setting(
+		"rendering/textures/canvas_textures/default_texture_filter", -1
+	)) != 2:
+		failures.append("Canvas textures do not default to linear filtering with mipmaps.")
 	_validate_production_content(catalog, failures)
 	_validate_malformed_fixtures(catalog, failures)
 	_finish(failures)
@@ -67,9 +71,53 @@ func _validate_production_content(
 		if actual != expected:
 			failures.append("Compatibility drift for '%s': %s != %s" % [class_id, actual, expected])
 
+	var expected_default_families := {
+		"warrior": "one_handed_arms",
+		"rogue": "skirmishing_arms",
+		"mage": "battle_staves",
+		"priest": "conduit_staves",
+		"hollow_anvil": "heavy_arms",
+		"gravelord_proxy": "heavy_arms",
+		"sunder_clerk": "one_handed_arms",
+		"lantern_warden": "arcane_foci",
+		"burden_courier": "conduit_staves",
+		"memory_apothecary": "conduit_staves",
+		"scar_gardener": "skirmishing_arms",
+		"moth_surgeon": "conduit_staves",
+		"echo_butcher": "skirmishing_arms",
+		"ritebreaker": "ritual_implements",
+		"drift_knife": "projectile_arms",
+		"phasehand": "skirmishing_arms",
+		"hearth_corsair": "one_handed_arms",
+		"rift_tailor": "ritual_implements",
+		"rune_slinger": "projectile_arms",
+		"orbit_scribe": "battle_staves",
+	}
+	var default_icon_paths := {}
 	for class_id in RaiderClassCatalog.get_all_class_ids():
-		if RaiderClassCatalog.get_default_weapon_icon(class_id) == null:
+		var family_id := RaiderClassCatalog.get_default_weapon_family_id(class_id)
+		if family_id != String(expected_default_families.get(class_id, "")):
+			failures.append("Class '%s' has the wrong default weapon family." % class_id)
+		if not ProgressionCatalog.is_family_compatible(class_id, family_id):
+			failures.append(
+				"Class '%s' default weapon family '%s' is incompatible." % [class_id, family_id]
+			)
+		var icon := RaiderClassCatalog.get_default_weapon_icon(class_id)
+		if icon == null:
 			failures.append("Class '%s' is missing its default weapon icon." % class_id)
+			continue
+		if icon.get_width() != 64 or icon.get_height() != 64:
+			failures.append("Class '%s' default weapon icon is not 64x64." % class_id)
+		elif not _texture_has_mipmaps(icon):
+			failures.append("Class '%s' default weapon icon has no mipmaps." % class_id)
+		var expected_path := "res://icons/weapon_visuals/defaults/%s.png" % family_id
+		if icon.resource_path != expected_path:
+			failures.append(
+				"Class '%s' default weapon icon does not use its family asset." % class_id
+			)
+		default_icon_paths[icon.resource_path] = true
+	if default_icon_paths.size() != 8:
+		failures.append("Default weapons do not resolve to exactly eight family icons.")
 
 	var expected_stats := {
 		"earthgnasher_heartmaul": [1.15, 0.90, 0.5],
@@ -89,12 +137,19 @@ func _validate_production_content(
 			continue
 		if weapon.icon_resource == null:
 			failures.append("Crafted weapon '%s' is missing its inventory icon." % weapon_id_value)
+		elif not _texture_has_mipmaps(weapon.icon_resource):
+			failures.append("Crafted weapon '%s' inventory icon has no mipmaps." % weapon_id_value)
 		if (
 			not is_equal_approx(weapon.stat_profile.power_multiplier, expected[0])
 			or not is_equal_approx(weapon.stat_profile.speed_multiplier, expected[1])
 			or not is_equal_approx(weapon.stat_profile.range_additive, expected[2])
 		):
 			failures.append("Weapon stat profile drifted for '%s'." % weapon_id_value)
+
+
+func _texture_has_mipmaps(texture: Texture2D) -> bool:
+	var image := texture.get_image()
+	return image != null and image.has_mipmaps()
 
 
 func _validate_malformed_fixtures(

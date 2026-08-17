@@ -156,15 +156,17 @@ func _validate_duplicate_assignment_reconciliation(
 		failures.append("Duplicate-assignment fixture lacks active/reserve raiders.")
 		return
 	var kept_id := String(active_ids[0])
-	var cleared_active_id := String(active_ids[1])
+	var second_kept_active_id := String(active_ids[1])
 	var reserve_id := reserve_ids[0]
 	var later_reserve_id := reserve_ids[1]
 	var active_priority_reserve_id := reserve_ids[2]
-	var weapon_id := "returning_content_weapon"
+	var weapon_id := "earthgnasher_heartmaul"
 	var reserve_tie_weapon_id := "roster_order_weapon"
 	for recruited_reserve_id in reserve_ids:
 		duplicate["raider_states"][recruited_reserve_id]["recruited"] = true
-	duplicate["raider_states"][cleared_active_id]["equipped_weapon_id"] = weapon_id
+	duplicate["progression"]["crafted_weapon_ids"].append(weapon_id)
+	duplicate["progression"]["crafted_weapon_ids"].append(weapon_id)
+	duplicate["raider_states"][second_kept_active_id]["equipped_weapon_id"] = weapon_id
 	duplicate["raider_states"][kept_id]["equipped_weapon_id"] = weapon_id
 	duplicate["raider_states"][reserve_id]["equipped_weapon_id"] = reserve_tie_weapon_id
 	duplicate["raider_states"][later_reserve_id]["equipped_weapon_id"] = reserve_tie_weapon_id
@@ -177,9 +179,9 @@ func _validate_duplicate_assignment_reconciliation(
 		return
 	if CampaignState.get_weapon_holder_id(weapon_id) != kept_id:
 		failures.append("Load repair did not prioritize the first active-party holder.")
-	if CampaignState.get_equipped_raider_ids(weapon_id) != [kept_id]:
-		failures.append("Load repair retained more than one holder.")
-	for cleared_id in [cleared_active_id, active_priority_reserve_id]:
+	if CampaignState.get_equipped_raider_ids(weapon_id) != [kept_id, second_kept_active_id]:
+		failures.append("Load repair did not retain exactly two stable holders for two copies.")
+	for cleared_id in [active_priority_reserve_id]:
 		if not String(
 			CampaignState.get_raider_campaign_state(cleared_id).get("equipped_weapon_id", "")
 		).is_empty():
@@ -192,10 +194,20 @@ func _validate_duplicate_assignment_reconciliation(
 		):
 			reconciliation = diagnostic
 			break
-	if reconciliation.get("kept_raider_id") != kept_id:
-		failures.append("Duplicate-assignment diagnostic omitted the kept holder.")
+	if (
+		reconciliation.get("kept_raider_id") != kept_id
+		or reconciliation.get("kept_raider_ids") != [kept_id, second_kept_active_id]
+	):
+		failures.append("Quantity reconciliation diagnostic omitted stable kept holders.")
+	if (
+		int(reconciliation.get("crafted_count", -1)) != 2
+		or int(reconciliation.get("assigned_count", -1)) != 3
+		or int(reconciliation.get("kept_count", -1)) != 2
+		or int(reconciliation.get("cleared_count", -1)) != 1
+	):
+		failures.append("Quantity reconciliation diagnostic omitted assignment counts.")
 	var cleared_ids: Array = reconciliation.get("cleared_raider_ids", [])
-	if not cleared_ids.has(cleared_active_id) or not cleared_ids.has(active_priority_reserve_id):
+	if cleared_ids != [active_priority_reserve_id]:
 		failures.append("Duplicate-assignment diagnostic omitted cleared holder IDs.")
 	if CampaignState.get_weapon_holder_id(reserve_tie_weapon_id) != reserve_id:
 		failures.append("Load repair did not use stable roster order for reserve-only ties.")
@@ -203,12 +215,26 @@ func _validate_duplicate_assignment_reconciliation(
 		CampaignState.get_raider_campaign_state(later_reserve_id).get("equipped_weapon_id", "")
 	).is_empty():
 		failures.append("Load repair did not clear the later reserve-only duplicate.")
+	var recovery_reconciliation: Dictionary = {}
+	for diagnostic in CampaignState.get_progression_diagnostics():
+		if diagnostic.get("weapon_id") == reserve_tie_weapon_id:
+			recovery_reconciliation = diagnostic
+			break
+	if (
+		int(recovery_reconciliation.get("crafted_count", -1)) != 0
+		or not bool(recovery_reconciliation.get("recovery_copy_preserved", false))
+		or recovery_reconciliation.get("kept_raider_ids") != [reserve_id]
+	):
+		failures.append("Untracked missing-content assignment did not preserve one recovery holder.")
 	if not CampaignState.write_campaign(DUPLICATE_PATH, {"kind": "repaired_round_trip"}):
 		failures.append("Repaired assignment could not be saved.")
 	elif not CampaignState.load_campaign(DUPLICATE_PATH):
 		failures.append("Repaired assignment could not be reloaded.")
-	elif CampaignState.get_weapon_holder_id(weapon_id) != kept_id:
-		failures.append("Unique holder did not survive repaired save/reload.")
+	elif (
+		CampaignState.get_crafted_weapon_count(weapon_id) != 2
+		or CampaignState.get_equipped_raider_ids(weapon_id) != [kept_id, second_kept_active_id]
+	):
+		failures.append("Counted copies and stable holders did not survive repaired save/reload.")
 
 
 func _validate_rejected_schemas(

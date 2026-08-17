@@ -123,6 +123,10 @@ func _validate_catalog() -> bool:
 		if definition.icon_resource.get_width() != 1254 or definition.icon_resource.get_height() != 1254:
 			return _fail("A raid-frame class master is not 1254x1254.")
 
+		var icon_image := definition.icon_resource.get_image()
+		if icon_image == null or not icon_image.has_mipmaps():
+			return _fail("A raid-frame class master was imported without mipmaps.")
+
 		if definition.compact_icon_resource.get_width() != 16 or definition.compact_icon_resource.get_height() != 16:
 			return _fail("A compact class icon is not 16x16.")
 

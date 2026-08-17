@@ -30,10 +30,15 @@ static func sanitize_progression(value: Variant) -> Dictionary:
 	var source: Dictionary = Dictionary(value).duplicate(true) if value is Dictionary else {}
 	var result := defaults.duplicate(true)
 	for field_name in [
-		"advancement_token_ids", "unlocked_recipe_ids", "crafted_weapon_ids",
+		"advancement_token_ids", "unlocked_recipe_ids",
 		"first_clear_claims", "processed_attempt_ids",
 	]:
 		result[field_name] = _unique_string_array(source.get(field_name, []))
+	# Crafted weapon IDs are counted, fungible copies. Repeated stable IDs are
+	# intentional inventory data and must survive every schema-11 round trip.
+	result["crafted_weapon_ids"] = _string_array(
+		source.get("crafted_weapon_ids", [])
+	)
 	var materials: Dictionary = {}
 	var source_materials: Variant = source.get("materials", {})
 	if source_materials is Dictionary:
@@ -75,8 +80,27 @@ static func sanitize_progression(value: Variant) -> Dictionary:
 			entry["stable_id"] = entry["weapon_id"]
 			entry["kept_raider_id"] = String(entry.get("kept_raider_id", ""))
 			entry["current_holder_id"] = entry["kept_raider_id"]
+			entry["kept_raider_ids"] = _unique_string_array(
+				entry.get(
+					"kept_raider_ids",
+					[entry["kept_raider_id"]] if not entry["kept_raider_id"].is_empty() else []
+				)
+			)
 			entry["cleared_raider_ids"] = _unique_string_array(
 				entry.get("cleared_raider_ids", [])
+			)
+			entry["crafted_count"] = maxi(int(entry.get("crafted_count", 1)), 0)
+			entry["assigned_count"] = maxi(
+				int(entry.get(
+					"assigned_count",
+					entry["kept_raider_ids"].size() + entry["cleared_raider_ids"].size()
+				)),
+				0
+			)
+			entry["kept_count"] = entry["kept_raider_ids"].size()
+			entry["cleared_count"] = entry["cleared_raider_ids"].size()
+			entry["recovery_copy_preserved"] = bool(
+				entry.get("recovery_copy_preserved", entry["crafted_count"] == 0)
 			)
 			entry["message"] = String(entry.get("message", ""))
 			duplicate_assignments.append(entry)
@@ -192,10 +216,6 @@ func check_craft(campaign: Dictionary, recipe_id: String) -> Dictionary:
 		return _result(
 			false, "locked_recipe", "Recipe '%s' has not been unlocked." % recipe.display_name
 		)
-	if Array(progression.get("crafted_weapon_ids", [])).has(recipe.output_weapon_id):
-		return _result(
-			false, "already_owned", "Weapon '%s' has already been crafted." % recipe.output_weapon_id
-		)
 	var materials: Dictionary = progression.get("materials", {})
 	var missing: Dictionary = {}
 	var ingredient_status: Array[Dictionary] = []
@@ -251,10 +271,12 @@ func craft(campaign: Dictionary, recipe_id: String) -> Dictionary:
 		else:
 			materials.erase(ingredient.material_id)
 	var crafted_ids: Array = Array(progression.get("crafted_weapon_ids", [])).duplicate()
-	_append_unique_string(crafted_ids, recipe.output_weapon_id)
+	crafted_ids.append(recipe.output_weapon_id)
 	progression["materials"] = materials
 	progression["crafted_weapon_ids"] = crafted_ids
 	campaign["progression"] = progression
+	var crafted_count := get_crafted_weapon_count(campaign, recipe.output_weapon_id)
+	var available_count := get_available_weapon_count(campaign, recipe.output_weapon_id)
 	return {
 		"ok": true,
 		"status": "crafted",
@@ -262,6 +284,8 @@ func craft(campaign: Dictionary, recipe_id: String) -> Dictionary:
 		"recipe_id": recipe_id,
 		"weapon_id": recipe.output_weapon_id,
 		"consumed": Array(validation.get("ingredients", [])).duplicate(true),
+		"crafted_count": crafted_count,
+		"available_count": available_count,
 	}
 
 
@@ -277,30 +301,24 @@ func check_equip(
 			false, "unknown_definition", "Unknown weapon definition '%s'." % weapon_id
 		)
 	var progression := sanitize_progression(campaign.get("progression", {}))
-	if not Array(progression.get("crafted_weapon_ids", [])).has(weapon_id):
+	var crafted_count := _count_string(
+		progression.get("crafted_weapon_ids", []), weapon_id
+	)
+	if crafted_count <= 0:
 		return _result(
 			false, "not_crafted", "Weapon '%s' has not been crafted." % weapon.display_name
 		)
-	var holder_id := get_weapon_holder_id(campaign, weapon_id)
-	if holder_id == raider_id:
+	var holder_ids := get_equipped_raider_ids(campaign, weapon_id)
+	if holder_ids.has(raider_id):
 		return {
 			"ok": false,
 			"status": "already_equipped",
 			"message": "Weapon is already equipped by this raider.",
 			"raider_id": raider_id,
 			"weapon_id": weapon_id,
-			"holder_id": holder_id,
-			"current_holder_id": holder_id,
-		}
-	if not holder_id.is_empty():
-		return {
-			"ok": false,
-			"status": "assigned_elsewhere",
-			"message": "Weapon is assigned to '%s'; unequip it there first." % holder_id,
-			"raider_id": raider_id,
-			"weapon_id": weapon_id,
-			"holder_id": holder_id,
-			"current_holder_id": holder_id,
+			"holder_id": raider_id,
+			"holder_ids": holder_ids,
+			"current_holder_id": raider_id,
 		}
 	if not Array(campaign.get("raid_plan", {}).get("active_member_ids", [])).has(raider_id):
 		return {
@@ -309,8 +327,9 @@ func check_equip(
 			"message": "Reserve raiders cannot receive weapon assignments.",
 			"raider_id": raider_id,
 			"weapon_id": weapon_id,
-			"holder_id": "",
-			"current_holder_id": "",
+			"holder_id": holder_ids[0] if not holder_ids.is_empty() else "",
+			"holder_ids": holder_ids,
+			"current_holder_id": holder_ids[0] if not holder_ids.is_empty() else "",
 		}
 	var state: Dictionary = state_result.get("state", {})
 	var class_id := _effective_class_id(state)
@@ -323,8 +342,26 @@ func check_equip(
 			"weapon_id": weapon_id,
 			"class_id": class_id,
 			"family_id": weapon.family_id,
-			"holder_id": "",
-			"current_holder_id": "",
+			"holder_id": holder_ids[0] if not holder_ids.is_empty() else "",
+			"holder_ids": holder_ids,
+			"current_holder_id": holder_ids[0] if not holder_ids.is_empty() else "",
+		}
+	var available_count := maxi(crafted_count - holder_ids.size(), 0)
+	if available_count <= 0:
+		return {
+			"ok": false,
+			"status": "all_copies_assigned",
+			"message": "All crafted copies are assigned.",
+			"raider_id": raider_id,
+			"weapon_id": weapon_id,
+			"class_id": class_id,
+			"family_id": weapon.family_id,
+			"crafted_count": crafted_count,
+			"equipped_count": holder_ids.size(),
+			"available_count": 0,
+			"holder_id": holder_ids[0] if not holder_ids.is_empty() else "",
+			"holder_ids": holder_ids,
+			"current_holder_id": holder_ids[0] if not holder_ids.is_empty() else "",
 		}
 	return {
 		"ok": true,
@@ -334,8 +371,12 @@ func check_equip(
 		"weapon_id": weapon_id,
 		"class_id": class_id,
 		"family_id": weapon.family_id,
-		"holder_id": "",
-		"current_holder_id": "",
+		"crafted_count": crafted_count,
+		"equipped_count": holder_ids.size(),
+		"available_count": available_count,
+		"holder_id": holder_ids[0] if not holder_ids.is_empty() else "",
+		"holder_ids": holder_ids,
+		"current_holder_id": holder_ids[0] if not holder_ids.is_empty() else "",
 	}
 
 
@@ -353,6 +394,8 @@ func equip(campaign: Dictionary, raider_id: String, weapon_id: String) -> Dictio
 	validation["status"] = "equipped"
 	validation["message"] = "Weapon equipped."
 	validation["previous_weapon_id"] = previous_weapon_id
+	validation["equipped_count"] = get_equipped_raider_ids(campaign, weapon_id).size()
+	validation["available_count"] = get_available_weapon_count(campaign, weapon_id)
 	return validation
 
 
@@ -382,6 +425,20 @@ func check_move_or_swap_equipped_weapon(
 	var destination_weapon_id := String(destination_state.get("equipped_weapon_id", ""))
 	if source_weapon_id.is_empty():
 		return _result(false, "source_unarmed", "Default weapons are not transferable inventory.")
+	if source_weapon_id == destination_weapon_id:
+		var identical_holder_ids := get_equipped_raider_ids(campaign, source_weapon_id)
+		return {
+			"ok": false,
+			"status": "already_equipped",
+			"message": "The destination already uses this weapon.",
+			"raider_id": destination_raider_id,
+			"weapon_id": source_weapon_id,
+			"source_raider_id": source_raider_id,
+			"destination_raider_id": destination_raider_id,
+			"holder_id": destination_raider_id,
+			"holder_ids": identical_holder_ids,
+			"current_holder_id": destination_raider_id,
+		}
 	var source_weapon := ProgressionCatalog.get_weapon(source_weapon_id)
 	if source_weapon == null:
 		return _result(
@@ -465,12 +522,140 @@ func move_or_swap_equipped_weapon(
 	return validation
 
 
+func check_reclaim_reserve_weapon(
+	campaign: Dictionary, source_raider_id: String, destination_raider_id: String
+) -> Dictionary:
+	if source_raider_id == destination_raider_id:
+		return _result(false, "same_raider", "Choose a different active raider.")
+	var source_result := _get_raider_state(campaign, source_raider_id)
+	if not bool(source_result.get("ok", false)):
+		return source_result
+	var destination_result := _get_raider_state(campaign, destination_raider_id)
+	if not bool(destination_result.get("ok", false)):
+		return destination_result
+	var active_ids: Array = campaign.get("raid_plan", {}).get("active_member_ids", [])
+	if active_ids.has(source_raider_id):
+		return _result(
+			false, "source_not_reserve",
+			"Active-held weapons should be moved from their raid-frame icon."
+		)
+	if not active_ids.has(destination_raider_id):
+		return _result(
+			false, "destination_not_active", "Reserve raiders cannot receive weapon assignments."
+		)
+	var source_state: Dictionary = source_result.get("state", {})
+	var destination_state: Dictionary = destination_result.get("state", {})
+	var source_weapon_id := String(source_state.get("equipped_weapon_id", ""))
+	var destination_weapon_id := String(destination_state.get("equipped_weapon_id", ""))
+	if source_weapon_id.is_empty():
+		return _result(false, "source_unarmed", "The reserve raider has no crafted weapon to reclaim.")
+	var source_weapon := ProgressionCatalog.get_weapon(source_weapon_id)
+	if source_weapon == null:
+		return _result(
+			false, "source_weapon_missing",
+			"The reserve weapon definition is missing; return it to the armory for recovery."
+		)
+	var progression := sanitize_progression(campaign.get("progression", {}))
+	var crafted_ids: Array = progression.get("crafted_weapon_ids", [])
+	if not crafted_ids.has(source_weapon_id):
+		return _result(false, "source_not_crafted", "The reserve weapon is not in the crafted armory.")
+	var holder_ids := get_equipped_raider_ids(campaign, source_weapon_id)
+	if not holder_ids.has(source_raider_id):
+		return {
+			"ok": false,
+			"status": "holder_mismatch",
+			"message": "The reserve weapon holder changed; refresh the Smith and try again.",
+			"source_raider_id": source_raider_id,
+			"destination_raider_id": destination_raider_id,
+			"source_weapon_id": source_weapon_id,
+			"holder_id": holder_ids[0] if not holder_ids.is_empty() else "",
+			"holder_ids": holder_ids,
+			"current_holder_id": holder_ids[0] if not holder_ids.is_empty() else "",
+		}
+	if destination_weapon_id == source_weapon_id:
+		return {
+			"ok": false,
+			"status": "already_equipped",
+			"message": "Weapon is already equipped by this raider.",
+			"raider_id": destination_raider_id,
+			"weapon_id": source_weapon_id,
+			"holder_id": destination_raider_id,
+			"holder_ids": holder_ids,
+			"current_holder_id": destination_raider_id,
+		}
+	var destination_class_id := _effective_class_id(destination_state)
+	if not ProgressionCatalog.is_family_compatible(
+		destination_class_id, source_weapon.family_id
+	):
+		return {
+			"ok": false,
+			"status": "source_incompatible_with_destination",
+			"message": "%s cannot use %s." % [
+				destination_class_id, source_weapon.display_name,
+			],
+			"source_raider_id": source_raider_id,
+			"destination_raider_id": destination_raider_id,
+			"source_weapon_id": source_weapon_id,
+			"destination_weapon_id": destination_weapon_id,
+			"class_id": destination_class_id,
+			"family_id": source_weapon.family_id,
+		}
+	if not destination_weapon_id.is_empty() and not crafted_ids.has(destination_weapon_id):
+		return _result(
+			false, "destination_not_crafted",
+			"Return the destination's invalid saved weapon to the armory first."
+		)
+	return {
+		"ok": true,
+		"status": "reclaimable",
+		"message": "Reserve-held weapon can be reclaimed.",
+		"source_raider_id": source_raider_id,
+		"destination_raider_id": destination_raider_id,
+		"source_weapon_id": source_weapon_id,
+		"destination_weapon_id": destination_weapon_id,
+		"previous_weapon_id": destination_weapon_id,
+		"holder_id": source_raider_id,
+		"current_holder_id": source_raider_id,
+	}
+
+
+func reclaim_reserve_weapon(
+	campaign: Dictionary, source_raider_id: String, destination_raider_id: String
+) -> Dictionary:
+	var validation := check_reclaim_reserve_weapon(
+		campaign, source_raider_id, destination_raider_id
+	)
+	if not bool(validation.get("ok", false)):
+		return validation
+	var states: Dictionary = campaign.get("raider_states", {})
+	var source_state: Dictionary = Dictionary(states[source_raider_id]).duplicate(true)
+	var destination_state: Dictionary = Dictionary(states[destination_raider_id]).duplicate(true)
+	source_state["equipped_weapon_id"] = ""
+	destination_state["equipped_weapon_id"] = String(
+		validation.get("source_weapon_id", "")
+	)
+	states[source_raider_id] = source_state
+	states[destination_raider_id] = destination_state
+	campaign["raider_states"] = states
+	validation["status"] = "reclaimed"
+	validation["message"] = "Reserve-held weapon reclaimed."
+	return validation
+
+
 static func get_weapon_holder_id(campaign: Dictionary, weapon_id: String) -> String:
+	var holder_ids := get_equipped_raider_ids(campaign, weapon_id)
+	return "" if holder_ids.is_empty() else holder_ids[0]
+
+
+static func get_equipped_raider_ids(
+	campaign: Dictionary, weapon_id: String
+) -> Array[String]:
+	var result: Array[String] = []
 	if weapon_id.is_empty():
-		return ""
+		return result
 	var states_value: Variant = campaign.get("raider_states", {})
 	if not states_value is Dictionary:
-		return ""
+		return result
 	var states: Dictionary = states_value
 	for raider_id in _ordered_raider_ids(campaign, states):
 		var state_value: Variant = states.get(raider_id, {})
@@ -478,8 +663,25 @@ static func get_weapon_holder_id(campaign: Dictionary, weapon_id: String) -> Str
 			state_value is Dictionary
 			and String(state_value.get("equipped_weapon_id", "")) == weapon_id
 		):
-			return raider_id
-	return ""
+			result.append(raider_id)
+	return result
+
+
+static func get_crafted_weapon_count(campaign: Dictionary, weapon_id: String) -> int:
+	return _count_string(
+		sanitize_progression(campaign.get("progression", {})).get(
+			"crafted_weapon_ids", []
+		),
+		weapon_id
+	)
+
+
+static func get_available_weapon_count(campaign: Dictionary, weapon_id: String) -> int:
+	return maxi(
+		get_crafted_weapon_count(campaign, weapon_id)
+		- get_equipped_raider_ids(campaign, weapon_id).size(),
+		0
+	)
 
 
 static func reconcile_duplicate_weapon_assignments(
@@ -490,8 +692,7 @@ static func reconcile_duplicate_weapon_assignments(
 	if not states_value is Dictionary:
 		return reconciliations
 	var states: Dictionary = states_value
-	var kept_by_weapon: Dictionary = {}
-	var cleared_by_weapon: Dictionary = {}
+	var holders_by_weapon: Dictionary = {}
 	for raider_id in _ordered_raider_ids(campaign, states):
 		var state_value: Variant = states.get(raider_id, {})
 		if not state_value is Dictionary:
@@ -499,34 +700,52 @@ static func reconcile_duplicate_weapon_assignments(
 		var weapon_id := String(state_value.get("equipped_weapon_id", ""))
 		if weapon_id.is_empty():
 			continue
-		if not kept_by_weapon.has(weapon_id):
-			kept_by_weapon[weapon_id] = raider_id
-			continue
-		var state: Dictionary = Dictionary(state_value).duplicate(true)
-		state["equipped_weapon_id"] = ""
-		states[raider_id] = state
-		var cleared_ids: Array = cleared_by_weapon.get(weapon_id, [])
-		cleared_ids.append(raider_id)
-		cleared_by_weapon[weapon_id] = cleared_ids
-	campaign["raider_states"] = states
-	for weapon_id_value in cleared_by_weapon:
+		var holder_ids: Array = holders_by_weapon.get(weapon_id, [])
+		holder_ids.append(raider_id)
+		holders_by_weapon[weapon_id] = holder_ids
+	var progression: Dictionary = sanitize_progression(campaign.get("progression", {}))
+	for weapon_id_value in holders_by_weapon:
 		var weapon_id := String(weapon_id_value)
-		var kept_id := String(kept_by_weapon.get(weapon_id, ""))
-		var cleared_ids: Array = Array(cleared_by_weapon[weapon_id_value]).duplicate()
+		var holder_ids: Array = Array(holders_by_weapon[weapon_id_value]).duplicate()
+		var crafted_count := _count_string(
+			progression.get("crafted_weapon_ids", []), weapon_id
+		)
+		# Keep one recoverable assignment when a save references an untracked
+		# weapon. This also covers definitions temporarily absent from content.
+		var allowed_count := crafted_count if crafted_count > 0 else 1
+		if holder_ids.size() <= allowed_count:
+			continue
+		var kept_ids: Array = holder_ids.slice(0, allowed_count)
+		var cleared_ids: Array = holder_ids.slice(allowed_count)
+		for cleared_raider_id_value in cleared_ids:
+			var cleared_raider_id := String(cleared_raider_id_value)
+			var state_value: Variant = states.get(cleared_raider_id, {})
+			if not state_value is Dictionary:
+				continue
+			var state: Dictionary = Dictionary(state_value).duplicate(true)
+			state["equipped_weapon_id"] = ""
+			states[cleared_raider_id] = state
+		var kept_id := String(kept_ids[0]) if not kept_ids.is_empty() else ""
 		reconciliations.append({
 			"status": "duplicate_weapon_assignment_reconciled",
 			"weapon_id": weapon_id,
 			"stable_id": weapon_id,
+			"crafted_count": crafted_count,
+			"assigned_count": holder_ids.size(),
+			"kept_count": kept_ids.size(),
+			"cleared_count": cleared_ids.size(),
 			"kept_raider_id": kept_id,
+			"kept_raider_ids": kept_ids,
 			"current_holder_id": kept_id,
 			"cleared_raider_ids": cleared_ids,
-			"message": "Kept '%s' as holder of '%s' and cleared: %s." % [
-				kept_id, weapon_id, ", ".join(cleared_ids),
+			"recovery_copy_preserved": crafted_count == 0 and not kept_ids.is_empty(),
+			"message": "Kept %d of %d assignments for '%s' and cleared: %s." % [
+				kept_ids.size(), holder_ids.size(), weapon_id, ", ".join(cleared_ids),
 			],
 		})
+	campaign["raider_states"] = states
 	if reconciliations.is_empty():
 		return reconciliations
-	var progression: Dictionary = sanitize_progression(campaign.get("progression", {}))
 	var diagnostics: Dictionary = Dictionary(
 		progression.get("migration_diagnostics", {})
 	).duplicate(true)
@@ -753,6 +972,26 @@ static func _unique_string_array(value: Variant) -> Array[String]:
 	if value is Array:
 		for entry in value:
 			_append_unique_string(result, String(entry).strip_edges())
+	return result
+
+
+static func _string_array(value: Variant) -> Array[String]:
+	var result: Array[String] = []
+	if value is Array:
+		for entry in value:
+			var text := String(entry).strip_edges()
+			if not text.is_empty():
+				result.append(text)
+	return result
+
+
+static func _count_string(value: Variant, target: String) -> int:
+	if target.is_empty() or not value is Array:
+		return 0
+	var result := 0
+	for entry in value:
+		if String(entry) == target:
+			result += 1
 	return result
 
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c81execs83e7i"
-path="res://.godot/imported/default_echo_butcher.png-1246601b7c593bfa2cc17230d85fa87d.ctex"
+uid="uid://c7ffuhrh2fsxp"
+path="res://.godot/imported/heavy_arms.png-2862ff6f0d203d3e19d256a2da290d89.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://icons/weapon_visuals/default_echo_butcher.png"
-dest_files=["res://.godot/imported/default_echo_butcher.png-1246601b7c593bfa2cc17230d85fa87d.ctex"]
+source_file="res://icons/weapon_visuals/defaults/heavy_arms.png"
+dest_files=["res://.godot/imported/heavy_arms.png-2862ff6f0d203d3e19d256a2da290d89.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

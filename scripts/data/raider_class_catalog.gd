@@ -20,7 +20,29 @@ const ADVANCED_CLASS_ORDER: Array[String] = [
 ]
 const ICON_ROOT := "res://icons/class_visuals/"
 const COMPACT_ICON_ROOT := "res://icons/class_visuals/compact/"
-const DEFAULT_WEAPON_ICON_ROOT := "res://icons/weapon_visuals/default_"
+const DEFAULT_WEAPON_ICON_ROOT := "res://icons/weapon_visuals/defaults/"
+const DEFAULT_WEAPON_FAMILY_BY_CLASS: Dictionary = {
+	"warrior": "one_handed_arms",
+	"rogue": "skirmishing_arms",
+	"mage": "battle_staves",
+	"priest": "conduit_staves",
+	"hollow_anvil": "heavy_arms",
+	"gravelord_proxy": "heavy_arms",
+	"sunder_clerk": "one_handed_arms",
+	"lantern_warden": "arcane_foci",
+	"burden_courier": "conduit_staves",
+	"memory_apothecary": "conduit_staves",
+	"scar_gardener": "skirmishing_arms",
+	"moth_surgeon": "conduit_staves",
+	"echo_butcher": "skirmishing_arms",
+	"ritebreaker": "ritual_implements",
+	"drift_knife": "projectile_arms",
+	"phasehand": "skirmishing_arms",
+	"hearth_corsair": "one_handed_arms",
+	"rift_tailor": "ritual_implements",
+	"rune_slinger": "projectile_arms",
+	"orbit_scribe": "battle_staves",
+}
 const NEUTRAL_MAIN_COLOR := Color(0.28, 0.30, 0.33, 1.0)
 const NEUTRAL_ACCENT_COLOR := Color(0.0, 0.0, 0.0, 0.0)
 
@@ -149,6 +171,11 @@ static func get_default_weapon_icon(class_id: String) -> Texture2D:
 	return definition.get("default_weapon_icon") as Texture2D
 
 
+static func get_default_weapon_family_id(class_id: String) -> String:
+	var definition := get_definition(class_id)
+	return String(definition.get("default_weapon_family_id", ""))
+
+
 static func resolve_visual(
 	base_class_id: String, advanced_class_id: String = ""
 ) -> ClassVisualDefinition:
@@ -244,6 +271,7 @@ static func _register_base(
 		"camp_color": Color(camp_color_hex),
 		"campaign_generation_order": campaign_generation_order,
 		"runtime_script": null,
+		"default_weapon_family_id": _default_weapon_family_id(class_id),
 		"default_weapon_icon": _load_default_weapon_icon(class_id),
 		"advanced": false,
 	})
@@ -271,6 +299,7 @@ static func _register_advanced(
 		"visual": visual,
 		"camp_color": parent.get("camp_color", visual.main_color),
 		"runtime_script": null,
+		"default_weapon_family_id": _default_weapon_family_id(class_id),
 		"default_weapon_icon": _load_default_weapon_icon(class_id),
 		"advanced": true,
 	})
@@ -294,7 +323,14 @@ static func _load_compact_icon(icon_name: String) -> Texture2D:
 
 
 static func _load_default_weapon_icon(class_id: String) -> Texture2D:
-	return load(DEFAULT_WEAPON_ICON_ROOT + class_id + ".png") as Texture2D
+	var family_id := _default_weapon_family_id(class_id)
+	if family_id.is_empty():
+		return null
+	return load(DEFAULT_WEAPON_ICON_ROOT + family_id + ".png") as Texture2D
+
+
+static func _default_weapon_family_id(class_id: String) -> String:
+	return String(DEFAULT_WEAPON_FAMILY_BY_CLASS.get(class_id, ""))
 
 
 static func _normalize_lookup(value: String) -> String:
