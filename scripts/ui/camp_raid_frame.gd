@@ -33,6 +33,12 @@ var visual_definition: ClassVisualDefinition = null
 var hovered: bool = false
 var drop_allowed: bool = false
 var drop_reason: String = ""
+var selected_family_id: String = ""
+var smith_family_filter_id: String = ""
+var family_compatible: bool = true
+var compatible_with_selected_family: bool = true
+var smith_drop_target_enabled: bool = false
+var smith_family_compatibility_state: String = "neutral"
 
 
 func _ready() -> void:
@@ -46,7 +52,7 @@ func _ready() -> void:
 
 func configure(
 	member_data: Dictionary, new_context: String, new_equipment_enabled: bool,
-	formation_placement: Dictionary = {}
+	formation_placement: Dictionary = {}, new_smith_family_id: String = ""
 ) -> void:
 	member = member_data.duplicate(true)
 	member_id = String(member.get("member_id", ""))
@@ -54,12 +60,34 @@ func configure(
 	context = new_context
 	equipment_enabled = new_equipment_enabled
 	placement = formation_placement.duplicate(true)
+	selected_family_id = new_smith_family_id
+	smith_family_filter_id = new_smith_family_id
 	var base_class_id := RaiderClassCatalogScript.normalize_class_id(
 		String(member.get("unit_class", ""))
 	)
 	var advanced_class_id := String(member.get("advanced_class_id", ""))
 	visual_definition = RaiderClassCatalogScript.resolve_visual(
 		base_class_id, advanced_class_id
+	)
+	family_compatible = (
+		new_smith_family_id.is_empty()
+		or ProgressionCatalog.is_family_compatible(_effective_class_id(), new_smith_family_id)
+	)
+	compatible_with_selected_family = family_compatible
+	smith_drop_target_enabled = (
+		context == "smith"
+		and equipment_enabled
+		and not new_smith_family_id.is_empty()
+		and family_compatible
+	)
+	smith_family_compatibility_state = (
+		"neutral" if new_smith_family_id.is_empty()
+		else "compatible" if family_compatible else "incompatible"
+	)
+	modulate = (
+		Color(0.58, 0.61, 0.63, 1.0)
+		if context == "smith" and not new_smith_family_id.is_empty() and not family_compatible
+		else Color.WHITE
 	)
 	custom_minimum_size = Vector2(
 		FULL_WIDTH if context in ["smith", "formation_yard"] else BASE_SIZE.x,
@@ -70,10 +98,19 @@ func configure(
 	queue_redraw()
 
 
+func is_compatible_with_smith_family() -> bool:
+	return compatible_with_selected_family
+
+
+func can_receive_smith_weapon() -> bool:
+	return smith_drop_target_enabled
+
+
 func _draw() -> void:
 	_draw_base_frame()
 	if context == "smith":
 		_draw_weapon_slot()
+		_draw_smith_family_state()
 		_draw_equipment_drop_highlight()
 	elif context == "formation_yard":
 		_draw_formation_badge()
@@ -133,6 +170,14 @@ func _draw_weapon_slot() -> void:
 	if not drop_reason.is_empty():
 		border_color = Color("78bd7c") if drop_allowed else Color("d36f68")
 	draw_rect(slot_rect, border_color, false, 2.0)
+
+
+func _draw_smith_family_state() -> void:
+	if context != "smith" or smith_family_filter_id.is_empty() or family_compatible:
+		return
+	var overlay := Color(0.02, 0.025, 0.03, 0.22)
+	draw_rect(Rect2(Vector2.ZERO, BASE_SIZE), overlay)
+	draw_rect(_accessory_rect(), overlay)
 
 
 func _draw_equipment_drop_highlight() -> void:
@@ -244,6 +289,7 @@ func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
 	if (
 		context != "smith"
 		or not equipment_enabled
+		or not smith_drop_target_enabled
 		or not _smith_drop_rect().has_point(at_position)
 		or not data is Dictionary
 	):
@@ -252,17 +298,29 @@ func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
 	var drag_type := String(data.get("type", ""))
 	var validation: Dictionary = {}
 	if drag_type == "smith_armory_weapon":
-		validation = CampaignState.check_equip_weapon(
-			member_id, String(data.get("weapon_id", ""))
-		)
+		if not _payload_matches_selected_family(data):
+			validation = {
+				"ok": false,
+				"message": "This weapon belongs to another weapon type.",
+			}
+		else:
+			validation = CampaignState.check_equip_weapon(
+				member_id, String(data.get("weapon_id", ""))
+			)
 	elif drag_type == "smith_equipped_weapon":
 		validation = CampaignState.check_move_or_swap_equipped_weapon(
 			String(data.get("source_raider_id", "")), member_id
 		)
 	elif drag_type == "smith_reserve_weapon":
-		validation = CampaignState.check_reclaim_reserve_weapon(
-			String(data.get("source_raider_id", "")), member_id
-		)
+		if not _payload_matches_selected_family(data):
+			validation = {
+				"ok": false,
+				"message": "This weapon belongs to another weapon type.",
+			}
+		else:
+			validation = CampaignState.check_reclaim_reserve_weapon(
+				String(data.get("source_raider_id", "")), member_id
+			)
 	else:
 		return false
 	drop_allowed = bool(validation.get("ok", false))
@@ -365,8 +423,20 @@ func _base_tooltip() -> String:
 		else:
 			result += "\n%s" % ProgressionCatalog.get_weapon(weapon_id).display_name
 		if equipment_enabled:
-			result += "\nDrop a compatible armory weapon here or drag this crafted weapon to another frame."
+			if context == "smith" and smith_family_filter_id.is_empty():
+				result += "\nSelect a weapon type to enable equipment targets."
+			elif context == "smith" and not family_compatible:
+				result += "\nThis raider cannot receive the selected weapon type."
+			else:
+				result += "\nDrop a compatible weapon here or drag this equipped weapon to another frame."
 	return result
+
+
+func _payload_matches_selected_family(data: Dictionary) -> bool:
+	if smith_family_filter_id.is_empty():
+		return false
+	var weapon := ProgressionCatalog.get_weapon(String(data.get("weapon_id", "")))
+	return weapon != null and weapon.family_id == smith_family_filter_id
 
 
 func _sector_polygon(

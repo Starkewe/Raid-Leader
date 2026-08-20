@@ -157,6 +157,12 @@ func _validate_lock_and_restore(
 		)
 		_expect(smith_frame.equipment_enabled, "Smith did not enable equipment dragging immediately.")
 		_expect(
+			drawer.get_smith_family_filter().is_empty()
+			and smith_frame.smith_family_compatibility_state == "neutral"
+			and not smith_frame.smith_drop_target_enabled,
+			"Smith category gate did not leave all raid frames visible but non-targeting."
+		)
+		_expect(
 			smith_frame.mouse_filter == Control.MOUSE_FILTER_STOP,
 			"Interactive raid frames do not receive GUI input through the inert drawer shell."
 		)
@@ -164,6 +170,33 @@ func _validate_lock_and_restore(
 			RaiderClassCatalog.get_default_weapon_icon(smith_frame._effective_class_id()) != null,
 			"Unarmed Smith frame could not resolve its class default weapon icon."
 		)
+	var smith_presenter := journal.page_presenters.get("smith") as SmithPagePresenter
+	var reward := CampaignState.debug_process_seeded_reward("ogre", "drawer_smith_family_filter")
+	_expect(bool(reward.get("ok", false)), "Drawer Smith fixture could not unlock a weapon family.")
+	if smith_presenter != null and smith_presenter.select_family("heavy_arms"):
+		await _wait_frames(3)
+		var compatible_frame: CampRaidFrame = null
+		var incompatible_frame: CampRaidFrame = null
+		for child in drawer.stack.get_children():
+			if not child is CampRaidFrame:
+				continue
+			var candidate := child as CampRaidFrame
+			if candidate.family_compatible and compatible_frame == null:
+				compatible_frame = candidate
+			elif not candidate.family_compatible and incompatible_frame == null:
+				incompatible_frame = candidate
+		_expect(compatible_frame != null, "Smith family filter did not expose a compatible raid frame.")
+		_expect(incompatible_frame != null, "Smith family filter did not expose a dimmed incompatible raid frame.")
+		if compatible_frame != null:
+			_expect(compatible_frame.smith_drop_target_enabled, "Compatible Smith frame was not an active target.")
+		if incompatible_frame != null:
+			_expect(not incompatible_frame.smith_drop_target_enabled, "Incompatible Smith frame remained an active target.")
+			_expect(
+				not incompatible_frame._can_drop_data(
+					Vector2(90, 22), {"type": "smith_armory_weapon", "weapon_id": "earthgnasher_heartmaul"}
+				),
+				"Incompatible Smith frame accepted a weapon drop."
+			)
 	journal.close_journal()
 	await _wait_frames(2)
 	_expect(

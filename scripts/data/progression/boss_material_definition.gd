@@ -5,4 +5,5 @@ class_name BossMaterialDefinition
 @export var display_name: String = ""
 @export var rarity_id: String = "common"
 @export var source_encounter_ids: Array[String] = []
+@export var icon_resource: Texture2D
 @export_multiline var description: String = ""

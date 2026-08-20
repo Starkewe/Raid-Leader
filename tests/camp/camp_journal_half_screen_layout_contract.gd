@@ -14,8 +14,7 @@ const FACILITY_PRIMARY_CONTROLS := {
 	"quarters": ["QuartersRosterSection", "QuartersProfileScroll"],
 	"storage": ["StorageFilters", "StorageInventoryContent"],
 	"smith": [
-		"SmithRecipeList", "SmithArmorySection", "SmithReturnToArmory",
-		"SmithCraftButton",
+		"SmithCategoryGrid",
 	],
 }
 
@@ -112,9 +111,28 @@ func _validate_smith_confirmation(
 ) -> void:
 	journal.open_facility("smith")
 	await _wait_frames(3)
-	var presenter = journal.page_presenters.get("smith")
+	var presenter := journal.page_presenters.get("smith") as SmithPagePresenter
+	if presenter == null:
+		failures.append("Smith presenter was unavailable for tab layout validation.")
+		return
+	var categories: Array = presenter.build_view_model().get("categories", [])
+	var selected_family_id := ""
+	for category_value in categories:
+		var category: Dictionary = category_value
+		if bool(category.get("unlocked", false)):
+			selected_family_id = String(category.get("family_id", ""))
+			break
+	if selected_family_id.is_empty():
+		failures.append("Smith layout fixture did not expose an unlocked weapon family.")
+		return
+	presenter.select_family(selected_family_id)
+	await _wait_frames(3)
+	_validate_smith_tab_controls(journal, ["SmithRecipeList", "SmithCraftButton"], failures)
 	var model: Dictionary = presenter.build_forge_view_model()
 	var recipe: Dictionary = model.get("selected_recipe", {})
+	if recipe.is_empty():
+		failures.append("Smith Forge tab did not expose a selected recipe for confirmation layout.")
+		return
 	var grants: Dictionary = {}
 	for component_value in recipe.get("components", []):
 		var component: Dictionary = component_value
@@ -137,6 +155,26 @@ func _validate_smith_confirmation(
 		):
 			failures.append("Smith confirmation escaped the right half.")
 	presenter.cancel_pending_craft()
+	presenter.select_tab("armory")
+	await _wait_frames(3)
+	_validate_smith_tab_controls(journal, ["SmithArmorySection", "SmithReturnToArmory"], failures)
+
+
+func _validate_smith_tab_controls(
+	journal: CampJournal, control_names: Array, failures: Array[String]
+) -> void:
+	var shell := journal.find_child("CampJournalRightHalfShell", true, false) as Control
+	if shell == null:
+		return
+	var shell_rect := shell.get_global_rect()
+	for control_name in control_names:
+		var control := journal.find_child(String(control_name), true, false) as Control
+		if control == null or not control.is_visible_in_tree():
+			failures.append("Smith tab control '%s' was not rendered." % control_name)
+			continue
+		var rect := control.get_global_rect()
+		if rect.position.x < shell_rect.position.x - 1.0 or rect.end.x > shell_rect.end.x + 1.0:
+			failures.append("Smith tab control '%s' overflowed the right-half shell." % control_name)
 
 
 func _wait_frames(count: int) -> void:
