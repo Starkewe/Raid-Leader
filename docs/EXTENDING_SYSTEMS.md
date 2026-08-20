@@ -34,8 +34,9 @@ and delegates hover highlights to `CampPopulationController`. Its fixed-height s
 shows the complete active raid without scrolling. The drawer starts retracted,
 remembers the player's manual open state, and is forced open only while a contextual
 Journal page is active. `CampRaidFrame` supplies the context accessory:
-Smith shows a crafted/default weapon icon and Formation Yard shows the raider's
-direction/range sector. Keep reserve-only workflows out of this active-party drawer.
+Smith shows a crafted/default weapon icon and applies the selected weapon-family
+target filter; Formation Yard shows the raider's direction/range sector. Keep
+reserve-only workflows out of this active-party drawer.
 
 ## Boss rewards and equipment progression
 
@@ -81,9 +82,9 @@ base unit controllers. Weapon-trait hooks are descriptive metadata and have no c
 effect in this pass. Raider traits are a separate major/two-minor scaffold; the
 production catalog intentionally authors none. `doctrine_id` is persistence-only.
 
-The Rudimentary Smith presents one production Forge page through
-`SmithPagePresenter`. Its compact crafted-armory strip uses drag sources in the
-Journal and drop targets on the camp raid drawer; reserve-held copies render as compact
+The Smith presents a category gate followed by Forge and Armory tabs through
+`SmithPagePresenter`. Its compact armory cards use drag sources in the Journal and
+drop targets on the camp raid drawer; reserve-held copies render as compact
 per-holder recovery sources below their stack. Weapon definitions own
 crafted-item icons, while `RaiderClassCatalog` maps every base or advanced class to
 one compatible primary weapon family and resolves its unarmed fallback from the

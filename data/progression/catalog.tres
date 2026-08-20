@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ProgressionCatalogResource" load_steps=144 format=3]
+[gd_resource type="Resource" script_class="ProgressionCatalogResource" load_steps=158 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/progression/progression_catalog_resource.gd" id="1_catalog"]
 [ext_resource type="Script" path="res://scripts/data/progression/progression_region_definition.gd" id="2_region"]
@@ -23,6 +23,20 @@
 [ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_crashbone_longbow.png" id="21_longbow_icon"]
 [ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_twin_fang_knives.png" id="22_knives_icon"]
 [ext_resource type="Texture2D" path="res://icons/weapon_visuals/weapon_rampage_maul.png" id="23_rampage_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_crucible_beastbone.png" id="24_beastbone_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_shale_caked_hide.png" id="25_shale_hide_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_quake_marrow.png" id="26_quake_marrow_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_earthgnasher_heartstone.png" id="27_heartstone_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_crucible_binding_iron.png" id="28_binding_iron_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_tempered_chainlink.png" id="29_chainlink_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_command_resonator.png" id="30_command_resonator_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_chainmaster_collar_core.png" id="31_collar_core_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_surgical_pinion.png" id="32_pinion_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_volatile_growth_gland.png" id="33_growth_gland_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_carrion_roc_stress_heart.png" id="34_stress_heart_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_rage_slick_hide.png" id="35_rage_hide_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_exhaustion_sinew.png" id="36_sinew_icon"]
+[ext_resource type="Texture2D" path="res://icons/material_visuals/material_matched_mauler_fangs.png" id="37_fangs_icon"]
 
 [sub_resource type="Resource" id="RarityCommon"]
 script = ExtResource("6_rarity")
@@ -131,6 +145,7 @@ material_id = "crucible_beastbone"
 display_name = "Crucible Beastbone"
 rarity_id = "common"
 source_encounter_ids = Array[String](["ogre", "twin_maulers"])
+icon_resource = ExtResource("24_beastbone_icon")
 description = "Dense bone shared by Earthgnasher and the Twin Maulers; reserved for future progression costs."
 
 [sub_resource type="Resource" id="MaterialShaleHide"]
@@ -139,6 +154,7 @@ material_id = "shale_caked_hide"
 display_name = "Shale-Caked Hide"
 rarity_id = "common"
 source_encounter_ids = Array[String](["ogre"])
+icon_resource = ExtResource("25_shale_hide_icon")
 description = "Earthgnasher hide plated with layers of compressed shale."
 
 [sub_resource type="Resource" id="MaterialQuakeMarrow"]
@@ -147,6 +163,7 @@ material_id = "quake_marrow"
 display_name = "Quake Marrow"
 rarity_id = "uncommon"
 source_encounter_ids = Array[String](["ogre"])
+icon_resource = ExtResource("26_quake_marrow_icon")
 description = "Resonant marrow that still hums with Earthgnasher's impact force."
 
 [sub_resource type="Resource" id="MaterialHeartstone"]
@@ -155,6 +172,7 @@ material_id = "earthgnasher_heartstone"
 display_name = "Earthgnasher Heartstone"
 rarity_id = "rare"
 source_encounter_ids = Array[String](["ogre"])
+icon_resource = ExtResource("27_heartstone_icon")
 description = "A singular stone heart capable of anchoring a boss-forged weapon."
 
 [sub_resource type="Resource" id="MaterialBindingIron"]
@@ -163,6 +181,7 @@ material_id = "crucible_binding_iron"
 display_name = "Crucible Binding Iron"
 rarity_id = "common"
 source_encounter_ids = Array[String](["chainmaster", "carrion_roc"])
+icon_resource = ExtResource("28_binding_iron_icon")
 description = "Hard binding iron shared by Chainmaster and the Carrion Roc; reserved for future progression costs."
 
 [sub_resource type="Resource" id="MaterialChainlink"]
@@ -171,6 +190,7 @@ material_id = "tempered_chainlink"
 display_name = "Tempered Chainlink"
 rarity_id = "common"
 source_encounter_ids = Array[String](["chainmaster"])
+icon_resource = ExtResource("29_chainlink_icon")
 description = "A command-tempered link cut from Chainmaster's restraint rig."
 
 [sub_resource type="Resource" id="MaterialCommandResonator"]
@@ -179,6 +199,7 @@ material_id = "command_resonator"
 display_name = "Command Resonator"
 rarity_id = "uncommon"
 source_encounter_ids = Array[String](["chainmaster"])
+icon_resource = ExtResource("30_command_resonator_icon")
 description = "A resonant component that amplifies binding commands."
 
 [sub_resource type="Resource" id="MaterialCollarCore"]
@@ -187,6 +208,7 @@ material_id = "chainmaster_collar_core"
 display_name = "Chainmaster Collar Core"
 rarity_id = "rare"
 source_encounter_ids = Array[String](["chainmaster"])
+icon_resource = ExtResource("31_collar_core_icon")
 description = "The intact control core from Chainmaster's iron collar."
 
 [sub_resource type="Resource" id="MaterialPinion"]
@@ -195,6 +217,7 @@ material_id = "surgical_pinion"
 display_name = "Surgical Pinion"
 rarity_id = "common"
 source_encounter_ids = Array[String](["carrion_roc"])
+icon_resource = ExtResource("32_pinion_icon")
 description = "A clean, blade-like pinion harvested from the Carrion Roc."
 
 [sub_resource type="Resource" id="MaterialGrowthGland"]
@@ -203,6 +226,7 @@ material_id = "volatile_growth_gland"
 display_name = "Volatile Growth Gland"
 rarity_id = "uncommon"
 source_encounter_ids = Array[String](["carrion_roc"])
+icon_resource = ExtResource("33_growth_gland_icon")
 description = "A volatile gland that once fed the Roc's carrion growths."
 
 [sub_resource type="Resource" id="MaterialStressHeart"]
@@ -211,6 +235,7 @@ material_id = "carrion_roc_stress_heart"
 display_name = "Carrion Roc Stress Heart"
 rarity_id = "rare"
 source_encounter_ids = Array[String](["carrion_roc"])
+icon_resource = ExtResource("34_stress_heart_icon")
 description = "The Roc's overstrained heart, preserved at the instant of defeat."
 
 [sub_resource type="Resource" id="MaterialRageHide"]
@@ -219,6 +244,7 @@ material_id = "rage_slick_hide"
 display_name = "Rage-Slick Hide"
 rarity_id = "common"
 source_encounter_ids = Array[String](["twin_maulers"])
+icon_resource = ExtResource("35_rage_hide_icon")
 description = "Mauler hide permanently slick with alchemical rage."
 
 [sub_resource type="Resource" id="MaterialSinew"]
@@ -227,6 +253,7 @@ material_id = "exhaustion_sinew"
 display_name = "Exhaustion Sinew"
 rarity_id = "uncommon"
 source_encounter_ids = Array[String](["twin_maulers"])
+icon_resource = ExtResource("36_sinew_icon")
 description = "Sinew locked at the precise boundary between fury and exhaustion."
 
 [sub_resource type="Resource" id="MaterialFangs"]
@@ -235,6 +262,7 @@ material_id = "matched_mauler_fangs"
 display_name = "Matched Mauler Fangs"
 rarity_id = "rare"
 source_encounter_ids = Array[String](["twin_maulers"])
+icon_resource = ExtResource("37_fangs_icon")
 description = "A perfectly matched pair of fangs, one from each Mauler."
 
 [sub_resource type="Resource" id="TraitAftershock"]

@@ -11,6 +11,7 @@ const SLIDE_DURATION := 0.22
 const REQUIRED_CONTEXTS := ["smith", "formation_yard"]
 
 var menu_context: String = ""
+var smith_family_filter_id: String = ""
 var manual_open: bool = false
 var open_now: bool = false
 var locked: bool = false
@@ -50,11 +51,46 @@ func set_menu_context(facility_id: String) -> void:
 	elif not required and locked:
 		locked = false
 	menu_context = facility_id if required else ""
+	if menu_context != "smith":
+		smith_family_filter_id = ""
 	if context_changed:
 		_layout_shell()
 		_rebuild()
 	_update_handle()
 	_set_open(true if locked else manual_open, true)
+
+
+func set_smith_family_filter(family_id: String) -> void:
+	var next_family_id := family_id if menu_context == "smith" else ""
+	if smith_family_filter_id == next_family_id:
+		return
+	smith_family_filter_id = next_family_id
+	if menu_context == "smith":
+		_queue_refresh()
+
+
+func set_smith_family_id(family_id: String) -> void:
+	set_smith_family_filter(family_id)
+
+
+func set_smith_family_filter_id(family_id: String) -> void:
+	set_smith_family_filter(family_id)
+
+
+func get_smith_family_filter() -> String:
+	return smith_family_filter_id
+
+
+func get_smith_family_id() -> String:
+	return smith_family_filter_id
+
+
+func get_smith_family_filter_id() -> String:
+	return smith_family_filter_id
+
+
+func clear_smith_family_filter() -> void:
+	set_smith_family_filter("")
 
 
 func is_open() -> bool:
@@ -173,7 +209,10 @@ func _rebuild() -> void:
 		)
 		var frame := CampRaidFrameScript.new() as CampRaidFrame
 		frame.name = "CampRaidFrame_" + member_id
-		frame.configure(member, menu_context, menu_context == "smith", member_placement)
+		frame.configure(
+			member, menu_context, menu_context == "smith", member_placement,
+			smith_family_filter_id if menu_context == "smith" else ""
+		)
 		frame.member_hovered.connect(_on_member_hovered)
 		frame.member_unhovered.connect(_on_member_unhovered)
 		frame.equipment_action_completed.connect(_on_equipment_action_completed)

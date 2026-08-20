@@ -56,6 +56,10 @@ func open_facility(facility_id: String) -> void:
 	if not page_presenters.has(facility_id):
 		return
 
+	if facility_id == "smith":
+		var smith_presenter := page_presenters.get("smith") as SmithPagePresenter
+		if smith_presenter != null:
+			smith_presenter.reset_navigation()
 	current_facility_id = facility_id
 
 	if facility_id == "archive" and archive_view_encounter_id.is_empty():
@@ -184,6 +188,10 @@ func _sync_raid_drawer_context() -> void:
 	var drawer := get_tree().get_first_node_in_group("camp_raid_drawer")
 	if drawer != null and drawer.has_method("set_menu_context"):
 		drawer.call("set_menu_context", current_facility_id)
+	if drawer != null and current_facility_id != "smith" and drawer.has_method(
+		"set_smith_family_filter"
+	):
+		drawer.call("set_smith_family_filter", "")
 
 
 func _begin_scrolling_page() -> VBoxContainer:

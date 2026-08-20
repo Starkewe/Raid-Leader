@@ -6,6 +6,11 @@ const SmithArmoryDropZoneScript := preload(
 	"res://scripts/ui/smith_armory_drop_zone.gd"
 )
 
+const TAB_FORGE := "forge"
+const TAB_ARMORY := "armory"
+
+var selected_family_id: String = ""
+var selected_tab: String = TAB_FORGE
 var selected_recipe_id: String = ""
 var pending_recipe_id: String = ""
 var action_message: String = ""
@@ -18,16 +23,22 @@ func present(journal: Node) -> void:
 	_journal = journal
 	var header := journal.get("header_title") as Label
 	if header != null:
-		header.text = "Rudimentary Smith — Forge and Armory"
+		header.text = "The Smith's Forge"
 	_ensure_confirmation_dialog()
 	var page := journal.call("_begin_scrolling_page") as VBoxContainer
 	if page == null:
 		return
 	page.name = "SmithPage"
 	_add_intro(page)
-	var model := build_forge_view_model()
-	_add_armory_strip(page, model)
-	_add_forge_view(page, model)
+	var model := build_view_model()
+	if selected_family_id.is_empty():
+		_add_category_gate(page, model)
+	else:
+		_add_selected_family_navigation(page, model)
+		if selected_tab == TAB_ARMORY:
+			_add_armory_strip(page, model)
+		else:
+			_add_forge_view(page, model)
 	_add_action_message(page)
 
 
@@ -36,10 +47,13 @@ func build_view_model() -> Dictionary:
 
 
 func build_forge_view_model() -> Dictionary:
+	var categories := _build_weapon_categories()
 	var recipes: Array[Dictionary] = []
 	for recipe_id in CampaignState.get_unlocked_recipe_ids():
 		var entry := _build_recipe_entry(recipe_id)
 		if entry.is_empty():
+			continue
+		if selected_family_id.is_empty() or not _entry_matches_selected_family(entry):
 			continue
 		recipes.append(entry)
 	recipes.sort_custom(
@@ -51,23 +65,99 @@ func build_forge_view_model() -> Dictionary:
 	var selected := _select_entry(recipes, selected_recipe_id, "recipe_id")
 	selected_recipe_id = String(selected.get("recipe_id", ""))
 	var holders := _build_equip_raiders()
-	var weapons := _build_weapon_entries()
+	var all_weapons := _build_weapon_entries()
+	var weapons: Array[Dictionary] = []
+	for weapon in all_weapons:
+		if not selected_family_id.is_empty() and _entry_matches_selected_family(weapon, true):
+			weapons.append(weapon)
+	var reserve_recoveries := _build_reserve_recovery_entries(weapons)
+	var selected_family := ProgressionCatalog.get_weapon_family(selected_family_id)
+	var selected_family_name := "" if selected_family == null else selected_family.display_name
 	return {
+		"categories": categories,
+		"weapon_families": categories,
+		"weapon_categories": categories,
+		"category_gate": selected_family_id.is_empty(),
+		"show_category_gate": selected_family_id.is_empty(),
+		"selected_family_id": selected_family_id,
+		"selected_family_name": selected_family_name,
+		"selected_family": {
+			"family_id": selected_family_id,
+			"display_name": selected_family_name,
+		} if not selected_family_id.is_empty() else {},
+		"selected_tab": selected_tab,
+		"active_tab": selected_tab,
 		"recipes": recipes,
+		"filtered_recipes": recipes,
+		"forge_recipes": recipes,
+		"filtered_forge_entries": recipes,
 		"entries": recipes,
 		"selected_recipe": selected,
 		"selected_recipe_id": String(selected.get("recipe_id", "")),
 		"empty_state": _forge_empty_state(),
 		"holders": holders,
 		"weapons": weapons,
-		"reserve_recoveries": _build_reserve_recovery_entries(weapons),
-		"armory_empty_state": "No weapons have been crafted. Forge an unlocked design first.",
+		"filtered_weapons": weapons,
+		"armory_weapons": weapons,
+		"filtered_armory_entries": weapons,
+		"filtered_armory": weapons,
+		"reserve_recoveries": reserve_recoveries,
+		"filtered_reserve_recoveries": reserve_recoveries,
+		"armory_empty_state": "No weapons are available in this weapon type.",
 		"action_message": action_message,
 	}
 
 
+func reset_navigation() -> void:
+	selected_family_id = ""
+	selected_tab = TAB_FORGE
+	selected_recipe_id = ""
+	pending_recipe_id = ""
+	action_message = ""
+	if _confirmation_dialog != null and is_instance_valid(_confirmation_dialog):
+		_confirmation_dialog.hide()
+	_set_smith_drawer_family_filter("")
+	_queue_refresh()
+
+
+func select_family(family_id: String) -> bool:
+	var family := ProgressionCatalog.get_weapon_family(family_id)
+	if family == null or not _is_family_unlocked(family_id):
+		return false
+	selected_family_id = family_id
+	selected_tab = TAB_FORGE
+	selected_recipe_id = ""
+	_set_smith_drawer_family_filter(family_id)
+	_queue_refresh()
+	return true
+
+
+func select_weapon_family(family_id: String) -> bool:
+	return select_family(family_id)
+
+
+func select_tab(tab_id: String) -> bool:
+	var normalized := tab_id.to_lower()
+	if selected_family_id.is_empty() or normalized not in [TAB_FORGE, TAB_ARMORY]:
+		return false
+	selected_tab = normalized
+	_queue_refresh()
+	return true
+
+
+func select_weapon_tab(tab_id: String) -> bool:
+	return select_tab(tab_id)
+
+
+func back_to_weapon_types() -> void:
+	reset_navigation()
+
+
 func select_recipe(recipe_id: String) -> bool:
-	if not CampaignState.get_unlocked_recipe_ids().has(recipe_id):
+	var entry := _build_recipe_entry(recipe_id)
+	if entry.is_empty() or (
+		not selected_family_id.is_empty() and not _entry_matches_selected_family(entry)
+	):
 		return false
 	selected_recipe_id = recipe_id
 	_queue_refresh()
@@ -81,6 +171,12 @@ func request_craft_confirmation(recipe_id: String) -> Dictionary:
 			"ok": false,
 			"status": "unknown_definition",
 			"message": "That unlocked recipe is unavailable.",
+		}
+	if not selected_family_id.is_empty() and not _entry_matches_selected_family(entry):
+		return {
+			"ok": false,
+			"status": "wrong_weapon_family",
+			"message": "Select the weapon type that contains this design first.",
 		}
 	if not bool(entry.get("craftable", false)):
 		return {
@@ -97,17 +193,14 @@ func request_craft_confirmation(recipe_id: String) -> Dictionary:
 			String(component.get("display_name", component.get("material_id", "Unknown"))),
 			int(component.get("required", 0)),
 		])
-	var crafted_count := int(entry.get("crafted_count", 0))
 	var prompt := "%s %s?\n\nExact component cost:\n%s" % [
-		"Forge another" if crafted_count > 0 else "Forge",
+		"Forge",
 		String(entry.get("display_name", entry.get("weapon_id", "Weapon"))),
 		"\n".join(cost_lines),
 	]
 	if _confirmation_dialog != null and is_instance_valid(_confirmation_dialog):
 		_confirmation_dialog.dialog_text = prompt
-		_confirmation_dialog.ok_button_text = (
-			"Forge Another" if crafted_count > 0 else "Forge Weapon"
-		)
+		_confirmation_dialog.ok_button_text = "Forge Weapon"
 		if _journal.has_method("popup_in_right_half"):
 			_journal.call("popup_in_right_half", _confirmation_dialog)
 		else:
@@ -119,7 +212,7 @@ func request_craft_confirmation(recipe_id: String) -> Dictionary:
 		"recipe_id": recipe_id,
 		"weapon_id": String(entry.get("weapon_id", "")),
 		"components": Array(entry.get("components", [])).duplicate(true),
-		"crafted_count": crafted_count,
+		"crafted_count": int(entry.get("crafted_count", 0)),
 	}
 
 
@@ -140,25 +233,75 @@ func confirm_pending_craft() -> Dictionary:
 	pending_recipe_id = ""
 	last_action_result = CampaignState.craft(recipe_id)
 	if bool(last_action_result.get("ok", false)):
-		var weapon := ProgressionCatalog.get_weapon(
-			String(last_action_result.get("weapon_id", ""))
-		)
-		var weapon_name := (
-			String(last_action_result.get("weapon_id", "Weapon"))
-			if weapon == null else weapon.display_name
-		)
-		action_message = (
-			"%s forged (crafted Ã—%d, available %d). It was not auto-equipped; drag an available copy from the armory to a raid frame."
-			% [
-				weapon_name,
-				int(last_action_result.get("crafted_count", 0)),
-				int(last_action_result.get("available_count", 0)),
-			]
-		)
+		action_message = ""
 	else:
 		action_message = String(last_action_result.get("message", "Crafting failed."))
 	_queue_refresh()
 	return last_action_result.duplicate(true)
+
+
+func _build_weapon_categories() -> Array[Dictionary]:
+	var unlocked_family_ids: Dictionary = {}
+	var unlocked_recipe_counts: Dictionary = {}
+	for recipe_id in CampaignState.get_unlocked_recipe_ids():
+		var recipe := ProgressionCatalog.get_recipe(recipe_id)
+		if recipe == null:
+			continue
+		var weapon := ProgressionCatalog.get_weapon(recipe.output_weapon_id)
+		if weapon == null:
+			continue
+		var family_id := String(weapon.family_id)
+		unlocked_family_ids[family_id] = true
+		unlocked_recipe_counts[family_id] = int(unlocked_recipe_counts.get(family_id, 0)) + 1
+	var result: Array[Dictionary] = []
+	var catalog := ProgressionCatalog.get_catalog()
+	if catalog == null:
+		return result
+	for family_value in catalog.weapon_families:
+		var family: WeaponFamilyDefinition = family_value
+		if family == null:
+			continue
+		var unlocked := bool(unlocked_family_ids.get(family.family_id, false))
+		result.append({
+			"family_id": family.family_id,
+			"weapon_family_id": family.family_id,
+			"display_name": family.display_name,
+			"unlocked": unlocked,
+			"is_unlocked": unlocked,
+			"has_unlocked_design": unlocked,
+			"enabled": unlocked,
+			"locked": not unlocked,
+			"disabled": not unlocked,
+			"recipe_count": int(unlocked_recipe_counts.get(family.family_id, 0)),
+		})
+	return result
+
+
+func _is_family_unlocked(family_id: String) -> bool:
+	for category_value in _build_weapon_categories():
+		var category: Dictionary = category_value
+		if String(category.get("family_id", "")) == family_id:
+			return bool(category.get("unlocked", false))
+	return false
+
+
+func _entry_matches_selected_family(
+	entry: Dictionary, include_unknown: bool = false
+) -> bool:
+	if selected_family_id.is_empty():
+		return false
+	var family_id := String(entry.get("family_id", entry.get("weapon_family_id", "")))
+	if family_id == selected_family_id:
+		return true
+	return include_unknown and bool(entry.get("missing_content", false))
+
+
+func _set_smith_drawer_family_filter(family_id: String) -> void:
+	if _journal == null or not is_instance_valid(_journal):
+		return
+	var drawer := _journal.get_tree().get_first_node_in_group("camp_raid_drawer")
+	if drawer != null and drawer.has_method("set_smith_family_filter"):
+		drawer.call("set_smith_family_filter", family_id)
 
 
 func _build_recipe_entry(recipe_id: String) -> Dictionary:
@@ -192,6 +335,7 @@ func _build_recipe_entry(recipe_id: String) -> Dictionary:
 			"attributes": {"power_percentage": 0.0, "speed_percentage": 0.0, "range_units": 0.0},
 			"trait": _inactive_trait("Missing trait", "Definition unavailable."),
 			"trait_text": "Trait — Missing trait: Definition unavailable. (inactive placeholder)",
+			"icon_resource": null,
 			"components": [],
 			"craftable": false,
 			"crafted": false,
@@ -214,6 +358,11 @@ func _build_recipe_entry(recipe_id: String) -> Dictionary:
 		components.append({
 			"material_id": ingredient.material_id,
 			"display_name": ingredient.material_id if material == null else material.display_name,
+			"description": (
+				"Material definition unavailable."
+				if material == null else material.description
+			),
+			"icon_resource": null if material == null else material.icon_resource,
 			"rarity_id": "missing" if material == null else material.rarity_id,
 			"rarity_text": (
 				"Missing" if material == null
@@ -225,6 +374,15 @@ func _build_recipe_entry(recipe_id: String) -> Dictionary:
 			"required": ingredient.quantity,
 			"missing": maxi(ingredient.quantity - owned, 0),
 			"shortage": maxi(ingredient.quantity - owned, 0),
+			"tooltip_text": _material_tooltip(
+				material,
+				ingredient.material_id,
+				owned,
+				ingredient.quantity,
+				"Missing" if material == null else (
+					material.rarity_id.capitalize() if rarity == null else rarity.display_name
+				)
+			),
 		})
 	var family_id := "" if weapon == null else weapon.family_id
 	var family_name: String = family_id if family == null else family.display_name
@@ -238,6 +396,7 @@ func _build_recipe_entry(recipe_id: String) -> Dictionary:
 		"display_name": recipe.display_name if weapon == null else weapon.display_name,
 		"recipe_display_name": recipe.display_name,
 		"description": "Weapon definition unavailable." if weapon == null else weapon.description,
+		"icon_resource": null if weapon == null else weapon.icon_resource,
 		"boss_id": recipe.source_encounter_id,
 		"boss_name": recipe.source_encounter_id if boss == null else boss.display_name,
 		"source_boss_id": recipe.source_encounter_id,
@@ -358,9 +517,7 @@ func _build_weapon_entry(weapon_id: String) -> Dictionary:
 	var crafted_count := CampaignState.get_crafted_weapon_count(weapon_id)
 	var equipped_count := holder_ids.size()
 	var available_count := CampaignState.get_available_weapon_count(weapon_id)
-	var count_label := "CRAFTED ×%d · EQUIPPED %d · AVAILABLE %d" % [
-		crafted_count, equipped_count, available_count,
-	]
+	var count_label := "EQUIPPED %d/%d" % [equipped_count, crafted_count]
 	if weapon == null:
 		return {
 			"weapon_id": weapon_id,
@@ -505,13 +662,74 @@ func _build_reserve_recovery_entries(
 func _add_intro(page: VBoxContainer) -> void:
 	var intro := Label.new()
 	intro.name = "SmithIntro"
-	intro.text = (
-		"Forge unlocked designs as often as materials allow. Each craft adds one counted "
-		+ "copy; drag an available copy from the armory to an active raid frame."
-	)
+	intro.text = "Shape the spoils of fallen foes into weapons for your raiders."
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intro.add_theme_color_override("font_color", Color("b9b29f"))
 	page.add_child(intro)
+
+
+func _add_category_gate(page: VBoxContainer, model: Dictionary) -> void:
+	var heading := _add_heading(page, "Weapon Types", 22)
+	heading.name = "SmithWeaponTypesHeading"
+	var grid := GridContainer.new()
+	grid.name = "SmithCategoryGrid"
+	grid.columns = 2
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	page.add_child(grid)
+	for category_value in model.get("categories", []):
+		var category: Dictionary = category_value
+		var family_id := String(category.get("family_id", ""))
+		var button := Button.new()
+		button.name = "SmithCategory_" + family_id
+		button.add_to_group("smith_weapon_categories")
+		button.text = String(category.get("display_name", family_id))
+		button.tooltip_text = (
+			"Select this weapon type."
+			if bool(category.get("unlocked", false))
+			else "Locked — defeat a source boss to unlock a design."
+		)
+		button.disabled = bool(category.get("disabled", true))
+		button.custom_minimum_size = Vector2(0, 64)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.add_theme_color_override("font_color", Color("c9b37b"))
+		button.pressed.connect(_on_family_selected.bind(family_id))
+		grid.add_child(button)
+
+
+func _add_selected_family_navigation(page: VBoxContainer, model: Dictionary) -> void:
+	var top_row := HBoxContainer.new()
+	top_row.name = "SmithSelectedFamilyNavigation"
+	top_row.add_theme_constant_override("separation", 10)
+	page.add_child(top_row)
+	var back := Button.new()
+	back.name = "SmithBackToWeaponTypes"
+	back.text = "Back to Weapon Types"
+	back.custom_minimum_size = Vector2(190, 40)
+	back.pressed.connect(back_to_weapon_types)
+	top_row.add_child(back)
+	var selected_heading := _add_heading(
+		top_row, String(model.get("selected_family_name", "Weapon Type")), 22
+	)
+	selected_heading.name = "SmithSelectedFamilyHeading"
+	selected_heading.add_theme_color_override("font_color", Color("c9b37b"))
+	selected_heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	selected_heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	var tabs := HBoxContainer.new()
+	tabs.name = "SmithTabs"
+	tabs.add_theme_constant_override("separation", 8)
+	page.add_child(tabs)
+	for tab_value in [TAB_FORGE, TAB_ARMORY]:
+		var tab_button := Button.new()
+		tab_button.name = "Smith" + tab_value.capitalize() + "Tab"
+		tab_button.text = tab_value.capitalize()
+		tab_button.custom_minimum_size = Vector2(140, 40)
+		tab_button.disabled = selected_tab == tab_value
+		tab_button.pressed.connect(_on_tab_selected.bind(tab_value))
+		tabs.add_child(tab_button)
+
 
 func _add_forge_view(page: VBoxContainer, model: Dictionary) -> void:
 	var recipes: Array = model.get("recipes", [])
@@ -537,8 +755,7 @@ func _add_forge_view(page: VBoxContainer, model: Dictionary) -> void:
 			String(recipe.get("display_name", "Unknown")),
 			String(recipe.get("boss_name", "Unknown source")),
 			String(recipe.get("family_name", "Unknown family")),
-			" · CRAFTED ×%d" % int(recipe.get("crafted_count", 0))
-			if int(recipe.get("crafted_count", 0)) > 0 else "",
+			"",
 		]
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.custom_minimum_size = Vector2(260, 62)
@@ -555,33 +772,19 @@ func _add_recipe_details(parent: HBoxContainer, recipe: Dictionary) -> void:
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	details.add_theme_constant_override("separation", 7)
 	parent.add_child(details)
-	_add_heading(details, String(recipe.get("display_name", "Unknown weapon")), 24)
+	_add_weapon_art(details, recipe)
+	var recipe_title := _add_heading(details, String(recipe.get("display_name", "Unknown weapon")), 24)
+	recipe_title.add_theme_color_override("font_color", Color("c9b37b"))
 	_add_wrapped_label(details, String(recipe.get("description", "")), Color("b8bdba"))
-	_add_wrapped_label(details, "Source: %s · Family/category: %s" % [
-		String(recipe.get("boss_name", "Unknown")), String(recipe.get("family_name", "Unknown")),
-	], Color("c9b37b"))
-	_add_wrapped_label(details, "Power %+.0f%% · Speed %+.0f%% · Range %+.1f units" % [
-		float(recipe.get("power_percentage", 0.0)),
-		float(recipe.get("speed_percentage", 0.0)),
-		float(recipe.get("range_units", 0.0)),
-	], Color("d5d4ca"))
+	_add_wrapped_label(
+		details, "Source: %s" % String(recipe.get("boss_name", "Unknown")), Color("c9b37b")
+	)
+	_add_stat_rows(details, recipe)
 	_add_wrapped_label(details, String(recipe.get("trait_text", "")), Color("9aa5aa"))
-	_add_heading(details, "Components", 19)
-	for component_value in recipe.get("components", []):
-		var component: Dictionary = component_value
-		var component_label := _add_wrapped_label(details, "[%s] %s — %d/%d%s" % [
-			String(component.get("rarity_text", "Unknown")).to_upper(),
-			String(component.get("display_name", "Unknown material")),
-			int(component.get("owned", 0)), int(component.get("required", 0)),
-			" · SHORT %d" % int(component.get("missing", 0)) if int(component.get("missing", 0)) > 0 else "",
-		], component.get("rarity_color", Color.WHITE) as Color)
-		component_label.name = "SmithComponent_" + String(component.get("material_id", "material"))
+	_add_component_slots(details, recipe.get("components", []))
 	var craft_button := Button.new()
 	craft_button.name = "SmithCraftButton"
-	craft_button.text = "%s %s" % [
-		"Forge another" if int(recipe.get("crafted_count", 0)) > 0 else "Forge",
-		String(recipe.get("display_name", "Weapon")),
-	]
+	craft_button.text = "Forge %s" % String(recipe.get("display_name", "Weapon"))
 	craft_button.disabled = not bool(recipe.get("craftable", false))
 	craft_button.custom_minimum_size = Vector2(280, 44)
 	craft_button.pressed.connect(
@@ -594,13 +797,160 @@ func _add_recipe_details(parent: HBoxContainer, recipe: Dictionary) -> void:
 		details.add_child(reason)
 
 
+func _add_weapon_art(parent: Control, recipe: Dictionary) -> void:
+	var frame := PanelContainer.new()
+	frame.name = "SmithWeaponArtFrame"
+	frame.custom_minimum_size = Vector2(0, 280)
+	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var frame_style := StyleBoxFlat.new()
+	frame_style.bg_color = Color("10171d")
+	frame_style.border_color = Color("3f4b50")
+	frame_style.set_border_width_all(2)
+	frame_style.set_corner_radius_all(3)
+	frame.add_theme_stylebox_override("panel", frame_style)
+	parent.add_child(frame)
+	var art := TextureRect.new()
+	art.name = "SmithWeaponArtwork"
+	art.custom_minimum_size = Vector2(0, 276)
+	art.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	art.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.texture = recipe.get("icon_resource") as Texture2D
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(art)
+	if art.texture == null:
+		var placeholder := Label.new()
+		placeholder.name = "SmithWeaponArtworkPlaceholder"
+		placeholder.text = "WEAPON ART\nUNAVAILABLE"
+		placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		placeholder.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		placeholder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		placeholder.add_theme_color_override("font_color", Color("777f82"))
+		placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.add_child(placeholder)
+
+
+func _add_component_slots(parent: Control, components: Array) -> void:
+	var slots := HFlowContainer.new()
+	slots.name = "SmithComponentSlots"
+	slots.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slots.add_theme_constant_override("h_separation", 10)
+	slots.add_theme_constant_override("v_separation", 10)
+	parent.add_child(slots)
+	for component_value in components:
+		_add_component_slot(slots, Dictionary(component_value))
+
+
+func _add_component_slot(parent: Control, component: Dictionary) -> void:
+	var material_id := String(component.get("material_id", "material"))
+	var missing := int(component.get("missing", 0)) > 0
+	var icon := component.get("icon_resource") as Texture2D
+	var slot := PanelContainer.new()
+	slot.name = "SmithComponent_" + material_id
+	slot.custom_minimum_size = Vector2(98, 116)
+	slot.tooltip_text = String(component.get("tooltip_text", "Unknown material"))
+	var slot_style := StyleBoxFlat.new()
+	slot_style.bg_color = Color("182126")
+	slot_style.border_color = (
+		Color("e19a91") if missing else component.get("rarity_color", Color("8f968f")) as Color
+	)
+	slot_style.set_border_width_all(2 if missing else 1)
+	slot_style.set_corner_radius_all(4)
+	slot.add_theme_stylebox_override("panel", slot_style)
+	parent.add_child(slot)
+	var content := VBoxContainer.new()
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_theme_constant_override("separation", 3)
+	slot.add_child(content)
+	var icon_holder := CenterContainer.new()
+	icon_holder.name = "SmithComponentIconHolder"
+	icon_holder.custom_minimum_size = Vector2(92, 86)
+	icon_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(icon_holder)
+	if icon == null:
+		var placeholder := Label.new()
+		placeholder.name = "SmithComponentIconPlaceholder"
+		placeholder.text = "?"
+		placeholder.add_theme_font_size_override("font_size", 38)
+		placeholder.add_theme_color_override("font_color", Color("d16d6d"))
+		placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_holder.add_child(placeholder)
+	else:
+		var icon_rect := TextureRect.new()
+		icon_rect.name = "SmithComponentIcon"
+		icon_rect.custom_minimum_size = Vector2(82, 82)
+		icon_rect.texture = icon
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_holder.add_child(icon_rect)
+	var count := Label.new()
+	count.name = "SmithComponentCount"
+	count.text = "%d/%d" % [int(component.get("owned", 0)), int(component.get("required", 0))]
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	count.add_theme_font_size_override("font_size", 15)
+	count.add_theme_color_override(
+		"font_color", Color("e19a91") if missing else Color("d5d4ca")
+	)
+	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(count)
+
+
+func _add_stat_rows(parent: Control, weapon_entry: Dictionary) -> void:
+	var stats := VBoxContainer.new()
+	stats.name = "SmithWeaponStats"
+	stats.add_theme_constant_override("separation", 3)
+	parent.add_child(stats)
+	_add_stat_row(
+		stats, "Power", float(weapon_entry.get("power_percentage", 0.0)), "%+.0f%%"
+	)
+	_add_stat_row(
+		stats, "Speed", float(weapon_entry.get("speed_percentage", 0.0)), "%+.0f%%"
+	)
+	_add_stat_row(
+		stats, "Range", float(weapon_entry.get("range_units", 0.0)), "%+.1f units"
+	)
+
+
+func _add_stat_row(
+	parent: Control, label_text: String, value: float, format_string: String
+) -> void:
+	var row := HBoxContainer.new()
+	row.name = "SmithStatRow_" + label_text
+	row.add_theme_constant_override("separation", 8)
+	parent.add_child(row)
+	var stat_label := Label.new()
+	stat_label.name = "SmithStatLabel_" + label_text
+	stat_label.text = label_text
+	stat_label.custom_minimum_size = Vector2(72, 0)
+	stat_label.add_theme_color_override("font_color", Color("c9b37b"))
+	row.add_child(stat_label)
+	var value_label := Label.new()
+	value_label.name = "SmithStatValue_" + label_text
+	value_label.text = format_string % value
+	value_label.add_theme_color_override("font_color", _stat_value_color(value))
+	row.add_child(value_label)
+
+
+func _stat_value_color(value: float) -> Color:
+	if value > 0.0:
+		return Color("a9d39d")
+	if value < 0.0:
+		return Color("e19a91")
+	return Color("d5d4ca")
+
+
+func _on_family_selected(family_id: String) -> void:
+	select_family(family_id)
+
+
+func _on_tab_selected(tab_id: String) -> void:
+	select_tab(tab_id)
+
+
 func _add_armory_strip(page: VBoxContainer, model: Dictionary) -> void:
 	_add_heading(page, "Crafted Armory", 21)
-	_add_wrapped_label(
-		page,
-		"Drag an available weapon onto a compatible raid-frame slot. Drag active raid-frame icons to move or swap weapons. Reserve-held arms can be reclaimed directly.",
-		Color("c9b37b")
-	)
 	var row := VBoxContainer.new()
 	row.name = "SmithArmorySection"
 	row.add_theme_constant_override("separation", 12)
@@ -611,7 +961,7 @@ func _add_armory_strip(page: VBoxContainer, model: Dictionary) -> void:
 	var weapons: Array = model.get("weapons", [])
 	if weapons.is_empty():
 		var no_weapons := _make_muted_label(
-			String(model.get("armory_empty_state", "No crafted weapons."))
+			String(model.get("armory_empty_state", "No weapons are available."))
 		)
 		no_weapons.name = "SmithWeaponsEmptyState"
 		weapon_area.add_child(no_weapons)
@@ -703,11 +1053,12 @@ func _add_drag_weapon_card(parent: Container, weapon: Dictionary) -> void:
 	column.add_theme_constant_override("separation", 2)
 	row.add_child(column)
 	var title := _add_heading(column, String(weapon.get("display_name", "Unknown weapon")), 15)
+	title.add_theme_color_override("font_color", Color("c9b37b"))
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var family := Label.new()
 	family.text = String(weapon.get("family_name", "Unknown family"))
 	family.add_theme_font_size_override("font_size", 11)
-	family.add_theme_color_override("font_color", Color("aeb5b3"))
+	family.add_theme_color_override("font_color", Color("c9b37b"))
 	family.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(family)
 	var assignment := Label.new()
@@ -730,10 +1081,9 @@ func _weapon_tooltip(weapon: Dictionary) -> String:
 	var reserve_holder_names: Array = weapon.get("reserve_holder_names", [])
 	var lines: Array[String] = [
 		String(weapon.get("display_name", "Unknown weapon")),
-		"Crafted ×%d · Equipped %d · Available %d" % [
-			int(weapon.get("crafted_count", 0)),
+		"EQUIPPED %d/%d" % [
 			int(weapon.get("equipped_count", 0)),
-			int(weapon.get("available_count", 0)),
+			int(weapon.get("crafted_count", 0)),
 		],
 		String(weapon.get("description", "")),
 		"%s · Power %+.0f%% · Speed %+.0f%% · Range %+.1f units" % [
@@ -849,6 +1199,24 @@ func _on_recipe_selected(recipe_id: String) -> void:
 func _queue_refresh() -> void:
 	if _journal != null and is_instance_valid(_journal):
 		_journal.call("_queue_refresh")
+
+
+func _material_tooltip(
+	material: BossMaterialDefinition,
+	material_id: String,
+	owned: int,
+	required: int,
+	rarity_text: String
+) -> String:
+	var display_name := material_id if material == null else material.display_name
+	var description := "Material definition unavailable." if material == null else material.description
+	return "%s\n%s\n%s\nCount: %d/%d" % [
+		display_name,
+		rarity_text,
+		description,
+		owned,
+		required,
+	]
 
 
 func _craft_disabled_reason(

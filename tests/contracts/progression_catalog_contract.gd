@@ -29,6 +29,35 @@ func _validate_production_content(
 		failures.append("Catalog does not expose all four reward tables.")
 	if catalog.weapons.size() != 8 or catalog.crafting_recipes.size() != 8:
 		failures.append("Catalog does not expose eight weapons and recipes.")
+	if catalog.boss_materials.size() != 14:
+		failures.append("Catalog does not expose all fourteen production materials.")
+	for material_value in catalog.boss_materials:
+		var material: BossMaterialDefinition = material_value
+		if material == null:
+			continue
+		var expected_icon_path := "res://icons/material_visuals/material_%s.png" % material.material_id
+		if material.icon_resource == null:
+			failures.append("Material '%s' is missing its inventory icon." % material.material_id)
+			continue
+		if material.icon_resource.resource_path != expected_icon_path:
+			failures.append("Material '%s' does not use its material icon asset." % material.material_id)
+		var material_image := material.icon_resource.get_image()
+		if material_image == null:
+			failures.append("Material '%s' inventory icon did not import as an image." % material.material_id)
+			continue
+		if material_image.get_width() != material_image.get_height():
+			failures.append("Material '%s' inventory icon is not square." % material.material_id)
+		if not _texture_has_mipmaps(material.icon_resource):
+			failures.append("Material '%s' inventory icon has no mipmaps." % material.material_id)
+		for corner in [
+			Vector2i(0, 0),
+			Vector2i(material_image.get_width() - 1, 0),
+			Vector2i(0, material_image.get_height() - 1),
+			Vector2i(material_image.get_width() - 1, material_image.get_height() - 1),
+		]:
+			if material_image.get_pixelv(corner).a > 0.0:
+				failures.append("Material '%s' inventory icon has an opaque corner." % material.material_id)
+				break
 	if not catalog.raider_traits.is_empty():
 		failures.append("Production raider trait definitions must remain empty in this pass.")
 	var region := ProgressionCatalog.get_region_definition("beast_crucible")
