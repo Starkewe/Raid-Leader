@@ -49,10 +49,20 @@ func _ready() -> void:
 	_expect(presenter.selected_family_id.is_empty(), "Back did not return to weapon types.", failures)
 	_expect(journal.find_child("SmithCategoryGrid", true, false) != null, "Weapon type gate did not return after Back.", failures)
 	_expect(journal.find_child("SmithTabs", true, false) == null, "Smith tabs remained on the weapon type gate.", failures)
+	var gate_action := journal.find_child("CampJournalHeaderAction", true, false) as Button
+	_expect(gate_action != null and gate_action.text == "Close  [Esc]", "Smith gate header action did not return to Close.", failures)
 	_expect(drawer.get_smith_family_filter().is_empty(), "Back did not clear the Smith drawer family filter.", failures)
 
-	journal.close_journal()
+	_expect(presenter.select_family(family_id), "Smith could not re-enter the selected family for Escape validation.", failures)
+	await _wait_frames(3)
+	var nested_action := journal.find_child("CampJournalHeaderAction", true, false) as Button
+	_expect(nested_action != null and nested_action.text == "Back to Weapon Types", "Smith nested page did not expose the header back action.", failures)
+	journal.close_for_escape()
+	await _wait_frames(3)
+	_expect(journal.is_open() and presenter.selected_family_id.is_empty(), "First Smith Escape did not return to weapon types.", failures)
+	journal.close_for_escape()
 	await _wait_frames(2)
+	_expect(not journal.is_open(), "Second Smith Escape did not close the journal.", failures)
 	_expect(drawer.get_smith_family_filter().is_empty(), "Closing Smith did not clear its drawer family filter.", failures)
 	journal.open_facility("smith")
 	await _wait_frames(3)
@@ -65,11 +75,24 @@ func _validate_category_gate(
 	failures: Array[String]
 ) -> void:
 	_expect(journal.header_title.text == "The Smith's Forge", "Smith header copy was not updated.", failures)
+	var header_action := journal.find_child("CampJournalHeaderAction", true, false) as Button
+	_expect(
+		header_action != null and header_action.text == "Close  [Esc]",
+		"Smith weapon-type gate did not retain the journal Close action.", failures
+	)
 	var intro := journal.find_child("SmithIntro", true, false) as Label
 	_expect(
 		intro != null
 		and intro.text == "Shape the spoils of fallen foes into weapons for your raiders.",
 		"Smith intro copy was not updated.", failures
+	)
+	var header_separator := journal.find_child("CampJournalHeaderSeparator", true, false) as HSeparator
+	_expect(
+		intro != null
+		and header_separator != null
+		and intro.get_parent() == header_separator.get_parent()
+		and intro.get_index() < header_separator.get_index(),
+		"Smith intro was not moved above the Journal header divider.", failures
 	)
 	var model := presenter.build_view_model()
 	var categories: Array = model.get("categories", [])
@@ -87,6 +110,7 @@ func _validate_category_gate(
 		if button != null:
 			_expect(button.disabled == bool(category.get("disabled", true)), "Smith category lock state was not reflected in the button.", failures)
 	_expect(journal.find_child("SmithTabs", true, false) == null, "Smith rendered Forge/Armory tabs before a category was selected.", failures)
+	_expect(journal.find_child("SmithBackToWeaponTypes", true, false) == null, "Smith retained the removed inline back button.", failures)
 	_expect(drawer.get_smith_family_filter().is_empty(), "Fresh Smith set a drawer family filter before category selection.", failures)
 	for frame in _frames(drawer):
 		var raid_frame: CampRaidFrame = frame
@@ -116,11 +140,24 @@ func _validate_forge(
 	failures: Array[String]
 ) -> void:
 	var model := presenter.build_view_model()
+	var header_action := journal.find_child("CampJournalHeaderAction", true, false) as Button
+	_expect(
+		header_action != null and header_action.text == "Back to Weapon Types",
+		"Smith selected-family page did not move the back action into the journal header.", failures
+	)
+	_expect(journal.find_child("SmithBackToWeaponTypes", true, false) == null, "Smith selected-family page retained the inline back button.", failures)
 	_expect(model.get("selected_tab") == "forge", "Selecting a weapon type did not open the Forge tab.", failures)
 	_expect(model.get("selected_family_id") == presenter.selected_family_id, "Forge model lost the selected family.", failures)
 	var recipes: Array = model.get("recipes", [])
 	_expect(not recipes.is_empty(), "Selected unlocked weapon type did not expose Forge designs.", failures)
 	_expect(journal.find_child("SmithRecipeList", true, false) != null, "Forge tab did not render its recipe list.", failures)
+	var recipe_list_scroll := journal.find_child("SmithRecipeListScroll", true, false) as ScrollContainer
+	_expect(
+		recipe_list_scroll != null
+		and recipe_list_scroll.horizontal_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED
+		and recipe_list_scroll.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_AUTO,
+		"Forge recipe list did not provide a vertical overflow scroll area.", failures
+	)
 	_expect(journal.find_child("SmithArmorySection", true, false) == null, "Forge tab retained Armory cards outside the Armory tab.", failures)
 	_expect(journal.find_child("SmithReturnToArmory", true, false) == null, "Forge tab retained Return to Armory outside the Armory tab.", failures)
 	_expect(drawer.get_smith_family_filter() == presenter.selected_family_id, "Forge selection did not reach the raid drawer.", failures)
@@ -152,6 +189,15 @@ func _validate_forge(
 		and weapon_art.texture == selected_weapon_icon,
 		"Forge recipe details did not use the selected weapon icon for its artwork.", failures
 	)
+	var info_label := journal.find_child("SmithRecipeInfo", true, false) as Label
+	var source_label := journal.find_child("SmithRecipeSource", true, false) as Label
+	_expect(
+		info_label != null
+		and source_label != null
+		and info_label.get_theme_color("font_color") == Color("c9b37b")
+		and source_label.get_theme_color("font_color") == Color("b8bdba"),
+		"Forge info/source emphasis did not accent the description over the source line.", failures
+	)
 	var detail_text := _visible_text(journal.find_child("SmithRecipeDetails", true, false))
 	_expect(
 		not detail_text.to_upper().contains("FAMILY/CATEGORY"),
@@ -163,6 +209,70 @@ func _validate_forge(
 	)
 	var component_slots := journal.find_child("SmithComponentSlots", true, false) as HFlowContainer
 	_expect(component_slots != null, "Forge recipe details did not render component slots.", failures)
+	_expect(
+		is_zero_approx(float(ProjectSettings.get_setting("gui/timers/tooltip_delay_sec", 0.5))),
+		"Smith component tooltips retained a mouseover delay.", failures
+	)
+	_expect(
+		component_slots != null and component_slots.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"Smith component-slot container did not ignore mouse input for its child slots.", failures
+	)
+	var footer := journal.find_child("SmithForgeFooter", true, false) as VBoxContainer
+	var spacer := journal.find_child("SmithForgeFooterSpacer", true, false) as Control
+	var item_section := journal.find_child("SmithItemSection", true, false) as Control
+	var detail_section := journal.find_child("SmithDetailSection", true, false) as Control
+	_expect(
+		footer != null
+		and spacer == null
+		and item_section != null
+		and detail_section != null
+		and component_slots != null
+		and footer.get_parent() == detail_section
+		and component_slots.get_parent() == footer
+		and footer.alignment == BoxContainer.ALIGNMENT_CENTER,
+		"Forge controls were not ordered inside the right detail footer without the old spacer.", failures
+	)
+	var craft_button := journal.find_child("SmithCraftButton", true, false) as Button
+	_expect(
+		footer != null
+		and craft_button != null
+		and craft_button.get_parent() == footer
+		and craft_button.text == "Forge",
+		"Forge button was not moved into the Smith footer.", failures
+	)
+	var shell := journal.find_child("CampJournalRightHalfShell", true, false) as Control
+	var forge_layout := journal.find_child("SmithForgeLayout", true, false) as Control
+	var artwork_frame := journal.find_child("SmithWeaponArtFrame", true, false) as Control
+	_expect(
+		shell != null
+		and footer != null
+		and footer.get_global_rect().get_center().x > shell.get_global_rect().get_center().x,
+		"Forge footer was centered across the full Journal width instead of the right content column.",
+		failures
+	)
+	_expect(
+		item_section != null
+		and detail_section != null
+		and item_section.get_parent() == forge_layout
+		and detail_section.get_parent() == forge_layout
+		and detail_section.get_global_rect().position.x > item_section.get_global_rect().position.x,
+		"Forge did not retain a left item column and right detail column.",
+		failures
+	)
+	_expect(
+		artwork_frame != null
+		and detail_section != null
+		and artwork_frame.get_global_rect().position.y <= detail_section.get_global_rect().position.y + 2.0,
+		"Smith artwork did not begin at the top of the right detail column.",
+		failures
+	)
+	_expect(
+		forge_layout != null
+		and footer != null
+		and footer.get_global_rect().end.y >= forge_layout.get_global_rect().end.y - 2.0,
+		"Forge components and button were not anchored to the bottom of the Forge section.",
+		failures
+	)
 	var shortage_seen := false
 	for component_value in selected.get("components", []):
 		var component: Dictionary = component_value
@@ -171,6 +281,11 @@ func _validate_forge(
 		_expect(slot != null, "Forge component slot was missing for %s." % material_id, failures)
 		if slot == null:
 			continue
+		_expect(
+			slot.mouse_filter == Control.MOUSE_FILTER_STOP,
+			"Smith component slot was not explicitly hoverable for %s." % material_id,
+			failures
+		)
 		var expected_icon := component.get("icon_resource") as Texture2D
 		var icon := slot.find_child("SmithComponentIcon", true, false) as TextureRect
 		var placeholder := slot.find_child("SmithComponentIconPlaceholder", true, false) as Label
@@ -187,9 +302,29 @@ func _validate_forge(
 			"Forge component slot count was not rendered as owned/required for %s." % material_id,
 			failures
 		)
+		var tooltip_lines := slot.tooltip_text.split("\n")
+		var expected_name := String(component.get("display_name", material_id))
+		var expected_count := "Count: %d/%d" % [
+			int(component.get("owned", 0)), int(component.get("required", 0))
+		]
+		var expected_description := String(
+			component.get("description", "Material definition unavailable.")
+		)
 		_expect(
-			slot.tooltip_text.contains(String(component.get("display_name", material_id))),
-			"Forge component tooltip omitted the material name for %s." % material_id,
+			tooltip_lines.size() >= 4
+			and tooltip_lines[0] == expected_name
+			and tooltip_lines[1] == expected_count
+			and tooltip_lines[2] == expected_description
+			and tooltip_lines[3].begins_with("Source: "),
+			"Forge component tooltip did not use name/count/description/source order for %s."
+			% material_id,
+			failures
+		)
+		_expect(
+			slot.tooltip_text.contains(expected_count)
+			and slot.tooltip_text.contains("Source:")
+			and not slot.tooltip_text.contains(String(component.get("rarity_text", ""))),
+			"Forge component tooltip exposed incomplete or visible rarity copy for %s." % material_id,
 			failures
 		)
 		if int(component.get("missing", 0)) > 0:

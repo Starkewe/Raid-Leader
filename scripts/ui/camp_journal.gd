@@ -25,6 +25,7 @@ signal embark_requested
 
 var current_facility_id: String = ""
 var header_title: Label = null
+var header_intro: Label = null
 var body: VBoxContainer = null
 var page: VBoxContainer = null
 var member_detail_label: Label = null
@@ -35,6 +36,7 @@ var formation_editor: FormationEditorPanel = null
 var formation_preset_dropdown: OptionButton = null
 var page_presenters: Dictionary = {}
 var shell_center: MarginContainer = null
+var header_action_button: Button = null
 
 
 func _ready() -> void:
@@ -76,6 +78,7 @@ func close_journal() -> void:
 
 	visible = false
 	current_facility_id = ""
+	_update_header_action()
 	_sync_raid_drawer_context()
 	journal_visibility_changed.emit(false)
 
@@ -85,6 +88,15 @@ func is_open() -> bool:
 
 
 func close_for_escape() -> void:
+	if not visible:
+		return
+
+	if current_facility_id == "smith":
+		var smith_presenter := page_presenters.get("smith") as SmithPagePresenter
+		if smith_presenter != null and not smith_presenter.selected_family_id.is_empty():
+			smith_presenter.back_to_weapon_types()
+			return
+
 	close_journal()
 
 
@@ -136,6 +148,7 @@ func _build_shell() -> void:
 	panel.add_child(margin)
 
 	var root := VBoxContainer.new()
+	root.name = "CampJournalShellRoot"
 	root.add_theme_constant_override("separation", 14)
 	margin.add_child(root)
 
@@ -149,13 +162,23 @@ func _build_shell() -> void:
 	header_title.add_theme_color_override("font_color", Color("e8dfc7"))
 	header.add_child(header_title)
 
-	var close_button := Button.new()
-	close_button.text = "Close  [Esc]"
-	close_button.custom_minimum_size = Vector2(140, 42)
-	close_button.pressed.connect(close_journal)
-	header.add_child(close_button)
+	header_action_button = Button.new()
+	header_action_button.name = "CampJournalHeaderAction"
+	header_action_button.custom_minimum_size = Vector2(140, 42)
+	header_action_button.pressed.connect(_on_header_action_pressed)
+	header.add_child(header_action_button)
+	_update_header_action()
 
-	root.add_child(HSeparator.new())
+	header_intro = Label.new()
+	header_intro.name = "CampJournalHeaderIntro"
+	header_intro.visible = false
+	header_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	header_intro.add_theme_color_override("font_color", Color("b9b29f"))
+	root.add_child(header_intro)
+
+	var header_separator := HSeparator.new()
+	header_separator.name = "CampJournalHeaderSeparator"
+	root.add_child(header_separator)
 
 	body = VBoxContainer.new()
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -167,6 +190,7 @@ func _build_shell() -> void:
 func _refresh_current_facility() -> void:
 	if body == null:
 		return
+	_clear_header_intro()
 
 	for child in body.get_children():
 		body.remove_child(child)
@@ -181,7 +205,50 @@ func _refresh_current_facility() -> void:
 	var presenter = page_presenters.get(current_facility_id)
 	if presenter != null:
 		presenter.present(self)
+	_update_header_action()
 	_sync_raid_drawer_context()
+
+
+func set_header_intro(intro_name: String, intro_text: String) -> void:
+	if header_intro == null or not is_instance_valid(header_intro):
+		return
+	header_intro.name = intro_name if not intro_name.is_empty() else "CampJournalHeaderIntro"
+	header_intro.text = intro_text
+	header_intro.visible = not intro_text.is_empty()
+
+
+func _clear_header_intro() -> void:
+	if header_intro == null or not is_instance_valid(header_intro):
+		return
+	header_intro.name = "CampJournalHeaderIntro"
+	header_intro.text = ""
+	header_intro.visible = false
+
+
+func _update_header_action() -> void:
+	if header_action_button == null or not is_instance_valid(header_action_button):
+		return
+
+	var smith_nested := false
+	if current_facility_id == "smith":
+		var smith_presenter := page_presenters.get("smith") as SmithPagePresenter
+		smith_nested = smith_presenter != null and not smith_presenter.selected_family_id.is_empty()
+	header_action_button.text = "Back to Weapon Types" if smith_nested else "Close  [Esc]"
+	header_action_button.custom_minimum_size = Vector2(190 if smith_nested else 140, 42)
+	header_action_button.tooltip_text = (
+		"Return to the Smith weapon types."
+		if smith_nested
+		else "Close the Camp Journal."
+	)
+
+
+func _on_header_action_pressed() -> void:
+	if current_facility_id == "smith":
+		var smith_presenter := page_presenters.get("smith") as SmithPagePresenter
+		if smith_presenter != null and not smith_presenter.selected_family_id.is_empty():
+			smith_presenter.back_to_weapon_types()
+			return
+	close_journal()
 
 
 func _sync_raid_drawer_context() -> void:
@@ -596,7 +663,6 @@ func build_quarters_page() -> void:
 	member_quarters_panel = MemberQuartersPanelScript.new() as MemberQuartersPanel
 	member_quarters_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	member_quarters_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	member_quarters_panel.back_requested.connect(close_journal)
 	body.add_child(member_quarters_panel)
 	member_quarters_panel.configure(_get_population_controller())
 

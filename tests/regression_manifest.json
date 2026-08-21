@@ -37,6 +37,7 @@
 	{"id":"smith_contract","kind":"scene","target":"tests/camp/smith_contract.tscn"},
 	{"id":"camp_raid_drawer_contract","kind":"scene","target":"tests/camp/camp_raid_drawer_contract.tscn"},
 	{"id":"camp_journal_half_screen_layout","kind":"scene","target":"tests/camp/camp_journal_half_screen_layout_contract.tscn"},
+	{"id":"member_quarters_contract","kind":"scene","target":"tests/camp/member_quarters_contract.tscn"},
     {"id":"camp_population","kind":"scene","target":"tests/camp/camp_population_regressions.tscn"},
     {"id":"campaign_roster_capacity","kind":"scene","target":"tests/camp/campaign_roster_capacity.tscn"},
     {"id":"class_visuals","kind":"scene","target":"tests/ui/class_visuals_regression.tscn"},

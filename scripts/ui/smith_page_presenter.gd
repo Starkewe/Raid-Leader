@@ -8,6 +8,8 @@ const SmithArmoryDropZoneScript := preload(
 
 const TAB_FORGE := "forge"
 const TAB_ARMORY := "armory"
+const FORGE_RECIPE_LIST_WIDTH := 270.0
+const FORGE_CONTENT_MIN_HEIGHT := 500.0
 
 var selected_family_id: String = ""
 var selected_tab: String = TAB_FORGE
@@ -29,16 +31,13 @@ func present(journal: Node) -> void:
 	if page == null:
 		return
 	page.name = "SmithPage"
+	page.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_add_intro(page)
 	var model := build_view_model()
 	if selected_family_id.is_empty():
 		_add_category_gate(page, model)
 	else:
 		_add_selected_family_navigation(page, model)
-		if selected_tab == TAB_ARMORY:
-			_add_armory_strip(page, model)
-		else:
-			_add_forge_view(page, model)
 	_add_action_message(page)
 
 
@@ -355,6 +354,7 @@ func _build_recipe_entry(recipe_id: String) -> Dictionary:
 		var material := ProgressionCatalog.get_material(ingredient.material_id)
 		var rarity = null if material == null else ProgressionCatalog.get_material_rarity(material.rarity_id)
 		var owned := CampaignState.get_material_count(ingredient.material_id)
+		var source_text := _material_source_text(material)
 		components.append({
 			"material_id": ingredient.material_id,
 			"display_name": ingredient.material_id if material == null else material.display_name,
@@ -374,14 +374,9 @@ func _build_recipe_entry(recipe_id: String) -> Dictionary:
 			"required": ingredient.quantity,
 			"missing": maxi(ingredient.quantity - owned, 0),
 			"shortage": maxi(ingredient.quantity - owned, 0),
+			"source_text": source_text,
 			"tooltip_text": _material_tooltip(
-				material,
-				ingredient.material_id,
-				owned,
-				ingredient.quantity,
-				"Missing" if material == null else (
-					material.rarity_id.capitalize() if rarity == null else rarity.display_name
-				)
+				material, ingredient.material_id, owned, ingredient.quantity, source_text
 			),
 		})
 	var family_id := "" if weapon == null else weapon.family_id
@@ -660,9 +655,13 @@ func _build_reserve_recovery_entries(
 
 
 func _add_intro(page: VBoxContainer) -> void:
+	var intro_text := "Shape the spoils of fallen foes into weapons for your raiders."
+	if _journal != null and _journal.has_method("set_header_intro"):
+		_journal.call("set_header_intro", "SmithIntro", intro_text)
+		return
 	var intro := Label.new()
 	intro.name = "SmithIntro"
-	intro.text = "Shape the spoils of fallen foes into weapons for your raiders."
+	intro.text = intro_text
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intro.add_theme_color_override("font_color", Color("b9b29f"))
 	page.add_child(intro)
@@ -699,54 +698,101 @@ func _add_category_gate(page: VBoxContainer, model: Dictionary) -> void:
 
 
 func _add_selected_family_navigation(page: VBoxContainer, model: Dictionary) -> void:
-	var top_row := HBoxContainer.new()
-	top_row.name = "SmithSelectedFamilyNavigation"
-	top_row.add_theme_constant_override("separation", 10)
-	page.add_child(top_row)
-	var back := Button.new()
-	back.name = "SmithBackToWeaponTypes"
-	back.text = "Back to Weapon Types"
-	back.custom_minimum_size = Vector2(190, 40)
-	back.pressed.connect(back_to_weapon_types)
-	top_row.add_child(back)
-	var selected_heading := _add_heading(
-		top_row, String(model.get("selected_family_name", "Weapon Type")), 22
-	)
-	selected_heading.name = "SmithSelectedFamilyHeading"
-	selected_heading.add_theme_color_override("font_color", Color("c9b37b"))
-	selected_heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	selected_heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var selected_layout := HBoxContainer.new()
+	selected_layout.name = "SmithForgeLayout" if selected_tab == TAB_FORGE else "SmithArmoryLayout"
+	selected_layout.custom_minimum_size = Vector2(0, FORGE_CONTENT_MIN_HEIGHT)
+	selected_layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	selected_layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	selected_layout.add_theme_constant_override("separation", 12)
+	page.add_child(selected_layout)
+
+	var item_section := VBoxContainer.new()
+	item_section.name = "SmithItemSection"
+	item_section.custom_minimum_size = Vector2(FORGE_RECIPE_LIST_WIDTH, 0)
+	item_section.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	item_section.add_theme_constant_override("separation", 7)
+	selected_layout.add_child(item_section)
+
+	var navigation := VBoxContainer.new()
+	navigation.name = "SmithSelectedFamilyNavigation"
+	navigation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	navigation.add_theme_constant_override("separation", 7)
+	item_section.add_child(navigation)
 
 	var tabs := HBoxContainer.new()
 	tabs.name = "SmithTabs"
-	tabs.add_theme_constant_override("separation", 8)
-	page.add_child(tabs)
+	tabs.custom_minimum_size = Vector2(0, 40)
+	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tabs.add_theme_constant_override("separation", 6)
+	navigation.add_child(tabs)
 	for tab_value in [TAB_FORGE, TAB_ARMORY]:
 		var tab_button := Button.new()
 		tab_button.name = "Smith" + tab_value.capitalize() + "Tab"
 		tab_button.text = tab_value.capitalize()
-		tab_button.custom_minimum_size = Vector2(140, 40)
+		tab_button.custom_minimum_size = Vector2(0, 40)
+		tab_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tab_button.disabled = selected_tab == tab_value
+		tab_button.set_meta("smith_tab_id", tab_value)
+		tab_button.set_meta("smith_tab_selected", selected_tab == tab_value)
 		tab_button.pressed.connect(_on_tab_selected.bind(tab_value))
+		_style_smith_tab_button(tab_button, selected_tab == tab_value)
 		tabs.add_child(tab_button)
 
+	var selected_heading := _add_heading(
+		navigation, String(model.get("selected_family_name", "Weapon Type")), 20
+	)
+	selected_heading.name = "SmithSelectedFamilyHeading"
+	selected_heading.add_theme_color_override("font_color", Color("c9b37b"))
+	selected_heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	selected_heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
-func _add_forge_view(page: VBoxContainer, model: Dictionary) -> void:
+	var detail_section := VBoxContainer.new()
+	detail_section.name = "SmithDetailSection"
+	detail_section.custom_minimum_size = Vector2(0, FORGE_CONTENT_MIN_HEIGHT)
+	detail_section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_section.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	detail_section.add_theme_constant_override("separation", 8)
+	selected_layout.add_child(detail_section)
+
+	if selected_tab == TAB_ARMORY:
+		_add_armory_view(item_section, detail_section, model)
+	else:
+		_add_forge_view(item_section, detail_section, model)
+
+
+func _style_smith_tab_button(button: Button, selected: bool) -> void:
+	button.add_theme_color_override("font_color", Color("e8dfc7") if selected else Color("aeb8ba"))
+	button.add_theme_color_override("font_disabled_color", Color("e8dfc7"))
+	button.add_theme_stylebox_override(
+		"normal", _button_style("39464b" if selected else "1d2a31", "c9b37b" if selected else "4a575b")
+	)
+	button.add_theme_stylebox_override("hover", _button_style("46545a", "d5c18a"))
+	button.add_theme_stylebox_override("pressed", _button_style("39464b", "c9b37b"))
+	button.add_theme_stylebox_override("disabled", _button_style("39464b", "c9b37b"))
+
+
+func _add_forge_view(item_section: VBoxContainer, detail_section: VBoxContainer, model: Dictionary) -> void:
 	var recipes: Array = model.get("recipes", [])
+	var list_scroll := ScrollContainer.new()
+	list_scroll.name = "SmithRecipeListScroll"
+	list_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	list_scroll.custom_minimum_size = Vector2(FORGE_RECIPE_LIST_WIDTH, 0)
+	list_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	list_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	item_section.add_child(list_scroll)
+	var list := VBoxContainer.new()
+	list.name = "SmithRecipeList"
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.custom_minimum_size = Vector2(FORGE_RECIPE_LIST_WIDTH, 0)
+	list.add_theme_constant_override("separation", 7)
+	list_scroll.add_child(list)
+
 	if recipes.is_empty():
 		var empty := _make_muted_label(String(model.get("empty_state", "No recipes available.")))
 		empty.name = "SmithForgeEmptyState"
-		page.add_child(empty)
+		list.add_child(empty)
 		return
-	var content := HBoxContainer.new()
-	content.name = "SmithForgeContent"
-	content.add_theme_constant_override("separation", 16)
-	page.add_child(content)
-	var list := VBoxContainer.new()
-	list.name = "SmithRecipeList"
-	list.custom_minimum_size = Vector2(270, 0)
-	list.add_theme_constant_override("separation", 7)
-	content.add_child(list)
 	for recipe_value in recipes:
 		var recipe: Dictionary = recipe_value
 		var button := Button.new()
@@ -763,38 +809,58 @@ func _add_forge_view(page: VBoxContainer, model: Dictionary) -> void:
 		list.add_child(button)
 	var selected: Dictionary = model.get("selected_recipe", {})
 	if not selected.is_empty():
-		_add_recipe_details(content, selected)
+		_add_recipe_details(detail_section, selected)
+		_add_forge_footer(detail_section, selected)
 
 
-func _add_recipe_details(parent: HBoxContainer, recipe: Dictionary) -> void:
+func _add_recipe_details(parent: Control, recipe: Dictionary) -> void:
 	var details := VBoxContainer.new()
 	details.name = "SmithRecipeDetails"
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	details.add_theme_constant_override("separation", 7)
 	parent.add_child(details)
 	_add_weapon_art(details, recipe)
 	var recipe_title := _add_heading(details, String(recipe.get("display_name", "Unknown weapon")), 24)
 	recipe_title.add_theme_color_override("font_color", Color("c9b37b"))
-	_add_wrapped_label(details, String(recipe.get("description", "")), Color("b8bdba"))
-	_add_wrapped_label(
-		details, "Source: %s" % String(recipe.get("boss_name", "Unknown")), Color("c9b37b")
+	var info_label := _add_wrapped_label(details, String(recipe.get("description", "")), Color("c9b37b"))
+	info_label.name = "SmithRecipeInfo"
+	var source_label := _add_wrapped_label(
+		details, "Source: %s" % String(recipe.get("boss_name", "Unknown")), Color("b8bdba")
 	)
+	source_label.name = "SmithRecipeSource"
 	_add_stat_rows(details, recipe)
 	_add_wrapped_label(details, String(recipe.get("trait_text", "")), Color("9aa5aa"))
-	_add_component_slots(details, recipe.get("components", []))
+
+
+func _add_forge_footer(parent: VBoxContainer, recipe: Dictionary) -> void:
+	var footer := VBoxContainer.new()
+	footer.name = "SmithForgeFooter"
+	footer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	footer.size_flags_vertical = Control.SIZE_SHRINK_END
+	footer.alignment = BoxContainer.ALIGNMENT_CENTER
+	footer.add_theme_constant_override("separation", 8)
+	parent.add_child(footer)
+
+	var component_slots := _add_component_slots(footer, recipe.get("components", []))
+	component_slots.alignment = FlowContainer.ALIGNMENT_CENTER
+
 	var craft_button := Button.new()
 	craft_button.name = "SmithCraftButton"
-	craft_button.text = "Forge %s" % String(recipe.get("display_name", "Weapon"))
+	craft_button.text = "Forge"
 	craft_button.disabled = not bool(recipe.get("craftable", false))
 	craft_button.custom_minimum_size = Vector2(280, 44)
+	craft_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	craft_button.pressed.connect(
 		request_craft_confirmation.bind(String(recipe.get("recipe_id", "")))
 	)
-	details.add_child(craft_button)
+	footer.add_child(craft_button)
 	if craft_button.disabled:
 		var reason := _make_muted_label(String(recipe.get("disabled_reason", "Crafting unavailable.")))
 		reason.name = "SmithCraftDisabledReason"
-		details.add_child(reason)
+		reason.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		reason.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		footer.add_child(reason)
 
 
 func _add_weapon_art(parent: Control, recipe: Dictionary) -> void:
@@ -831,15 +897,17 @@ func _add_weapon_art(parent: Control, recipe: Dictionary) -> void:
 		frame.add_child(placeholder)
 
 
-func _add_component_slots(parent: Control, components: Array) -> void:
+func _add_component_slots(parent: Control, components: Array) -> HFlowContainer:
 	var slots := HFlowContainer.new()
 	slots.name = "SmithComponentSlots"
+	slots.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slots.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slots.add_theme_constant_override("h_separation", 10)
 	slots.add_theme_constant_override("v_separation", 10)
 	parent.add_child(slots)
 	for component_value in components:
 		_add_component_slot(slots, Dictionary(component_value))
+	return slots
 
 
 func _add_component_slot(parent: Control, component: Dictionary) -> void:
@@ -848,8 +916,9 @@ func _add_component_slot(parent: Control, component: Dictionary) -> void:
 	var icon := component.get("icon_resource") as Texture2D
 	var slot := PanelContainer.new()
 	slot.name = "SmithComponent_" + material_id
+	slot.mouse_filter = Control.MOUSE_FILTER_STOP
 	slot.custom_minimum_size = Vector2(98, 116)
-	slot.tooltip_text = String(component.get("tooltip_text", "Unknown material"))
+	slot.tooltip_text = _component_tooltip(component)
 	var slot_style := StyleBoxFlat.new()
 	slot_style.bg_color = Color("182126")
 	slot_style.border_color = (
@@ -895,6 +964,19 @@ func _add_component_slot(parent: Control, component: Dictionary) -> void:
 	)
 	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(count)
+
+
+func _component_tooltip(component: Dictionary) -> String:
+	var display_name := String(component.get("display_name", component.get("material_id", "Unknown material")))
+	var owned := int(component.get("owned", 0))
+	var required := int(component.get("required", 0))
+	var description := String(component.get("description", "Material definition unavailable."))
+	var source := String(component.get("source_text", component.get("source", "Unknown Source")))
+	if source.is_empty():
+		source = "Unknown Source"
+	return "%s\nCount: %d/%d\n%s\nSource: %s" % [
+		display_name, owned, required, description, source,
+	]
 
 
 func _add_stat_rows(parent: Control, weapon_entry: Dictionary) -> void:
@@ -949,47 +1031,63 @@ func _on_tab_selected(tab_id: String) -> void:
 	select_tab(tab_id)
 
 
-func _add_armory_strip(page: VBoxContainer, model: Dictionary) -> void:
-	_add_heading(page, "Crafted Armory", 21)
-	var row := VBoxContainer.new()
-	row.name = "SmithArmorySection"
-	row.add_theme_constant_override("separation", 12)
-	page.add_child(row)
-	var weapon_area := VBoxContainer.new()
-	weapon_area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(weapon_area)
+func _add_armory_view(
+	item_section: VBoxContainer, detail_section: VBoxContainer, model: Dictionary
+) -> void:
+	var list_scroll := ScrollContainer.new()
+	list_scroll.name = "SmithArmoryListScroll"
+	list_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	list_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	list_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	item_section.add_child(list_scroll)
+
+	var armory := VBoxContainer.new()
+	armory.name = "SmithArmorySection"
+	armory.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	armory.add_theme_constant_override("separation", 8)
+	list_scroll.add_child(armory)
+
+	var armory_heading := _add_heading(armory, "Crafted armory", 16)
+	armory_heading.name = "SmithArmoryHeading"
 	var weapons: Array = model.get("weapons", [])
 	if weapons.is_empty():
 		var no_weapons := _make_muted_label(
 			String(model.get("armory_empty_state", "No weapons are available."))
 		)
 		no_weapons.name = "SmithWeaponsEmptyState"
-		weapon_area.add_child(no_weapons)
+		armory.add_child(no_weapons)
 	else:
-		var strip := HFlowContainer.new()
+		var strip := VBoxContainer.new()
 		strip.name = "SmithWeaponStrip"
 		strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		strip.add_theme_constant_override("h_separation", 8)
-		strip.add_theme_constant_override("v_separation", 8)
-		weapon_area.add_child(strip)
+		strip.add_theme_constant_override("separation", 7)
+		armory.add_child(strip)
 		for weapon_value in weapons:
 			_add_drag_weapon_card(strip, Dictionary(weapon_value))
+
 	var reserve_recoveries: Array = model.get("reserve_recoveries", [])
 	if not reserve_recoveries.is_empty():
-		_add_heading(row, "Reserve recovery", 16)
-		var recovery_strip := HFlowContainer.new()
+		var recovery_heading := _add_heading(armory, "Reserve recovery", 15)
+		recovery_heading.name = "SmithReserveRecoveryHeading"
+		var recovery_strip := VBoxContainer.new()
 		recovery_strip.name = "SmithReserveRecoveryStrip"
-		recovery_strip.add_theme_constant_override("h_separation", 7)
-		recovery_strip.add_theme_constant_override("v_separation", 7)
-		row.add_child(recovery_strip)
+		recovery_strip.add_theme_constant_override("separation", 7)
+		armory.add_child(recovery_strip)
 		for recovery_value in reserve_recoveries:
 			_add_reserve_recovery_card(recovery_strip, Dictionary(recovery_value))
+
+	if weapons.is_empty():
+		_add_wrapped_label(detail_section, "No crafted weapon is available for this weapon type.", Color("8f968f"))
+	else:
+		_add_armory_weapon_details(detail_section, Dictionary(weapons[0]))
+
 	var armory_zone := SmithArmoryDropZoneScript.new() as SmithArmoryDropZone
 	armory_zone.name = "SmithReturnToArmory"
 	armory_zone.custom_minimum_size = Vector2(0, 72)
 	armory_zone.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	armory_zone.equipment_action_completed.connect(_on_drag_equipment_action)
-	row.add_child(armory_zone)
+	detail_section.add_child(armory_zone)
 	var armory_label := Label.new()
 	armory_label.text = "RETURN TO ARMORY\nDrop an equipped weapon here"
 	armory_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -997,7 +1095,24 @@ func _add_armory_strip(page: VBoxContainer, model: Dictionary) -> void:
 	armory_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	armory_label.add_theme_color_override("font_color", Color("d8c78e"))
 	armory_zone.add_child(armory_label)
-	page.add_child(HSeparator.new())
+
+
+func _add_armory_weapon_details(parent: VBoxContainer, weapon: Dictionary) -> void:
+	var details := VBoxContainer.new()
+	details.name = "SmithArmoryDetails"
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation", 7)
+	parent.add_child(details)
+	_add_weapon_art(details, weapon)
+	var title := _add_heading(details, String(weapon.get("display_name", "Unknown weapon")), 24)
+	title.add_theme_color_override("font_color", Color("c9b37b"))
+	_add_wrapped_label(details, String(weapon.get("description", "")), Color("c9bd7b"))
+	_add_wrapped_label(
+		details, String(weapon.get("assignment_label", "AVAILABLE")), Color("94b58f")
+	)
+	_add_stat_rows(details, weapon)
+	_add_wrapped_label(details, String(weapon.get("trait_text", "")), Color("9aa5aa"))
 
 
 func _add_drag_weapon_card(parent: Container, weapon: Dictionary) -> void:
@@ -1206,17 +1321,27 @@ func _material_tooltip(
 	material_id: String,
 	owned: int,
 	required: int,
-	rarity_text: String
+	source_text: String
 ) -> String:
 	var display_name := material_id if material == null else material.display_name
 	var description := "Material definition unavailable." if material == null else material.description
-	return "%s\n%s\n%s\nCount: %d/%d" % [
+	return "%s\nCount: %d/%d\n%s\nSource: %s" % [
 		display_name,
-		rarity_text,
-		description,
 		owned,
 		required,
+		description,
+		source_text,
 	]
+
+
+func _material_source_text(material: BossMaterialDefinition) -> String:
+	if material == null or material.source_encounter_ids.is_empty():
+		return "Unknown Source"
+	var source_names: Array[String] = []
+	for encounter_id in material.source_encounter_ids:
+		var boss := ProgressionCatalog.get_boss_definition(encounter_id)
+		source_names.append(encounter_id if boss == null else boss.display_name)
+	return ", ".join(source_names)
 
 
 func _craft_disabled_reason(
@@ -1229,7 +1354,7 @@ func _craft_disabled_reason(
 				var missing := int(component.get("missing", 0))
 				if missing > 0:
 					shortages.append("%s ×%d" % [component.get("display_name", "Material"), missing])
-			return "Missing %s. Defeat source bosses and review Camp Stores." % ", ".join(shortages)
+			return "Missing %s. Defeat source bosses and review the Spoils Cache." % ", ".join(shortages)
 		_:
 			return String(craft_check.get("message", "Crafting is unavailable."))
 
@@ -1278,3 +1403,16 @@ func _make_muted_label(text_value: String) -> Label:
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.add_theme_color_override("font_color", Color("8f968f"))
 	return label
+
+
+func _button_style(background: String, border: String) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(background)
+	style.border_color = Color(border)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(3)
+	style.content_margin_left = 9
+	style.content_margin_right = 9
+	style.content_margin_top = 6
+	style.content_margin_bottom = 6
+	return style
