@@ -11,8 +11,8 @@ const FACILITY_PRIMARY_CONTROLS := {
 	"archive": [
 		"ArchiveEncounterControls", "ArchiveIntelligence", "ArchiveHistoryScroll",
 	],
-	"quarters": ["QuartersRosterSection", "QuartersProfileScroll"],
-	"storage": ["StorageFilters", "StorageInventoryContent"],
+	"quarters": ["QuartersTabs", "QuartersRosterSection", "QuartersProfileSection"],
+	"storage": ["StorageTabs", "StorageInventoryContent"],
 	"smith": [
 		"SmithCategoryGrid",
 	],
@@ -167,7 +167,9 @@ func _validate_smith_tab_controls(
 	if shell == null:
 		return
 	var shell_rect := shell.get_global_rect()
-	for control_name in control_names:
+	var geometry_controls: Array = ["SmithItemSection", "SmithDetailSection"]
+	geometry_controls.append_array(control_names)
+	for control_name in geometry_controls:
 		var control := journal.find_child(String(control_name), true, false) as Control
 		if control == null or not control.is_visible_in_tree():
 			failures.append("Smith tab control '%s' was not rendered." % control_name)
@@ -175,6 +177,24 @@ func _validate_smith_tab_controls(
 		var rect := control.get_global_rect()
 		if rect.position.x < shell_rect.position.x - 1.0 or rect.end.x > shell_rect.end.x + 1.0:
 			failures.append("Smith tab control '%s' overflowed the right-half shell." % control_name)
+	var item_section := journal.find_child("SmithItemSection", true, false) as Control
+	var detail_section := journal.find_child("SmithDetailSection", true, false) as Control
+	if item_section != null and detail_section != null:
+		if item_section.get_global_rect().end.x >= detail_section.get_global_rect().position.x:
+			failures.append("Smith item and detail columns overlap horizontally.")
+		if detail_section.get_global_rect().position.y > item_section.get_global_rect().position.y + 2.0:
+			failures.append("Smith detail column did not start at the item column boundary.")
+		var artwork := journal.find_child("SmithWeaponArtFrame", true, false) as Control
+		if artwork != null and artwork.get_global_rect().position.y > detail_section.get_global_rect().position.y + 2.0:
+			failures.append("Smith artwork retained a blank gap above the detail column.")
+	for scroll_name in ["SmithRecipeListScroll", "SmithArmoryListScroll"]:
+		var scroll := journal.find_child(scroll_name, true, false) as ScrollContainer
+		if scroll == null or not scroll.is_visible_in_tree():
+			continue
+		if scroll.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+			failures.append("%s retained horizontal scrolling." % scroll_name)
+		if scroll.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED:
+			failures.append("%s did not retain vertical list scrolling." % scroll_name)
 
 
 func _wait_frames(count: int) -> void:

@@ -36,21 +36,35 @@ static func build_profile(raider_id: String, runtime_state: Dictionary = {}) -> 
 	var personality_description := String(member.get("personality_description", "")).strip_edges()
 	if personality_description.is_empty():
 		personality_description = _personality_fallback(member.get("personality_tags", []))
+	var combat_history: Dictionary = Dictionary(member.get("combat_history", {}))
+	var class_id := String(member.get("advanced_class_id", "")).strip_edges()
+	if class_id.is_empty():
+		class_id = String(member.get("unit_class", "Unknown"))
+	var activity_text := runtime_text(runtime_state)
+	var preferred_activity_labels := _activity_labels(member.get("preferred_activity_tags", []))
 
 	return {
 		"raider_id": raider_id,
 		"display_name": String(member.get("display_name", "Unknown Raider")),
 		"unit_class": String(member.get("unit_class", "Unknown")),
+		"class_id": class_id,
+		"class_color": RaiderClassCatalog.get_camp_color(class_id),
 		"roster_status": "Active" if active else "Reserve",
+		"victory_count": maxi(int(combat_history.get("victories", 0)), 0),
 		"biography": String(member.get("biography", "No biography is available.")),
 		"personality_description": personality_description,
 		"recruitment_origin": _recruitment_origin(member),
 		"room_assignment": CampaignState.get_room_assignment_label(raider_id),
 		"room_assignment_id": String(member.get("room_assignment_id", "")),
-		"preferred_activities": _activity_list(member.get("preferred_activity_tags", [])),
+		"preferred_activity_labels": preferred_activity_labels,
+		"preferred_activities": ", ".join(preferred_activity_labels)
+		if not preferred_activity_labels.is_empty()
+		else "None recorded",
 		"descriptive_title": String(member.get("descriptive_title", "")).strip_edges(),
 		"visual": resolve_visual(member),
-		"runtime_text": runtime_text(runtime_state),
+		"runtime_text": activity_text,
+		"current_activity_text": activity_text,
+		"full_activity_text": activity_text,
 		"close_connections": _connections(raider_id, member),
 		"lasting_memories": _lasting_memories(raider_id),
 		"recent_experiences": _recent_experiences(raider_id),
@@ -377,11 +391,16 @@ static func _recruitment_origin(member: Dictionary) -> String:
 
 
 static func _activity_list(value: Variant) -> String:
+	var labels := _activity_labels(value)
+	return "None recorded" if labels.is_empty() else ", ".join(labels)
+
+
+static func _activity_labels(value: Variant) -> Array[String]:
 	var labels: Array[String] = []
 	if value is Array:
 		for activity_id in value:
 			labels.append(String(ACTIVITY_LABELS.get(String(activity_id), _humanize(String(activity_id)))))
-	return "None recorded" if labels.is_empty() else ", ".join(labels)
+	return labels
 
 
 static func _personality_fallback(value: Variant) -> String:
