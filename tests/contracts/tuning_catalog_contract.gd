@@ -88,6 +88,8 @@ func _validate_representative_consumers(
 		failures.append("Camp conversation timing changed during migration.")
 	if catalog.camp.get_facility_interaction_radius("command_tent") != 225.0:
 		failures.append("The command-tent interaction radius changed during migration.")
+	if catalog.camp.get_facility_interaction_radius("training") != 190.0:
+		failures.append("Training does not have its authored interaction radius.")
 	if catalog.runtime_limits.combat_log_entries != 10000:
 		failures.append("The combat log capacity changed during migration.")
 

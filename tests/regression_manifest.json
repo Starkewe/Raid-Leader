@@ -35,6 +35,7 @@
     {"id":"camp_debug_visuals","kind":"scene","target":"tests/camp/camp_debug_visuals_regressions.tscn"},
 	{"id":"camp_stores_contract","kind":"scene","target":"tests/camp/camp_stores_contract.tscn"},
 	{"id":"smith_contract","kind":"scene","target":"tests/camp/smith_contract.tscn"},
+	{"id":"training_progression_contract","kind":"scene","target":"tests/camp/training_progression_contract.tscn"},
 	{"id":"camp_raid_drawer_contract","kind":"scene","target":"tests/camp/camp_raid_drawer_contract.tscn"},
 	{"id":"camp_journal_half_screen_layout","kind":"scene","target":"tests/camp/camp_journal_half_screen_layout_contract.tscn"},
 	{"id":"member_quarters_contract","kind":"scene","target":"tests/camp/member_quarters_contract.tscn"},

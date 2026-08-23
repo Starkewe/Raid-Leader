@@ -16,6 +16,11 @@ const FACILITY_PRIMARY_CONTROLS := {
 	"smith": [
 		"SmithCategoryGrid",
 	],
+	"training": [
+		"TrainingRosterTabs", "TrainingLayout", "TrainingProgressionTree",
+		"TrainingBonusesPanel", "TrainingCurrentBenefitsButton",
+		"TrainingClassIcon",
+	],
 }
 
 

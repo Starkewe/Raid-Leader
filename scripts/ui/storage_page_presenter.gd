@@ -1,12 +1,15 @@
 extends "res://scripts/ui/facility_page_presenter.gd"
 class_name StoragePagePresenter
 
-const VIEW_IDS: Array[String] = ["tokens", "materials", "recipes", "weapons"]
+const VIEW_IDS: Array[String] = ["materials", "weapons", "tokens"]
+const LEGACY_VIEW_IDS: Array[String] = ["recipes"]
 const VIEW_LABELS := {
 	"tokens": "Advancement Tokens",
 	"materials": "Boss Materials",
-	"recipes": "Unlocked Recipes",
 	"weapons": "Crafted Weapons",
+}
+const LEGACY_VIEW_LABELS := {
+	"recipes": "Unlocked Recipes",
 }
 
 var current_view_id: String = "materials"
@@ -22,13 +25,15 @@ func present(journal: Node) -> void:
 	_journal = journal
 	var header := journal.get("header_title") as Label
 	if header != null:
-		header.text = "Camp Stores — Progression Inventory"
+		header.text = "The Spoils Cache"
+	if not VIEW_IDS.has(current_view_id):
+		current_view_id = "materials"
 	var page := journal.call("_begin_scrolling_page") as VBoxContainer
 	if page == null:
 		return
 	page.name = "StoragePage"
 	_add_intro(page)
-	_add_filters(page)
+	_add_tabs(page)
 	var model := build_view_model()
 	_add_inventory_view(page, model)
 	if OS.is_debug_build():
@@ -39,7 +44,7 @@ func build_view_model(
 	view_id: String = "", filter_override: Dictionary = {}
 ) -> Dictionary:
 	var selected_view := current_view_id if view_id.is_empty() else view_id
-	if selected_view not in VIEW_IDS:
+	if not VIEW_IDS.has(selected_view) and not LEGACY_VIEW_IDS.has(selected_view):
 		selected_view = "materials"
 	var filters := {
 		"boss_id": boss_filter,
@@ -68,11 +73,15 @@ func build_view_model(
 				return name_order < 0
 			return String(a.get("stable_id", "")) < String(b.get("stable_id", ""))
 	)
+	var source_groups: Array[Dictionary] = []
+	if selected_view == "materials":
+		source_groups = _build_material_source_groups(entries)
 	return {
 		"view_id": selected_view,
-		"title": String(VIEW_LABELS.get(selected_view, selected_view.capitalize())),
+		"title": _view_label(selected_view),
 		"filters": filters,
 		"entries": entries,
+		"source_groups": source_groups,
 		"empty_state": _empty_state(selected_view, filters),
 		"read_only": true,
 	}
@@ -81,13 +90,31 @@ func build_view_model(
 func _add_intro(page: VBoxContainer) -> void:
 	var intro := Label.new()
 	intro.name = "StorageReadOnlyNotice"
-	intro.text = (
-		"Review permanent tokens, recovered materials, unlocked designs, and forged arms. "
-		+ "Camp Stores is read-only; visit the Rudimentary Smith to craft and manage weapons."
-	)
+	intro.text = "Review the spoils of fallen foes and the weapons forged from them."
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intro.add_theme_color_override("font_color", Color("b9b29f"))
 	page.add_child(intro)
+
+
+func _add_tabs(page: VBoxContainer) -> void:
+	var tabs := HBoxContainer.new()
+	tabs.name = "StorageTabs"
+	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tabs.add_theme_constant_override("separation", 6)
+	page.add_child(tabs)
+	for view_id in VIEW_IDS:
+		var tab_button := Button.new()
+		tab_button.name = "Storage" + view_id.capitalize() + "Tab"
+		tab_button.text = view_id.capitalize()
+		tab_button.custom_minimum_size = Vector2(110, 36)
+		tab_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab_button.set_meta("storage_view_id", view_id)
+		tab_button.disabled = current_view_id == view_id
+		if tab_button.disabled:
+			tab_button.add_theme_color_override("font_disabled_color", Color("e8dfc7"))
+			tab_button.add_theme_color_override("font_color", Color("c9b37b"))
+		tab_button.pressed.connect(_on_tab_selected.bind(view_id))
+		tabs.add_child(tab_button)
 
 
 func _add_filters(page: VBoxContainer) -> void:
@@ -150,12 +177,19 @@ func _add_inventory_view(page: VBoxContainer, model: Dictionary) -> void:
 	heading.add_theme_color_override("font_color", Color("e8dfc7"))
 	page.add_child(heading)
 
-	var content := HFlowContainer.new()
-	content.name = "StorageInventoryContent"
-	content.add_theme_constant_override("h_separation", 8)
-	content.add_theme_constant_override("v_separation", 8)
-	page.add_child(content)
 	var entries: Array = model.get("entries", [])
+	var content: Container
+	if String(model.get("view_id", "")) == "materials" and not entries.is_empty():
+		content = VBoxContainer.new()
+		content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		content.add_theme_constant_override("separation", 14)
+	else:
+		content = HFlowContainer.new()
+		content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		content.add_theme_constant_override("h_separation", 8)
+		content.add_theme_constant_override("v_separation", 8)
+	content.name = "StorageInventoryContent"
+	page.add_child(content)
 	if entries.is_empty():
 		var empty := Label.new()
 		empty.name = "StorageEmptyState"
@@ -164,8 +198,36 @@ func _add_inventory_view(page: VBoxContainer, model: Dictionary) -> void:
 		empty.add_theme_color_override("font_color", Color("8f968f"))
 		content.add_child(empty)
 		return
+	if String(model.get("view_id", "")) == "materials":
+		for group_value in model.get("source_groups", []):
+			_add_material_source_group(content, Dictionary(group_value))
+		return
 	for entry_value in entries:
 		_add_entry_card(content, Dictionary(entry_value), String(model.get("view_id", "")))
+
+
+func _add_material_source_group(parent: Container, group: Dictionary) -> void:
+	var section := VBoxContainer.new()
+	section.name = "StorageMaterialGroup_" + String(group.get("group_id", "unknown_source"))
+	section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	section.add_theme_constant_override("separation", 6)
+	parent.add_child(section)
+
+	var heading := Label.new()
+	heading.name = "StorageMaterialGroupHeading"
+	heading.text = String(group.get("label", "Unknown Source"))
+	heading.add_theme_font_size_override("font_size", 20)
+	heading.add_theme_color_override("font_color", Color("c9b37b"))
+	section.add_child(heading)
+
+	var cards := HFlowContainer.new()
+	cards.name = "StorageMaterialGroupEntries"
+	cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cards.add_theme_constant_override("h_separation", 8)
+	cards.add_theme_constant_override("v_separation", 8)
+	section.add_child(cards)
+	for entry_value in group.get("entries", []):
+		_add_entry_card(cards, Dictionary(entry_value), "materials")
 
 
 func _add_entry_card(parent: Container, entry: Dictionary, view_id: String) -> void:
@@ -185,10 +247,16 @@ func _add_entry_card(parent: Container, entry: Dictionary, view_id: String) -> v
 	margin.add_theme_constant_override("margin_top", 10)
 	margin.add_theme_constant_override("margin_bottom", 10)
 	panel.add_child(margin)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	margin.add_child(row)
+	_add_entry_icon(row, entry)
 	var column := VBoxContainer.new()
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_theme_constant_override("separation", 4)
-	margin.add_child(column)
+	row.add_child(column)
 	var title := Label.new()
+	title.name = "StorageEntryTitle"
 	title.text = _entry_title(entry, view_id)
 	title.add_theme_font_size_override("font_size", 19)
 	if entry.has("rarity_color"):
@@ -210,13 +278,36 @@ func _add_entry_card(parent: Container, entry: Dictionary, view_id: String) -> v
 		column.add_child(description_label)
 
 
+func _add_entry_icon(parent: Container, entry: Dictionary) -> void:
+	var holder := CenterContainer.new()
+	holder.name = "StorageEntryIconHolder"
+	holder.custom_minimum_size = Vector2(64, 64)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(holder)
+	var icon := entry.get("icon_resource") as Texture2D
+	if icon == null:
+		var placeholder := Label.new()
+		placeholder.name = "StorageEntryIconPlaceholder"
+		placeholder.text = "?"
+		placeholder.add_theme_font_size_override("font_size", 32)
+		placeholder.add_theme_color_override("font_color", Color("8f968f"))
+		placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.add_child(placeholder)
+		return
+	var icon_rect := TextureRect.new()
+	icon_rect.name = "StorageEntryIcon"
+	icon_rect.custom_minimum_size = Vector2(60, 60)
+	icon_rect.texture = icon
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(icon_rect)
+
+
 func _entry_title(entry: Dictionary, view_id: String) -> String:
 	var display_name := String(entry.get("display_name", "Unknown"))
 	if view_id == "materials":
-		return "[%s] %s  ×%d" % [
-			String(entry.get("rarity_text", "UNKNOWN")).to_upper(),
-			display_name, int(entry.get("count", 0)),
-		]
+		return "%s ×%d" % [display_name, int(entry.get("count", 0))]
 	if view_id == "tokens":
 		return "%s  ×1" % display_name
 	return display_name
@@ -231,9 +322,11 @@ func _token_entries() -> Array[Dictionary]:
 			continue
 		var boss := ProgressionCatalog.get_boss_definition(token.source_encounter_id)
 		var class_definition := RaiderClassCatalog.get_definition(token.archetype_class_id)
+		var class_visual := RaiderClassCatalog.get_visual_definition(token.archetype_class_id)
 		result.append({
 			"stable_id": token.token_id,
 			"display_name": token.display_name,
+			"icon_resource": null if class_visual == null else class_visual.icon_resource,
 			"boss_ids": [token.source_encounter_id],
 			"rarity_id": "",
 			"family_id": "",
@@ -268,6 +361,7 @@ func _material_entries() -> Array[Dictionary]:
 		result.append({
 			"stable_id": material.material_id,
 			"display_name": material.display_name,
+			"icon_resource": material.icon_resource,
 			"count": count,
 			"boss_ids": material.source_encounter_ids.duplicate(),
 			"rarity_id": material.rarity_id,
@@ -304,6 +398,7 @@ func _recipe_entries() -> Array[Dictionary]:
 		result.append({
 			"stable_id": recipe.recipe_id,
 			"display_name": recipe.display_name,
+			"icon_resource": null if weapon == null else weapon.icon_resource,
 			"boss_ids": [recipe.source_encounter_id],
 			"rarity_id": "",
 			"family_id": "" if weapon == null else weapon.family_id,
@@ -315,7 +410,7 @@ func _recipe_entries() -> Array[Dictionary]:
 				"Craftable" if bool(craft_check.get("ok", false)) else craft_status.replace("_", " ").capitalize(),
 				"; ".join(ingredient_texts),
 			],
-			"description": "Recipe status is informational; Camp Stores does not craft items.",
+			"description": "Recipe status is informational; the Spoils Cache does not craft items.",
 		})
 	return result
 
@@ -344,6 +439,7 @@ func _weapon_entries() -> Array[Dictionary]:
 		result.append({
 			"stable_id": weapon.weapon_id,
 			"display_name": weapon.display_name,
+			"icon_resource": weapon.icon_resource,
 			"boss_ids": [weapon.source_encounter_id],
 			"rarity_id": "",
 			"family_id": weapon.family_id,
@@ -384,13 +480,103 @@ func _filter_entries(entries: Array[Dictionary], filters: Dictionary) -> Array[D
 	return result
 
 
+func _build_material_source_groups(entries: Array[Dictionary]) -> Array[Dictionary]:
+	var single_source_entries: Dictionary = {}
+	var shared_entries: Array[Dictionary] = []
+	var unknown_entries: Array[Dictionary] = []
+	var unlisted_source_ids: Array[String] = []
+
+	for entry in entries:
+		var source_ids: Array = Array(entry.get("boss_ids", []))
+		if source_ids.size() > 1:
+			shared_entries.append(entry.duplicate(true))
+			continue
+		if source_ids.is_empty():
+			unknown_entries.append(entry.duplicate(true))
+			continue
+		var source_id := String(source_ids[0])
+		var boss := ProgressionCatalog.get_boss_definition(source_id)
+		if source_id.is_empty() or boss == null:
+			unknown_entries.append(entry.duplicate(true))
+			continue
+		var source_bucket: Array = single_source_entries.get(source_id, [])
+		source_bucket.append(entry.duplicate(true))
+		single_source_entries[source_id] = source_bucket
+		if not unlisted_source_ids.has(source_id):
+			unlisted_source_ids.append(source_id)
+
+	var result: Array[Dictionary] = []
+	var region := ProgressionCatalog.get_region_definition("beast_crucible")
+	if region != null:
+		for boss in region.bosses:
+			if boss == null:
+				continue
+			var source_id := String(boss.encounter_id)
+			if single_source_entries.has(source_id):
+				result.append(_make_material_source_group(
+					source_id, boss.display_name, single_source_entries[source_id]
+				))
+				unlisted_source_ids.erase(source_id)
+
+		unlisted_source_ids.sort_custom(
+			func(a: String, b: String) -> bool:
+				return _source_display_name(a).naturalnocasecmp_to(_source_display_name(b)) < 0
+		)
+	for source_id in unlisted_source_ids:
+		result.append(_make_material_source_group(
+			source_id, _source_display_name(source_id), single_source_entries[source_id]
+		))
+
+	if not shared_entries.is_empty():
+		result.append(_make_material_source_group(
+			"shared_materials", "Shared Materials", shared_entries, true
+		))
+	if not unknown_entries.is_empty():
+		result.append(_make_material_source_group(
+			"unknown_source", "Unknown Source", unknown_entries, false, true
+		))
+	return result
+
+
+func _make_material_source_group(
+	group_id: String,
+	label: String,
+	entries: Array,
+	multi_source: bool = false,
+	unknown_source: bool = false
+) -> Dictionary:
+	var source_id := "" if multi_source or unknown_source else group_id
+	return {
+		"group_id": group_id,
+		"source_id": source_id,
+		"boss_id": source_id,
+		"source_boss_id": source_id,
+		"label": label,
+		"display_name": label,
+		"source_boss_name": label,
+		"group_name": label,
+		"multi_source": multi_source,
+		"unknown_source": unknown_source,
+		"entries": entries.duplicate(true),
+	}
+
+
+func _source_display_name(source_id: String) -> String:
+	var boss := ProgressionCatalog.get_boss_definition(source_id)
+	return source_id if boss == null else boss.display_name
+
+
+func _view_label(view_id: String) -> String:
+	return String(VIEW_LABELS.get(view_id, LEGACY_VIEW_LABELS.get(view_id, view_id.capitalize())))
+
+
 func _empty_state(view_id: String, filters: Dictionary) -> String:
 	var filtered := false
 	for value in filters.values():
 		if not String(value).is_empty():
 			filtered = true
 	if filtered:
-		return "No %s match the current filters." % String(VIEW_LABELS[view_id]).to_lower()
+		return "No %s match the current filters." % _view_label(view_id).to_lower()
 	match view_id:
 		"tokens":
 			return "No advancement tokens yet. Each Beast Crucible boss grants one on its first clear."
@@ -463,6 +649,7 @@ func _missing_entry(stable_id: String, description: String) -> Dictionary:
 	return {
 		"stable_id": stable_id,
 		"display_name": stable_id + " [Missing Content]",
+		"icon_resource": null,
 		"boss_ids": [], "rarity_id": "", "family_id": "",
 		"detail_text": "Saved stable ID retained for content recovery.",
 		"description": description,
@@ -559,7 +746,13 @@ func _set_debug_message(message: String) -> void:
 
 
 func _on_view_selected(index: int, selector: OptionButton) -> void:
-	current_view_id = String(selector.get_item_metadata(index))
+	_on_tab_selected(String(selector.get_item_metadata(index)))
+
+
+func _on_tab_selected(view_id: String) -> void:
+	if not VIEW_IDS.has(view_id) or current_view_id == view_id:
+		return
+	current_view_id = view_id
 	_queue_refresh()
 
 

@@ -109,8 +109,6 @@ edge_color = Color(1, 0.3, 0.055, 0.92)
 [sub_resource type="Resource" id="Checkpoint_EmpoweredSlam"]
 script = ExtResource("17_checkpoint_type")
 planning_window_opens = "basic_attack_trigger_ready"
-positions_lock = "on_cast_start"
-commitment_releases = "after_positions_lock"
 
 [sub_resource type="Resource" id="Ability_EmpoweredSlam"]
 script = ExtResource("14_slam_definition")
@@ -205,6 +203,4 @@ basic_attack_trigger_threshold = 10
 basic_attack_trigger_when_target_outside_required_range = true
 abilities = Array[ExtResource("2_ability_type")]([SubResource("Ability_TwinSweepingPull"), SubResource("Ability_GrabbingRoar"), SubResource("Ability_EarthshakerStomp"), SubResource("Ability_BoulderToss")])
 phases = Array[ExtResource("3_phase_type")]([SubResource("Phase_One"), SubResource("Phase_Two"), SubResource("Phase_Frenzy")])
-ability_base_gap = 4.0
-ability_cooldown_variance = 0.05
 initial_ability_delay = 6.0

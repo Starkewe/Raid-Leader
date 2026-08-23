@@ -2,6 +2,7 @@ extends Node
 
 const CampaignRaiderStateScript := preload("res://scripts/data/campaign_raider_state.gd")
 const RaiderCatalogScript := preload("res://scripts/data/raider_catalog.gd")
+const RaiderClassCatalogScript := preload("res://scripts/data/raider_class_catalog.gd")
 const CampaignCastGeneratorScript := preload("res://scripts/core/campaign_cast_generator.gd")
 const CampV2EventSystemScript := preload("res://scripts/core/camp_v2_event_system.gd")
 const RaiderMemoryStoreScript := preload("res://scripts/data/raider_memory_store.gd")
@@ -28,6 +29,9 @@ const CampaignProgressionServiceScript := preload(
 )
 const CampaignRewardServiceScript := preload(
 	"res://scripts/core/campaign_reward_service.gd"
+)
+const CampaignSpecializationServiceScript := preload(
+	"res://scripts/core/campaign_specialization_service.gd"
 )
 const CampaignSocialMemoryServiceScript := preload(
 	"res://scripts/core/campaign_social_memory_service.gd"
@@ -58,6 +62,7 @@ var _roster_service = CampaignRosterServiceScript.new()
 var _raid_plan_service = CampaignRaidPlanServiceScript.new()
 var _progression_service = CampaignProgressionServiceScript.new()
 var _reward_service = CampaignRewardServiceScript.new()
+var _specialization_service = CampaignSpecializationServiceScript.new()
 var _social_memory_service = CampaignSocialMemoryServiceScript.new()
 
 
@@ -1213,21 +1218,171 @@ func assign_raider_room_automatically(raider_id: String) -> bool:
 	return false
 
 
+func get_raider_specialization_status(
+	raider_id: String, preview_lineage_id: String = ""
+) -> Dictionary:
+	return _specialization_service.get_status(
+		_campaign, raider_id, preview_lineage_id
+	).duplicate(true)
+
+
+func check_lock_raider_lineage(raider_id: String, lineage_id: String) -> Dictionary:
+	return _specialization_service.check_lock_lineage(
+		_campaign, raider_id, lineage_id
+	).duplicate(true)
+
+
+func lock_raider_lineage(raider_id: String, lineage_id: String) -> Dictionary:
+	var result: Dictionary = _specialization_service.lock_lineage(
+		_campaign, raider_id, lineage_id
+	)
+	if not bool(result.get("ok", false)):
+		return result.duplicate(true)
+	if not String(result.get("consumed_token_id", "")).is_empty():
+		emit_notable_event(
+			{
+				"event_type": "lineage_begun",
+				"source_system": "class_advancement",
+				"participants": [raider_id],
+				"memory_category": "personal_reflection",
+				"subject_key": "lineage_begun:%s" % String(result.get("lineage_id", "")),
+				"significance": 72,
+				"structured_data": {
+					"lineage_id": String(result.get("lineage_id", "")),
+					"consumed_token_id": String(result.get("consumed_token_id", "")),
+				},
+			},
+			false
+		)
+	state_changed.emit()
+	return result.duplicate(true)
+
+
+func check_unlock_raider_specialization(raider_id: String) -> Dictionary:
+	return _specialization_service.check_unlock_specialization(
+		_campaign, raider_id
+	).duplicate(true)
+
+
+func unlock_raider_specialization(raider_id: String) -> Dictionary:
+	var result: Dictionary = _specialization_service.unlock_specialization(
+		_campaign, raider_id
+	)
+	if not bool(result.get("ok", false)):
+		return result.duplicate(true)
+	emit_notable_event(
+		{
+			"event_type": "specialization_unlocked",
+			"source_system": "class_advancement",
+			"participants": [raider_id],
+			"memory_category": "personal_reflection",
+			"subject_key": "specialization_unlocked",
+			"significance": 72,
+			"structured_data": {
+				"base_class_id": String(result.get("base_class_id", "")),
+				"consumed_token_id": String(result.get("consumed_token_id", "")),
+			},
+		},
+		false
+	)
+	state_changed.emit()
+	return result.duplicate(true)
+
+
+func check_select_raider_lineage(raider_id: String, lineage_id: String) -> Dictionary:
+	return check_lock_raider_lineage(raider_id, lineage_id)
+
+
+func select_raider_lineage(raider_id: String, lineage_id: String) -> Dictionary:
+	return lock_raider_lineage(raider_id, lineage_id)
+
+
+func clear_raider_lineage(raider_id: String) -> Dictionary:
+	var result: Dictionary = _specialization_service.clear_lineage(_campaign, raider_id)
+	if bool(result.get("ok", false)):
+		state_changed.emit()
+	return result.duplicate(true)
+
+
+func check_commit_raider_advanced_class(raider_id: String) -> Dictionary:
+	return _specialization_service.check_commit_advanced_class(
+		_campaign, raider_id
+	).duplicate(true)
+
+
+func commit_raider_advanced_class(raider_id: String) -> Dictionary:
+	var previous_class := String(
+		get_raider_campaign_state(raider_id).get("advanced_class_id", "")
+	)
+	var result: Dictionary = _specialization_service.commit_advanced_class(
+		_campaign, raider_id
+	)
+	if not bool(result.get("ok", false)):
+		return result.duplicate(true)
+	_record_class_advancement(
+		raider_id,
+		previous_class,
+		String(result.get("advanced_class_id", "")),
+		String(result.get("lineage_id", ""))
+	)
+	state_changed.emit()
+	return result.duplicate(true)
+
+
 func advance_raider_class(
 	raider_id: String, advanced_class_id: String, specialization_id: String = ""
 ) -> bool:
-	var states: Dictionary = _campaign.get("raider_states", {})
-	var state_value: Variant = states.get(raider_id, {})
-
-	if not state_value is Dictionary or not bool(state_value.get("recruited", false)):
+	# Compatibility seam for isolated test fixtures. Player-facing progression uses
+	# unlock_raider_specialization, select_raider_lineage, and commit_raider_advanced_class.
+	if not GameState.is_raid_test_mode():
 		return false
-
-	var state: Dictionary = state_value
-	var previous_class := String(state.get("advanced_class_id", ""))
-	state["advanced_class_id"] = advanced_class_id
-	state["specialization_id"] = specialization_id
-	states[raider_id] = state
+	var state := get_raider_campaign_state(raider_id)
+	if state.is_empty() or not bool(state.get("recruited", false)):
+		return false
+	var canonical_advanced := RaiderClassCatalogScript.normalize_class_id(advanced_class_id)
+	var lineage_id := RaiderClassCatalogScript.normalize_lineage_id(
+		specialization_id if not specialization_id.is_empty() else canonical_advanced
+	)
+	var base_class_id := RaiderClassCatalogScript.normalize_class_id(
+		String(state.get("current_class", ""))
+	)
+	if (
+		RaiderClassCatalogScript.resolve_advanced_class_id(base_class_id, lineage_id)
+		!= canonical_advanced
+	):
+		return false
+	var states: Dictionary = Dictionary(_campaign.get("raider_states", {})).duplicate(true)
+	var mutable_state: Dictionary = Dictionary(states.get(raider_id, {})).duplicate(true)
+	var previous_class := String(mutable_state.get("advanced_class_id", ""))
+	mutable_state["specialization_unlocked"] = true
+	mutable_state["lineage_token_spent"] = true
+	mutable_state["secondary_lineage_id"] = lineage_id
+	mutable_state["specialization_id"] = lineage_id
+	mutable_state["advanced_class_id"] = canonical_advanced
+	mutable_state["advanced_class_completed_id"] = canonical_advanced
+	mutable_state["lineage_progress_by_id"] = {
+		lineage_id: {
+			"completed_node_ids": [
+				"entry",
+				"tier_1_left", "tier_1_center", "tier_1_right",
+				"tier_2_left", "tier_2_center", "tier_2_right",
+				"tier_3_left", "tier_3_center", "tier_3_right",
+				"capstone",
+			],
+			"objective_progress": {},
+		},
+	}
+	states[raider_id] = mutable_state
 	_campaign["raider_states"] = states
+	_record_class_advancement(raider_id, previous_class, canonical_advanced, lineage_id)
+	state_changed.emit()
+	return true
+
+
+func _record_class_advancement(
+	raider_id: String, previous_class_id: String,
+	advanced_class_id: String, lineage_id: String
+) -> void:
 	emit_notable_event(
 		{
 			"event_type": "class_advanced",
@@ -1241,16 +1396,36 @@ func advance_raider_class(
 			"promotion_reason": "important_class_milestone",
 			"force_episode": true,
 			"structured_data": {
-				"previous_advanced_class_id": previous_class,
+				"previous_advanced_class_id": previous_class_id,
 				"advanced_class_id": advanced_class_id,
-				"specialization_id": specialization_id,
+				"secondary_lineage_id": lineage_id,
+				"specialization_id": lineage_id,
+				"free_for_testing": true,
 			},
 			"life_prose_template_id": "important_class_milestone",
 		},
 		false
 	)
-	state_changed.emit()
-	return true
+
+
+func _record_class_identity_earned(raider_id: String, lineage_id: String) -> void:
+	emit_notable_event(
+		{
+			"event_type": "class_identity_earned",
+			"source_system": "class_advancement",
+			"participants": [raider_id],
+			"memory_category": "personal_reflection",
+			"subject_key": "class_identity:%s" % lineage_id,
+			"significance": 82,
+			"is_milestone": true,
+			"structured_data": {
+				"advanced_class_id": lineage_id,
+				"secondary_lineage_id": lineage_id,
+			},
+			"life_prose_template_id": "important_class_milestone",
+		},
+		false
+	)
 
 
 func advance_memory_lifecycle(now_unix_time: int = 0) -> void:
@@ -1304,6 +1479,19 @@ func record_attempt(summary: Dictionary) -> Dictionary:
 		reward_result = _reward_service.process_victory(_campaign, attempt_summary)
 		if not bool(reward_result.get("ok", false)):
 			return reward_result
+		var training_result: Dictionary = _specialization_service.apply_victory_summary(
+			_campaign, attempt_summary
+		)
+		attempt_summary["training_progress"] = training_result.duplicate(true)
+		for update_value in training_result.get("updates", []):
+			var update: Dictionary = update_value
+			var trained_raider_id := String(update.get("raider_id", ""))
+			var lineage_id := String(update.get("lineage_id", ""))
+			var completed_nodes: Array = update.get("completed_node_ids", [])
+			if completed_nodes.has("entry"):
+				_record_class_identity_earned(trained_raider_id, lineage_id)
+			if completed_nodes.has("capstone"):
+				_record_class_advancement(trained_raider_id, "", lineage_id, lineage_id)
 
 	var known_discoveries := get_discoveries(encounter_id)
 	var known_abilities: Array = known_discoveries.get("ability_ids", [])
@@ -2710,12 +2898,36 @@ func _project_member(raider_id: String, state: Dictionary) -> Dictionary:
 func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictionary:
 	var raider_id := String(state.get("raider_id", definition.get("raider_id", "")))
 	var assigned_roles := _unique_string_array(state.get("assigned_roles", []))
-	var default_role := String(definition.get("default_role", "dps"))
+	var advanced_class_id := String(state.get("advanced_class_id", ""))
+	var active_lineage_id := String(
+		state.get("secondary_lineage_id", state.get("specialization_id", ""))
+	)
+	var role_class_id := (
+		active_lineage_id
+		if not active_lineage_id.is_empty()
+		else String(state.get("current_class", definition.get("default_class", "Mage")))
+	)
+	var active_lineage := RaiderClassCatalogScript.get_lineage_definition(
+		active_lineage_id
+	)
+	var class_roles := RaiderClassCatalogScript.get_roles(role_class_id)
+	var default_role := (
+		class_roles[0]
+		if not class_roles.is_empty()
+		else String(definition.get("default_role", "dps"))
+	)
+	if not assigned_roles.is_empty() and not class_roles.has(assigned_roles[0]):
+		assigned_roles.clear()
 
 	if assigned_roles.is_empty():
 		assigned_roles.append(default_role)
 
 	var weapon_projection := _runtime_weapon_projection(state)
+	var identity_definition := RaiderClassCatalogScript.get_definition(
+		advanced_class_id
+		if not advanced_class_id.is_empty()
+		else String(state.get("current_class", definition.get("default_class", "Mage")))
+	)
 	return {
 		# Camp V1 and combat consumers retain these aliases while stable IDs remain authoritative.
 		"member_id": raider_id,
@@ -2726,6 +2938,7 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 		),
 		"role": assigned_roles[0],
 		"roles": assigned_roles,
+		"class_roles": class_roles,
 		"attributes": Array(definition.get("personality_tags", [])).duplicate(),
 		"personality_tags": Array(definition.get("personality_tags", [])).duplicate(),
 		"personality_description": String(definition.get("personality_description", "")),
@@ -2743,8 +2956,36 @@ func _project_member_from(definition: Dictionary, state: Dictionary) -> Dictiona
 		).duplicate(),
 		"recruitment_metadata": Dictionary(definition.get("recruitment", {})).duplicate(true),
 		"recruit_order": int(definition.get("catalog_order", 0)),
-		"advanced_class_id": String(state.get("advanced_class_id", "")),
+		"specialization_unlocked": bool(state.get("specialization_unlocked", false)),
+		"lineage_token_spent": bool(
+			state.get("lineage_token_spent", state.get("specialization_unlocked", false))
+		),
+		"secondary_lineage_id": String(
+			state.get("secondary_lineage_id", state.get("specialization_id", ""))
+		),
+		"lineage_stat_modifiers": Dictionary(
+			active_lineage.get("stat_modifiers", {})
+		).duplicate(true),
+		"lineage_passive_effect": Dictionary(
+			active_lineage.get("passive_effect", {})
+		).duplicate(true),
+		"advanced_class_id": advanced_class_id,
+		"class_identity_id": advanced_class_id,
+		"class_display_name": String(
+			identity_definition.get(
+				"display_name", state.get("current_class", definition.get("default_class", "Mage"))
+			)
+		),
+		"advanced_class_completed_id": String(
+			state.get("advanced_class_completed_id", "")
+		),
+		"full_advanced_class_id": String(
+			state.get("advanced_class_completed_id", "")
+		),
 		"specialization_id": String(state.get("specialization_id", "")),
+		"lineage_progress_by_id": Dictionary(
+			state.get("lineage_progress_by_id", {})
+		).duplicate(true),
 		"equipped_weapon_id": String(state.get("equipped_weapon_id", "")),
 		"weapon_runtime_active": bool(weapon_projection.get("active", false)),
 		"weapon_family_id": String(weapon_projection.get("family_id", "")),

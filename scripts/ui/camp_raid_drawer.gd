@@ -23,8 +23,6 @@ var content_panel: Control = null
 var stack: VBoxContainer = null
 var handle: Button = null
 var feedback: Label = null
-
-
 func _ready() -> void:
 	name = "CampRaidDrawer"
 	add_to_group("camp_raid_drawer")
@@ -144,6 +142,7 @@ func _build_shell() -> void:
 	feedback_style.set_corner_radius_all(3)
 	feedback.add_theme_stylebox_override("normal", feedback_style)
 	add_child(feedback)
+
 	_update_handle()
 
 

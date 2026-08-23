@@ -18,6 +18,193 @@ const ADVANCED_CLASS_ORDER: Array[String] = [
 	"echo_butcher", "ritebreaker", "drift_knife", "phasehand",
 	"hearth_corsair", "rift_tailor", "rune_slinger", "orbit_scribe",
 ]
+const SECONDARY_ARCHETYPE_ORDER: Array[String] = ["warrior", "priest", "rogue", "mage"]
+const LINEAGE_BLUEPRINTS: Dictionary = {
+	"hollow_anvil": {
+		"base_class_id": "warrior",
+		"secondary_archetype_id": "warrior",
+		"raid_roles": ["tank"],
+		"identity_summary": "A planted defensive specialist who grows harder to dislodge.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "anchored_damage_reduction",
+			"summary": "After remaining in the same mini-region for 3 seconds, gain a small amount of damage reduction until leaving it.",
+			"tuning": {"stationary_seconds": 3.0},
+		},
+	},
+	"gravelord_proxy": {
+		"base_class_id": "warrior",
+		"secondary_archetype_id": "priest",
+		"raid_roles": ["tank"],
+		"identity_summary": "A sacrificial tank who protects allies through proxies and transferred pressure.",
+		"design_status": "open",
+		"passive_effect": {},
+	},
+	"sunder_clerk": {
+		"base_class_id": "warrior",
+		"secondary_archetype_id": "rogue",
+		"raid_roles": ["dps"],
+		"identity_summary": "A deliberate positional damage dealer who exploits angles and broken defenses.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "rear_basic_attack_bonus",
+			"summary": "Basic attacks from behind the target deal a small amount of additional damage.",
+			"tuning": {},
+		},
+	},
+	"lantern_warden": {
+		"base_class_id": "warrior",
+		"secondary_archetype_id": "mage",
+		"raid_roles": ["tank"],
+		"identity_summary": "A relocation tank who controls movement routes and rescues allies.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "wayfarer_first_hit_reduction",
+			"summary": "After entering a different mini-region, reduce the first direct hit received within 4 seconds. This can occur once every 15 seconds.",
+			"tuning": {"window_seconds": 4.0, "internal_cooldown_seconds": 15.0},
+		},
+	},
+	"burden_courier": {
+		"base_class_id": "priest",
+		"secondary_archetype_id": "warrior",
+		"raid_roles": ["healer", "support"],
+		"identity_summary": "A support healer who carries harmful effects away from allies.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "cleanse_personal_shield",
+			"summary": "After successfully cleansing an ally, gain a brief, non-stacking personal shield.",
+			"tuning": {"stacking": "non_stacking"},
+		},
+	},
+	"memory_apothecary": {
+		"base_class_id": "priest",
+		"secondary_archetype_id": "priest",
+		"raid_roles": ["healer"],
+		"identity_summary": "A proactive healer who prepares vulnerable allies for repeated harm.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "overheal_reserve",
+			"summary": "A small portion of overhealing becomes a short-lived reserve on that target and is consumed by the next damage received.",
+			"tuning": {},
+		},
+	},
+	"scar_gardener": {
+		"base_class_id": "priest",
+		"secondary_archetype_id": "rogue",
+		"raid_roles": ["healer"],
+		"identity_summary": "A mobile attrition healer who leaves future healing value behind.",
+		"design_status": "seed",
+		"passive_effect": {
+			"effect_id": "healing_after_moving",
+			"summary": "Healing is slightly increased after moving. This remains an early conceptual seed.",
+			"tuning": {},
+		},
+	},
+	"moth_surgeon": {
+		"base_class_id": "priest",
+		"secondary_archetype_id": "mage",
+		"raid_roles": ["healer"],
+		"identity_summary": "An indirect triage healer who redirects care through moth-like agents.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "overheal_redirect",
+			"summary": "A small portion of overhealing redirects to a nearby injured ally and cannot cause another transfer.",
+			"tuning": {"recursive_transfer": false},
+		},
+	},
+	"echo_butcher": {
+		"base_class_id": "rogue",
+		"secondary_archetype_id": "warrior",
+		"raid_roles": ["dps"],
+		"identity_summary": "A sustained damage dealer who creates and consumes repeating wounds.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "refreshing_basic_bleed",
+			"summary": "Basic attacks apply a weak, non-stacking bleed; further basic attacks refresh its duration.",
+			"tuning": {"stacking": "non_stacking", "refreshes_duration": true},
+		},
+	},
+	"ritebreaker": {
+		"base_class_id": "rogue",
+		"secondary_archetype_id": "priest",
+		"raid_roles": ["dps"],
+		"identity_summary": "An anti-magic damage dealer who turns successful disruption into support.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "interrupt_ally_heal",
+			"summary": "Successful interrupts restore a small amount of health to the most injured nearby ally.",
+			"tuning": {},
+		},
+	},
+	"drift_knife": {
+		"base_class_id": "rogue",
+		"secondary_archetype_id": "rogue",
+		"raid_roles": ["dps"],
+		"identity_summary": "A close-range setup specialist who converts commitment into ranged execution.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "weakened_ranged_basics",
+			"summary": "Can throw knives for weaker basic attacks at mid or far range while retaining normal close-range attacks.",
+			"tuning": {"damage_multiplier_min": 0.70, "damage_multiplier_max": 0.80},
+		},
+	},
+	"phasehand": {
+		"base_class_id": "rogue",
+		"secondary_archetype_id": "mage",
+		"raid_roles": ["dps"],
+		"identity_summary": "A highly mobile damage dealer who manipulates phase states and position.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "periodic_indirect_phase",
+			"summary": "Once every 60 seconds, phase through the first indirect, non-periodic hit that would deal damage.",
+			"tuning": {"cooldown_seconds": 60.0},
+		},
+	},
+	"hearth_corsair": {
+		"base_class_id": "mage",
+		"secondary_archetype_id": "warrior",
+		"raid_roles": ["dps"],
+		"identity_summary": "An aggressive close-to-midrange fire specialist who accumulates and spends Warmth.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "inward_movement_burn",
+			"summary": "After moving from a farther range band into a closer one, the next basic attack within several seconds applies a brief, weak, non-stacking burn with a short internal cooldown.",
+			"tuning": {"stacking": "non_stacking"},
+		},
+	},
+	"rift_tailor": {
+		"base_class_id": "mage",
+		"secondary_archetype_id": "priest",
+		"raid_roles": ["dps", "support"],
+		"identity_summary": "A long-range channeler who composes links and spatial relationships.",
+		"design_status": "open",
+		"passive_effect": {},
+	},
+	"rune_slinger": {
+		"base_class_id": "mage",
+		"secondary_archetype_id": "rogue",
+		"raid_roles": ["dps"],
+		"identity_summary": "A spatial rune specialist who rewards Dodge timing and connected regions.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "post_dodge_cast_speed",
+			"summary": "After completing a Dodge, the next spell begun within 4 seconds has a modestly shorter cast time, subject to an internal cooldown.",
+			"tuning": {"window_seconds": 4.0},
+		},
+	},
+	"orbit_scribe": {
+		"base_class_id": "mage",
+		"secondary_archetype_id": "mage",
+		"raid_roles": ["dps"],
+		"identity_summary": "A range-sensitive damage dealer who writes patterns with rotating magical objects.",
+		"design_status": "provisional",
+		"passive_effect": {
+			"effect_id": "alternating_basic_damage_type",
+			"summary": "Basic attacks alternate between magical and physical damage without changing their total base damage.",
+			"tuning": {"total_damage_unchanged": true},
+		},
+	},
+}
 const ICON_ROOT := "res://icons/class_visuals/"
 const COMPACT_ICON_ROOT := "res://icons/class_visuals/compact/"
 const DEFAULT_WEAPON_ICON_ROOT := "res://icons/weapon_visuals/defaults/"
@@ -97,6 +284,123 @@ static func get_all_definitions() -> Array[Dictionary]:
 	return result
 
 
+static func get_all_lineage_ids() -> Array[String]:
+	return ADVANCED_CLASS_ORDER.duplicate()
+
+
+static func get_all_lineage_definitions() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for lineage_id in ADVANCED_CLASS_ORDER:
+		result.append(get_lineage_definition(lineage_id))
+	return result
+
+
+static func get_lineage_definition(lineage_id: String) -> Dictionary:
+	_ensure_catalog()
+	var canonical := normalize_lineage_id(lineage_id)
+	if not LINEAGE_BLUEPRINTS.has(canonical):
+		return {}
+	var blueprint: Dictionary = Dictionary(LINEAGE_BLUEPRINTS[canonical]).duplicate(true)
+	var advanced: Dictionary = _definitions.get(canonical, {})
+	blueprint["lineage_id"] = canonical
+	blueprint["display_name"] = "%s Lineage" % String(
+		advanced.get("display_name", canonical.replace("_", " ").capitalize())
+	)
+	blueprint["advanced_class_id"] = canonical
+	blueprint["advanced_class_name"] = String(advanced.get("display_name", ""))
+	blueprint["stat_modifiers"] = Dictionary(
+		blueprint.get(
+			"stat_modifiers",
+			_default_lineage_stat_modifiers(
+				String(blueprint.get("secondary_archetype_id", ""))
+			)
+		)
+	).duplicate(true)
+	blueprint["stat_bonus_summary"] = String(
+		blueprint.get(
+			"stat_bonus_summary",
+			_default_lineage_stat_summary(
+				String(blueprint.get("secondary_archetype_id", ""))
+			)
+		)
+	)
+	blueprint["combat_effect_active"] = false
+	return blueprint
+
+
+static func get_lineages_for_base_class(base_class_id: String) -> Array[Dictionary]:
+	var canonical_base := normalize_class_id(base_class_id)
+	var result: Array[Dictionary] = []
+	for lineage_id in ADVANCED_CLASS_ORDER:
+		var lineage := get_lineage_definition(lineage_id)
+		if String(lineage.get("base_class_id", "")) == canonical_base:
+			result.append(lineage)
+	result.sort_custom(
+		func(a: Dictionary, b: Dictionary) -> bool:
+			return SECONDARY_ARCHETYPE_ORDER.find(
+				String(a.get("secondary_archetype_id", ""))
+			) < SECONDARY_ARCHETYPE_ORDER.find(
+				String(b.get("secondary_archetype_id", ""))
+			)
+	)
+	return result
+
+
+static func resolve_advanced_class_id(base_class_id: String, lineage_id: String) -> String:
+	var canonical_base := normalize_class_id(base_class_id)
+	var lineage := get_lineage_definition(lineage_id)
+	if String(lineage.get("base_class_id", "")) != canonical_base:
+		return ""
+	return String(lineage.get("advanced_class_id", ""))
+
+
+static func get_advanced_class_for_pairing(
+	base_class_id: String, secondary_archetype_id: String
+) -> Dictionary:
+	var canonical_base := normalize_class_id(base_class_id)
+	var canonical_secondary := normalize_class_id(secondary_archetype_id)
+	for lineage in get_lineages_for_base_class(canonical_base):
+		if String(lineage.get("secondary_archetype_id", "")) == canonical_secondary:
+			return get_definition(String(lineage.get("advanced_class_id", "")))
+	return {}
+
+
+static func validate_specialization_catalog() -> PackedStringArray:
+	_ensure_catalog()
+	var errors := PackedStringArray()
+	if LINEAGE_BLUEPRINTS.size() != 16:
+		errors.append("The lineage catalog must contain exactly 16 definitions.")
+	var seen_pairings: Dictionary = {}
+	for lineage_id in ADVANCED_CLASS_ORDER:
+		var lineage := get_lineage_definition(lineage_id)
+		if lineage.is_empty():
+			errors.append("Advanced class '%s' is missing its lineage." % lineage_id)
+			continue
+		var base_id := String(lineage.get("base_class_id", ""))
+		var secondary_id := String(lineage.get("secondary_archetype_id", ""))
+		var pairing_key := "%s/%s" % [base_id, secondary_id]
+		if not BASE_CLASS_ORDER.has(base_id):
+			errors.append("Lineage '%s' has invalid base class '%s'." % [lineage_id, base_id])
+		if not BASE_CLASS_ORDER.has(secondary_id):
+			errors.append(
+				"Lineage '%s' has invalid secondary archetype '%s'."
+				% [lineage_id, secondary_id]
+			)
+		if seen_pairings.has(pairing_key):
+			errors.append("Lineage pairing '%s' is duplicated." % pairing_key)
+		seen_pairings[pairing_key] = true
+		var advanced: Dictionary = _definitions.get(lineage_id, {})
+		if String(advanced.get("parent_class_id", "")) != base_id:
+			errors.append("Advanced class '%s' does not match its lineage base class." % lineage_id)
+		if Array(lineage.get("raid_roles", [])).is_empty():
+			errors.append("Lineage '%s' is missing authoritative raid roles." % lineage_id)
+		if String(lineage.get("design_status", "")) not in ["provisional", "seed", "open"]:
+			errors.append("Lineage '%s' has an invalid design status." % lineage_id)
+	if seen_pairings.size() != 16:
+		errors.append("The lineage catalog does not cover every ordered base/secondary pairing.")
+	return errors
+
+
 static func get_advanced_classes_for_parent(parent_class: String) -> Array[Dictionary]:
 	_ensure_catalog()
 	var parent_id := normalize_class_id(parent_class)
@@ -112,6 +416,13 @@ static func normalize_class_id(class_id: String) -> String:
 	_ensure_catalog()
 	var normalized := _normalize_lookup(class_id)
 	return String(_aliases.get(normalized, normalized))
+
+
+static func normalize_lineage_id(lineage_id: String) -> String:
+	var normalized := _normalize_lookup(lineage_id)
+	if normalized.ends_with("_lineage"):
+		normalized = normalized.trim_suffix("_lineage")
+	return normalize_class_id(normalized)
 
 
 static func is_advanced_class_id(class_id: String) -> bool:
@@ -282,6 +593,7 @@ static func _register_advanced(
 	main_color_hex: String, accent_color_hex: String
 ) -> void:
 	var parent: Dictionary = _definitions[parent_class_id]
+	var lineage: Dictionary = Dictionary(LINEAGE_BLUEPRINTS.get(class_id, {}))
 	var aliases: Array[String] = [class_id, class_id.replace("_", " "), display_name.to_lower()]
 	var visual := ClassVisualDefinitionScript.new(
 		class_id, display_name, parent_class_id, class_id, Color(main_color_hex),
@@ -294,7 +606,13 @@ static func _register_advanced(
 		"parent_class_id": parent_class_id,
 		"unit_class": String(parent.get("unit_class", "")),
 		"unit_definition": parent.get("unit_definition"),
-		"roles": Array(parent.get("roles", [])).duplicate(),
+		"roles": Array(lineage.get("raid_roles", parent.get("roles", []))).duplicate(),
+		"raid_roles": Array(lineage.get("raid_roles", [])).duplicate(),
+		"secondary_lineage_id": class_id,
+		"secondary_archetype_id": String(lineage.get("secondary_archetype_id", "")),
+		"identity_summary": String(lineage.get("identity_summary", "")),
+		"unlock_costs": [],
+		"free_for_testing": true,
 		"voice_aliases": aliases,
 		"visual": visual,
 		"camp_color": parent.get("camp_color", visual.main_color),
@@ -331,6 +649,32 @@ static func _load_default_weapon_icon(class_id: String) -> Texture2D:
 
 static func _default_weapon_family_id(class_id: String) -> String:
 	return String(DEFAULT_WEAPON_FAMILY_BY_CLASS.get(class_id, ""))
+
+
+static func _default_lineage_stat_modifiers(secondary_archetype_id: String) -> Dictionary:
+	match secondary_archetype_id:
+		"warrior":
+			return {"maximum_health_multiplier": 1.05}
+		"priest":
+			return {"healing_received_multiplier": 1.05}
+		"rogue":
+			return {"movement_speed_multiplier": 1.05}
+		"mage":
+			return {"ability_power_multiplier": 1.05}
+	return {}
+
+
+static func _default_lineage_stat_summary(secondary_archetype_id: String) -> String:
+	match secondary_archetype_id:
+		"warrior":
+			return "+5% maximum health (provisional)."
+		"priest":
+			return "+5% healing received (provisional)."
+		"rogue":
+			return "+5% movement speed (provisional)."
+		"mage":
+			return "+5% ability power (provisional)."
+	return "Stat improvement remains open."
 
 
 static func _normalize_lookup(value: String) -> String:

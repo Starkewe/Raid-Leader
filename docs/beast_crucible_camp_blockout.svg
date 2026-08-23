@@ -1,0 +1,260 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">The Beast Crucible — Camp topology blockout</title>
+  <desc id="desc">A deterministic top-down camp layout schematic with a defended southern gate, connected facilities, one fog ravine on the eastern edge, a Liaison Post on a reachable terrace, and deliberate outer activity walks.</desc>
+
+  <defs>
+    <pattern id="dust" width="56" height="56" patternUnits="userSpaceOnUse">
+      <rect width="56" height="56" fill="#3b302a"/>
+      <path d="M4 16L18 11M33 42L47 35M25 23l4-3M9 49l3-2" stroke="#4b3b31" stroke-width="2" opacity=".65"/>
+      <circle cx="42" cy="12" r="2" fill="#59463a" opacity=".7"/>
+      <circle cx="19" cy="37" r="2" fill="#59463a" opacity=".6"/>
+    </pattern>
+    <pattern id="stone" width="44" height="32" patternUnits="userSpaceOnUse">
+      <rect width="44" height="32" fill="#4a4842"/>
+      <path d="M0 8h18l6 7H0M27 0h17v10l-7 5H20M10 23h22l4 9H4z" fill="#5a554d" stroke="#34312d" stroke-width="2"/>
+    </pattern>
+    <pattern id="road" width="80" height="50" patternUnits="userSpaceOnUse">
+      <rect width="80" height="50" fill="#725640"/>
+      <path d="M2 19h20M35 8h14M55 36h21M15 44h9" stroke="#8c6b4d" stroke-width="3" opacity=".55"/>
+      <circle cx="29" cy="30" r="3" fill="#594331"/>
+      <circle cx="67" cy="13" r="2" fill="#594331"/>
+    </pattern>
+    <linearGradient id="fog" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9aa7aa" stop-opacity=".12"/>
+      <stop offset=".5" stop-color="#c7d0ce" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#8b9a9d" stop-opacity=".18"/>
+    </linearGradient>
+    <filter id="softFog" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#c8a46a"/>
+    </marker>
+    <style>
+      .title { font: 700 28px Georgia, serif; fill: #e6d5ad; letter-spacing: 1px; }
+      .subtitle { font: 14px Arial, sans-serif; fill: #b9aa90; letter-spacing: .5px; }
+      .label { font: 700 15px Arial, sans-serif; fill: #f0e1bd; letter-spacing: .3px; }
+      .small { font: 12px Arial, sans-serif; fill: #d6c5a5; }
+      .tiny { font: 11px Arial, sans-serif; fill: #b9aa90; }
+      .facility { fill: #2d2724; stroke: #c9a66e; stroke-width: 3; rx: 12; }
+      .facility-work { fill: #302723; stroke: #d18b55; stroke-width: 3; rx: 12; }
+      .facility-record { fill: #292c2d; stroke: #9ba8a1; stroke-width: 3; rx: 12; }
+      .facility-liaison { fill: #202c31; stroke: #7da9a9; stroke-width: 4; rx: 12; }
+      .path-primary { fill: none; stroke: #8b6a4d; stroke-width: 54; stroke-linecap: round; stroke-linejoin: round; }
+      .path-primary-top { fill: none; stroke: #b28a5d; stroke-width: 30; stroke-linecap: round; stroke-linejoin: round; opacity: .72; }
+      .path-secondary { fill: none; stroke: #76553f; stroke-width: 30; stroke-linecap: round; stroke-linejoin: round; }
+      .path-secondary-top { fill: none; stroke: #9a7650; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
+      .patrol { fill: none; stroke: #c6a064; stroke-width: 5; stroke-dasharray: 14 12; opacity: .85; }
+      .boundary { fill: none; stroke: #211c1a; stroke-width: 28; stroke-linejoin: round; }
+      .boundary-top { fill: none; stroke: #b18c5a; stroke-width: 4; stroke-dasharray: 9 8; stroke-linejoin: round; }
+      .note-box { fill: #242220; stroke: #685845; stroke-width: 2; rx: 12; }
+      .callout { fill: none; stroke: #bfa16c; stroke-width: 2; stroke-dasharray: 6 5; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#171719"/>
+  <rect x="24" y="24" width="1552" height="952" rx="24" fill="#211e1d" stroke="#55453a" stroke-width="3"/>
+  <text x="54" y="68" class="title">THE BEAST CRUCIBLE — CAMP BLOCKOUT</text>
+  <text x="56" y="93" class="subtitle">Topology first · dimensions intentionally open · travel time and defensibility are the hard constraints</text>
+
+  <!-- Barren basin and restrained natural boundaries. -->
+  <path d="M106 172 Q180 111 334 127 Q490 91 657 130 Q817 96 1014 135 Q1186 98 1345 172 Q1416 274 1376 392 Q1438 521 1386 653 Q1434 803 1334 886 Q1194 928 1008 902 Q824 938 658 903 Q486 931 334 893 Q173 912 101 791 Q131 659 105 527 Q145 381 106 172Z" fill="url(#dust)" stroke="#5c493b" stroke-width="4"/>
+  <path d="M171 172 Q240 133 334 142 Q467 113 602 145 Q726 126 884 144 Q1044 115 1180 151 Q1258 175 1304 218" fill="none" stroke="#735a48" stroke-width="3" opacity=".65"/>
+
+  <!-- One major fog ravine along the eastern edge. -->
+  <path d="M1338 118 C1268 220 1436 302 1352 408 C1262 522 1450 601 1350 712 C1285 792 1415 838 1340 920 L1550 920 L1550 106 L1402 106Z" fill="#30393b" stroke="#151d1e" stroke-width="14"/>
+  <path d="M1370 118 C1306 220 1460 306 1376 410 C1284 523 1468 602 1372 711 C1308 791 1432 838 1364 920" fill="none" stroke="url(#fog)" stroke-width="70" filter="url(#softFog)" opacity=".9"/>
+  <path d="M1365 118 C1300 222 1454 302 1368 410 C1280 519 1462 602 1364 712 C1300 794 1428 840 1358 920" fill="none" stroke="#8d9b9e" stroke-width="5" opacity=".65"/>
+  <text x="1450" y="286" class="small" transform="rotate(82 1450 286)">FOG RAVINE / CAMP EDGE</text>
+
+  <!-- Small dry gully: a boundary, not a second bridge network. -->
+  <path d="M174 142 C220 206 192 260 247 326 C279 366 249 398 275 438" fill="none" stroke="#272522" stroke-width="30"/>
+  <path d="M174 142 C220 206 192 260 247 326 C279 366 249 398 275 438" fill="none" stroke="#76685b" stroke-width="5" stroke-dasharray="7 9" opacity=".75"/>
+  <text x="126" y="350" class="tiny" transform="rotate(61 126 350)">DRY GULLY</text>
+
+  <!-- Uneven terraces. -->
+  <path d="M491 189 Q585 151 775 181 L839 360 Q721 397 534 350Z" fill="#4b4943" stroke="#726652" stroke-width="4"/>
+  <path d="M247 365 Q322 321 475 369 L501 548 Q360 575 245 520Z" fill="#45433e" stroke="#6d5c4d" stroke-width="4"/>
+  <path d="M923 216 Q1045 182 1201 242 L1246 450 Q1115 479 977 424Z" fill="#464641" stroke="#6d5c4d" stroke-width="4"/>
+  <path d="M282 646 Q400 607 559 654 L632 851 Q463 887 300 833Z" fill="#46423d" stroke="#6d5c4d" stroke-width="4"/>
+  <path d="M1088 576 Q1221 534 1327 601 L1320 805 Q1205 836 1090 770Z" fill="#45433f" stroke="#6d5c4d" stroke-width="4"/>
+
+  <!-- Defensive perimeter: one gate, visible watch line, no accidental gaps. -->
+  <path d="M151 244 Q236 145 403 148 Q550 103 709 142 Q908 92 1074 139 Q1232 139 1335 241 Q1374 338 1330 466 Q1382 589 1328 706 Q1370 818 1274 879 Q1114 931 951 892 Q792 935 631 896 Q462 930 316 876 Q170 838 144 717 Q181 584 143 467 Q112 351 151 244Z" class="boundary"/>
+  <path d="M151 244 Q236 145 403 148 Q550 103 709 142 Q908 92 1074 139 Q1232 139 1335 241 Q1374 338 1330 466 Q1382 589 1328 706 Q1370 818 1274 879 Q1114 931 951 892 Q792 935 631 896 Q462 930 316 876 Q170 838 144 717 Q181 584 143 467 Q112 351 151 244Z" class="boundary-top"/>
+
+  <!-- Gate opening and approach court. -->
+  <path d="M709 900 Q790 884 872 900" stroke="#211c1a" stroke-width="42"/>
+  <path d="M714 900 Q790 884 867 900" stroke="#d0aa6e" stroke-width="4" stroke-dasharray="8 7"/>
+  <path d="M720 963 L866 963 L868 900 Q790 884 710 900Z" fill="#504034" stroke="#171617" stroke-width="5"/>
+  <rect x="721" y="844" width="48" height="66" fill="#382b25" stroke="#bd955b" stroke-width="4"/>
+  <rect x="820" y="844" width="48" height="66" fill="#382b25" stroke="#bd955b" stroke-width="4"/>
+  <path d="M744 845v-40M844 845v-40" stroke="#c39a60" stroke-width="4"/>
+  <path d="M744 805l24 9-24 10zM844 805l24 9-24 10z" fill="#a8554a"/>
+  <text x="728" y="945" class="label">SOUTH GATE</text>
+  <text x="706" y="983" class="tiny">one controlled entry · arrival court</text>
+
+  <!-- Primary route from gate to the operational heart. -->
+  <path d="M790 900 Q792 820 760 752 Q743 685 715 606 Q695 515 676 386 Q650 320 628 286" class="path-primary"/>
+  <path d="M790 900 Q792 820 760 752 Q743 685 715 606 Q695 515 676 386 Q650 320 628 286" class="path-primary-top"/>
+
+  <!-- Secondary routes: irregular branches, not a mirrored ring. -->
+  <path d="M710 610 Q604 554 480 488 Q408 456 358 442" class="path-secondary"/>
+  <path d="M710 610 Q604 554 480 488 Q408 456 358 442" class="path-secondary-top"/>
+  <path d="M710 610 Q590 659 497 733 Q455 770 410 781" class="path-secondary"/>
+  <path d="M710 610 Q590 659 497 733 Q455 770 410 781" class="path-secondary-top"/>
+  <path d="M710 610 Q836 558 922 418 Q953 366 975 318" class="path-secondary"/>
+  <path d="M710 610 Q836 558 922 418 Q953 366 975 318" class="path-secondary-top"/>
+  <path d="M710 610 Q846 650 975 700 Q1081 734 1190 710" class="path-secondary"/>
+  <path d="M710 610 Q846 650 975 700 Q1081 734 1190 710" class="path-secondary-top"/>
+  <path d="M975 318 Q1072 352 1160 425" class="path-secondary"/>
+  <path d="M975 318 Q1072 352 1160 425" class="path-secondary-top"/>
+
+  <!-- Outer patrol / ambient loop. -->
+  <path d="M191 704 Q196 560 220 460 Q203 323 310 230 Q452 185 536 177 Q740 142 871 169 Q1050 145 1184 203 Q1271 273 1274 384 Q1298 494 1272 588 Q1284 716 1224 803 Q1090 853 974 836 Q820 870 681 842 Q519 870 385 824 Q278 804 191 704Z" class="patrol"/>
+  <text x="206" y="634" class="tiny" transform="rotate(-86 206 634)">OUTER PATROL / SOCIAL WALK</text>
+
+  <!-- Single timber bridge to an optional fog overlook, outside the essential route graph. -->
+  <g>
+    <path d="M1260 526 L1460 526" stroke="#201b19" stroke-width="66"/>
+    <path d="M1260 526 L1460 526" stroke="#a6764f" stroke-width="48"/>
+    <path d="M1260 526 L1460 526" stroke="#d0a16d" stroke-width="4" stroke-dasharray="18 9"/>
+    <path d="M1274 501v50M1310 501v50M1346 501v50M1382 501v50M1418 501v50" stroke="#4b3027" stroke-width="5"/>
+    <text x="1301" y="490" class="tiny">ONE OPTIONAL BRIDGE</text>
+  </g>
+
+  <!-- Command terrace and facilities. -->
+  <g>
+    <rect x="525" y="226" width="250" height="118" class="facility"/>
+    <path d="M554 313h191M565 261l44-28 44 28 44-28 44 28" fill="none" stroke="#b98c60" stroke-width="5"/>
+    <text x="575" y="288" class="label">COMMAND TENT</text>
+    <text x="565" y="326" class="tiny">planning / roster / embark</text>
+  </g>
+  <g>
+    <circle cx="710" cy="610" r="62" fill="#292321" stroke="#d18b55" stroke-width="5"/>
+    <circle cx="710" cy="610" r="28" fill="#d77332" stroke="#ffb14c" stroke-width="4"/>
+    <path d="M710 571l-11 25 11-7 12 7zM679 607l21 8-8 8zM741 607l-21 8 8 8z" fill="#f6bc5f"/>
+    <text x="642" y="693" class="label">HEARTH PLAZA</text>
+    <text x="653" y="712" class="tiny">social center / shortest walk</text>
+  </g>
+  <g>
+    <rect x="275" y="392" width="205" height="101" class="facility"/>
+    <circle cx="308" cy="423" r="17" fill="none" stroke="#d0aa6e" stroke-width="4"/>
+    <circle cx="349" cy="423" r="17" fill="none" stroke="#d0aa6e" stroke-width="4"/>
+    <circle cx="390" cy="423" r="17" fill="none" stroke="#d0aa6e" stroke-width="4"/>
+    <text x="300" y="466" class="label">FORMATION YARD</text>
+  </g>
+  <g>
+    <rect x="150" y="241" width="177" height="92" class="facility-work"/>
+    <path d="M179 306h119M188 280h20M219 280h20M250 280h20" stroke="#d18b55" stroke-width="5"/>
+    <text x="180" y="265" class="label">TRAINING</text>
+    <text x="174" y="319" class="tiny">targets / recreation</text>
+  </g>
+  <g>
+    <rect x="286" y="707" width="170" height="102" class="facility-work"/>
+    <path d="M309 782h118M329 739l22-22 22 22 22-22 22 22" fill="none" stroke="#df7f42" stroke-width="5"/>
+    <text x="325" y="763" class="label">SMITH</text>
+    <text x="312" y="793" class="tiny">work yard / repair</text>
+  </g>
+  <g>
+    <rect x="472" y="754" width="202" height="99" class="facility"/>
+    <path d="M497 824h152M512 780h34v22h-34zM567 780h34v22h-34zM622 780h34v22h-34z" fill="none" stroke="#bd9c6e" stroke-width="4"/>
+    <text x="523" y="807" class="label">QUARTERS</text>
+    <text x="502" y="836" class="tiny">reserve rest / social</text>
+  </g>
+
+  <!-- Records and regional facilities on the eastern terrace. -->
+  <g>
+    <rect x="944" y="253" width="194" height="98" class="facility-record"/>
+    <path d="M973 285h135M973 307h135M973 329h98" stroke="#aeb7aa" stroke-width="5"/>
+    <text x="991" y="277" class="label">ARCHIVE</text>
+    <text x="965" y="340" class="tiny">observations / attempt history</text>
+  </g>
+  <g>
+    <rect x="1090" y="397" width="210" height="103" class="facility-work"/>
+    <path d="M1113 469h164M1127 429h35v25h-35zM1176 429h35v25h-35zM1225 429h35v25h-35z" fill="none" stroke="#69a8a0" stroke-width="4"/>
+    <text x="1126" y="420" class="label">APOTHECARY</text>
+    <text x="1110" y="487" class="tiny">support supplies / remedies</text>
+  </g>
+  <g>
+    <rect x="942" y="665" width="174" height="94" class="facility"/>
+    <path d="M968 719h123M979 686h42v26h-42zM1032 686h42v26h-42z" fill="none" stroke="#b78a5c" stroke-width="5"/>
+    <text x="985" y="706" class="label">SPOILS CACHE</text>
+    <text x="972" y="742" class="tiny">materials / forged gear</text>
+  </g>
+  <g>
+    <rect x="1168" y="648" width="217" height="111" class="facility-liaison"/>
+    <path d="M1197 726h158M1212 682h38v27h-38zM1264 682h38v27h-38zM1316 682h38v27h-38z" fill="none" stroke="#7da9a9" stroke-width="4"/>
+    <path d="M1195 670v-62M1195 608l37 11-37 13z" fill="#9f4c4b" stroke="#d1a067" stroke-width="3"/>
+    <text x="1220" y="673" class="label">LIAISON POST</text>
+    <text x="1200" y="743" class="tiny">writs / regional roads / signal</text>
+  </g>
+  <path d="M1180 640 Q1195 614 1195 608" class="callout" marker-end="url(#arrow)"/>
+  <text x="1086" y="607" class="tiny">reachable terrace · direct ramp</text>
+
+  <!-- Trophy landmark near the heart, not on an inaccessible bluff. -->
+  <g>
+    <circle cx="864" cy="480" r="52" fill="#312821" stroke="#b38e5e" stroke-width="4"/>
+    <path d="M864 514V445M831 461h66M846 444l18-24 18 24" stroke="#d0aa6e" stroke-width="8" fill="none"/>
+    <text x="814" y="555" class="small">TROPHY SPIKE</text>
+  </g>
+
+  <!-- Edge activity nodes and character destinations. -->
+  <g>
+    <path d="M379 196v45M362 212l17-19 17 19M362 225l-17 19M379 224l17 20" stroke="#77614d" stroke-width="6" fill="none"/>
+    <circle cx="379" cy="188" r="27" fill="#4e493a" opacity=".7"/>
+    <path d="M337 244h84M349 250h72" stroke="#c7a16a" stroke-width="5"/>
+    <text x="312" y="278" class="small">TREE SHADE / BENCH</text>
+  </g>
+  <g>
+    <path d="M701 850v34M687 861l14-15 14 15M687 874l-14 15M701 874l14 15" stroke="#77614d" stroke-width="6" fill="none"/>
+    <path d="M657 886h88M668 892h66" stroke="#c7a16a" stroke-width="5"/>
+    <text x="625" y="925" class="small">QUIET REST NOOK</text>
+  </g>
+  <g>
+    <path d="M1475 455v35M1461 468l14-16 14 16M1461 479l-14 16M1475 479l14 16" stroke="#77614d" stroke-width="6" fill="none"/>
+    <path d="M1437 498h76M1447 504h57" stroke="#c7a16a" stroke-width="5"/>
+    <circle cx="1475" cy="425" r="13" fill="none" stroke="#c3a76f" stroke-width="4"/>
+    <text x="1413" y="538" class="small">FOG OVERLOOK</text>
+  </g>
+  <g>
+    <path d="M178 790l43-51 34 37 44-61 48 54" fill="none" stroke="#c5b18c" stroke-width="8"/>
+    <circle cx="246" cy="792" r="28" fill="#292320" stroke="#c7a16a" stroke-width="4"/>
+    <text x="164" y="849" class="small">BONE MEMORIAL</text>
+  </g>
+
+  <!-- Ramps and level transitions make all terraces reachable. -->
+  <g fill="none" stroke="#c8a46a" stroke-width="3" marker-end="url(#arrow)">
+    <path d="M637 359l-11-28"/>
+    <path d="M487 548l24 15"/>
+    <path d="M1088 571l29 34"/>
+    <path d="M1162 644l28 3"/>
+  </g>
+  <text x="548" y="381" class="tiny">RAMP</text>
+  <text x="492" y="587" class="tiny">RAMP</text>
+  <text x="1110" y="594" class="tiny">RAMP</text>
+
+  <!-- Travel-time and design legend. -->
+  <g transform="translate(44 708)">
+    <rect width="300" height="224" class="note-box"/>
+    <text x="20" y="31" class="label">TRAVEL DESIGN</text>
+    <rect x="20" y="49" width="22" height="22" fill="#c9a66e" opacity=".75"/>
+    <text x="57" y="66" class="small">0–4s core decisions</text>
+    <rect x="20" y="82" width="22" height="22" fill="#d18b55" opacity=".75"/>
+    <text x="57" y="99" class="small">4–8s functional destinations</text>
+    <rect x="20" y="115" width="22" height="22" fill="#7da9a9" opacity=".75"/>
+    <text x="57" y="132" class="small">8–15s edge / regional walks</text>
+    <line x1="20" y1="154" x2="80" y2="154" class="patrol"/>
+    <text x="96" y="159" class="small">outer patrol / social loop</text>
+    <text x="20" y="188" class="tiny">One defended gate</text>
+    <text x="20" y="205" class="tiny">One major ravine, one optional bridge</text>
+  </g>
+
+  <g transform="translate(1190 44)">
+    <rect width="345" height="108" class="note-box"/>
+    <text x="18" y="29" class="label">LAYOUT RULES</text>
+    <text x="18" y="51" class="tiny">• Essential facilities stay on connected ground.</text>
+    <text x="18" y="69" class="tiny">• Far walks terminate at purposeful landmarks.</text>
+    <text x="18" y="87" class="tiny">• Bridges solve one route problem; they do not decorate.</text>
+  </g>
+</svg>

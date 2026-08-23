@@ -1,0 +1,306 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1100" viewBox="0 0 1800 1100" role="img" aria-labelledby="title desc">
+  <title id="title">The Beast Crucible — Town-like camp blockout v2</title>
+  <desc id="desc">An asymmetric town plan for the Beast Crucible camp. A low valley street bypasses the central Hearth Square, while districts climb through hills, terraces, stairs, and switchback roads.</desc>
+
+  <defs>
+    <pattern id="ground" width="68" height="68" patternUnits="userSpaceOnUse">
+      <rect width="68" height="68" fill="#3a302b"/>
+      <path d="M8 15l15-4M40 31l18-6M20 55l7-3M52 61l10-5" stroke="#4e3e34" stroke-width="2" opacity=".65"/>
+      <circle cx="31" cy="20" r="2" fill="#5d493b"/><circle cx="11" cy="44" r="2" fill="#5d493b"/>
+    </pattern>
+    <pattern id="street" width="84" height="48" patternUnits="userSpaceOnUse">
+      <rect width="84" height="48" fill="#765841"/>
+      <path d="M4 16h18M36 8h13M61 35h17M19 39h10" stroke="#9a754f" stroke-width="3" opacity=".55"/>
+      <circle cx="29" cy="30" r="3" fill="#584231"/><circle cx="72" cy="12" r="2" fill="#584231"/>
+    </pattern>
+    <pattern id="stone" width="52" height="34" patternUnits="userSpaceOnUse">
+      <rect width="52" height="34" fill="#4d4a45"/>
+      <path d="M0 9h22l7 7H0M36 0h16v11l-8 5H28M11 25h28l5 9H3z" fill="#5b5750" stroke="#36332f" stroke-width="2"/>
+    </pattern>
+    <linearGradient id="ravineFog" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8b999d" stop-opacity=".12"/>
+      <stop offset=".5" stop-color="#c3ceca" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#78898e" stop-opacity=".16"/>
+    </linearGradient>
+    <filter id="fogBlur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+    <marker id="downArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#d4ad72"/></marker>
+    <style>
+      .title { font: 700 29px Georgia, serif; fill: #e6d5ad; letter-spacing: 1px; }
+      .subtitle { font: 14px Arial, sans-serif; fill: #b9aa90; letter-spacing: .5px; }
+      .district { font: 700 15px Arial, sans-serif; fill: #d9c29b; letter-spacing: 1px; }
+      .label { font: 700 15px Arial, sans-serif; fill: #f0e1bd; letter-spacing: .2px; }
+      .small { font: 12px Arial, sans-serif; fill: #d6c5a5; }
+      .tiny { font: 11px Arial, sans-serif; fill: #b9aa90; }
+      .note { font: 12px Arial, sans-serif; fill: #d7c9ad; }
+      .building { fill: #2c2724; stroke: #b99a69; stroke-width: 3; rx: 9; }
+      .work { fill: #302622; stroke: #d18b55; stroke-width: 3; rx: 9; }
+      .records { fill: #2b2e30; stroke: #a9b3aa; stroke-width: 3; rx: 9; }
+      .liaison { fill: #202c31; stroke: #7da9a9; stroke-width: 4; rx: 9; }
+      .street { fill: none; stroke: #7b5b42; stroke-width: 52; stroke-linecap: round; stroke-linejoin: round; }
+      .streetTop { fill: none; stroke: #ad875b; stroke-width: 28; stroke-linecap: round; stroke-linejoin: round; opacity: .72; }
+      .lane { fill: none; stroke: #72513d; stroke-width: 30; stroke-linecap: round; stroke-linejoin: round; }
+      .laneTop { fill: none; stroke: #a17b53; stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
+      .stairs { fill: none; stroke: #cfac72; stroke-width: 10; stroke-dasharray: 3 8; stroke-linecap: round; }
+      .patrol { fill: none; stroke: #c5a064; stroke-width: 5; stroke-dasharray: 16 12; opacity: .88; }
+      .wall { fill: none; stroke: #201b19; stroke-width: 30; stroke-linecap: round; stroke-linejoin: round; }
+      .wallTop { fill: none; stroke: #b28c5b; stroke-width: 4; stroke-dasharray: 10 8; stroke-linejoin: round; }
+      .callout { fill: none; stroke: #c4a36b; stroke-width: 2; stroke-dasharray: 6 5; }
+      .panel { fill: #242220; stroke: #685845; stroke-width: 2; rx: 12; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1100" fill="#171719"/>
+  <rect x="24" y="24" width="1752" height="1052" rx="24" fill="#211e1d" stroke="#55453a" stroke-width="3"/>
+  <text x="54" y="67" class="title">THE BEAST CRUCIBLE — TOWN-LIKE CAMP BLOCKOUT / V2</text>
+  <text x="56" y="93" class="subtitle">A civic square at the center of town, but a bypass street carries daily traffic around it</text>
+
+  <!-- Uneven basin: a high north ridge, a low south valley, and one fog ravine at the edge. -->
+  <path d="M118 190 Q250 112 430 142 Q598 91 773 137 Q952 88 1134 147 Q1320 106 1486 202 Q1553 342 1496 488 Q1554 652 1493 816 Q1386 950 1196 923 Q1014 973 841 930 Q648 980 472 932 Q276 958 147 854 Q110 708 143 566 Q93 393 118 190Z" fill="url(#ground)" stroke="#5d493b" stroke-width="4"/>
+  <path d="M152 194 Q340 133 503 166 Q681 116 856 163 Q1035 118 1215 169 Q1351 160 1444 226" fill="none" stroke="#78604b" stroke-width="3" opacity=".7"/>
+
+  <!-- High ridge / low valley shading. -->
+  <path d="M173 190 Q331 142 503 166 Q684 115 855 163 Q1009 122 1148 171 L1095 314 Q969 276 841 307 Q686 265 550 318 Q391 270 238 323Z" fill="#45423e" opacity=".74"/>
+  <path d="M163 625 Q317 563 485 623 Q652 568 810 642 Q984 577 1145 635 Q1318 570 1466 646 L1490 817 Q1364 930 1198 900 Q1014 948 838 907 Q651 956 477 910 Q295 930 172 834Z" fill="#2f2b28" opacity=".82"/>
+  <text x="214" y="179" class="tiny">HIGH RIDGE / WATCH GROUND</text>
+  <text x="213" y="902" class="tiny">LOW VALLEY / ARRIVAL AND TRADE ROAD</text>
+
+  <!-- One major fog ravine beyond the eastern town wall. -->
+  <path d="M1482 126 C1401 243 1584 332 1490 449 C1405 551 1598 666 1492 773 C1438 838 1535 899 1472 963 L1742 963 L1742 110 L1563 110Z" fill="#303a3c" stroke="#151d1e" stroke-width="15"/>
+  <path d="M1514 132 C1444 246 1608 332 1518 449 C1430 553 1619 666 1516 773 C1462 843 1550 901 1499 960" fill="none" stroke="url(#ravineFog)" stroke-width="78" filter="url(#fogBlur)" opacity=".92"/>
+  <path d="M1512 130 C1438 246 1605 334 1513 450 C1426 552 1611 667 1511 775 C1457 843 1544 900 1493 961" fill="none" stroke="#8b999d" stroke-width="5" opacity=".7"/>
+  <text x="1630" y="285" class="small" transform="rotate(78 1630 285)">FOG RAVINE / NATURAL EDGE</text>
+
+  <!-- Town wall: irregular, enclosing a town rather than a circle of tents. -->
+  <path d="M168 280 Q265 182 421 194 Q565 147 718 186 Q895 129 1051 187 Q1234 165 1374 271 Q1432 385 1379 506 Q1434 632 1377 758 Q1328 875 1199 902 Q1014 960 856 918 Q691 964 539 918 Q359 955 234 865 Q144 768 179 649 Q121 513 160 398Z" class="wall"/>
+  <path d="M168 280 Q265 182 421 194 Q565 147 718 186 Q895 129 1051 187 Q1234 165 1374 271 Q1432 385 1379 506 Q1434 632 1377 758 Q1328 875 1199 902 Q1014 960 856 918 Q691 964 539 918 Q359 955 234 865 Q144 768 179 649 Q121 513 160 398Z" class="wallTop"/>
+
+  <!-- Single south-west entry, offset from the civic square. -->
+  <path d="M238 875 Q296 900 370 915" stroke="#211c1a" stroke-width="44"/>
+  <path d="M239 875 Q297 899 369 914" stroke="#d0aa6e" stroke-width="4" stroke-dasharray="8 8"/>
+  <rect x="223" y="842" width="52" height="68" fill="#382b25" stroke="#bd955b" stroke-width="4"/>
+  <rect x="330" y="876" width="52" height="68" fill="#382b25" stroke="#bd955b" stroke-width="4"/>
+  <path d="M249 844v-42M356 877v-42" stroke="#c39a60" stroke-width="4"/>
+  <path d="M249 802l27 11-27 12zM356 835l27 11-27 12z" fill="#a8554a"/>
+  <text x="207" y="971" class="label">SOUTH GATE</text>
+  <text x="190" y="993" class="tiny">fortified arrival / one controlled entry</text>
+
+  <!-- Lower Valley Street: the main through-route bypasses the Hearth. -->
+  <path d="M278 894 Q406 851 536 842 Q669 818 789 789 Q950 757 1088 778 Q1215 798 1345 733" class="street"/>
+  <path d="M278 894 Q406 851 536 842 Q669 818 789 789 Q950 757 1088 778 Q1215 798 1345 733" class="streetTop"/>
+  <text x="586" y="879" class="tiny">LOWER VALLEY STREET / DAILY TRAFFIC</text>
+
+  <!-- High Street rises from the valley through a switchback; it does not force a Hearth visit. -->
+  <path d="M776 790 Q747 710 781 658 Q821 609 799 548 Q779 492 824 430 Q849 375 820 307 Q806 254 829 212" class="lane"/>
+  <path d="M776 790 Q747 710 781 658 Q821 609 799 548 Q779 492 824 430 Q849 375 820 307 Q806 254 829 212" class="laneTop"/>
+  <text x="844" y="368" class="tiny" transform="rotate(-78 844 368)">HIGH STREET / STAIRS TO RIDGE</text>
+
+  <!-- West district lanes. -->
+  <path d="M540 842 Q485 786 493 717 Q499 636 451 579 Q408 532 374 463 Q340 402 339 320" class="lane"/>
+  <path d="M540 842 Q485 786 493 717 Q499 636 451 579 Q408 532 374 463 Q340 402 339 320" class="laneTop"/>
+  <path d="M493 717 Q411 706 330 674 Q264 650 222 592" class="lane"/>
+  <path d="M493 717 Q411 706 330 674 Q264 650 222 592" class="laneTop"/>
+
+  <!-- East district switchback and the accessible Liaison route. -->
+  <path d="M1088 778 Q1163 718 1131 650 Q1108 600 1163 548 Q1234 496 1217 430 Q1200 367 1260 307" class="lane"/>
+  <path d="M1088 778 Q1163 718 1131 650 Q1108 600 1163 548 Q1234 496 1217 430 Q1200 367 1260 307" class="laneTop"/>
+  <path d="M1088 778 Q1181 809 1270 778 Q1330 756 1354 708" class="lane"/>
+  <path d="M1088 778 Q1181 809 1270 778 Q1330 756 1354 708" class="laneTop"/>
+  <text x="1200" y="824" class="tiny">WRIT WARD ROAD / DIRECT FROM VALLEY</text>
+
+  <!-- District overlays and labels. -->
+  <path d="M229 777 Q333 720 510 747 Q597 789 544 886 Q403 921 286 863Z" fill="#a85f3a" opacity=".16" stroke="#d18b55" stroke-width="2"/>
+  <text x="298" y="808" class="district">GATE &amp; CRAFTERS' HOLLOW</text>
+  <path d="M590 473 Q692 399 866 430 Q958 474 931 625 Q867 698 694 663 Q594 612 590 473Z" fill="#c1a065" opacity=".16" stroke="#d6b77b" stroke-width="2"/>
+  <text x="646" y="465" class="district">HEARTH WARD</text>
+  <path d="M541 168 Q676 119 850 174 Q909 230 832 336 Q695 387 561 330Z" fill="#6c7e80" opacity=".16" stroke="#9ba8a1" stroke-width="2"/>
+  <text x="630" y="199" class="district">COMMAND RIDGE</text>
+  <path d="M181 261 Q281 201 420 223 Q478 278 421 384 Q283 418 190 355Z" fill="#895b70" opacity=".13" stroke="#bb7b83" stroke-width="2"/>
+  <text x="239" y="250" class="district">DRILL YARD</text>
+  <path d="M256 551 Q362 480 492 548 Q575 631 506 735 Q387 762 272 685Z" fill="#64754f" opacity=".16" stroke="#a5ae78" stroke-width="2"/>
+  <text x="310" y="553" class="district">RESTING ROW</text>
+  <path d="M1013 216 Q1157 175 1325 256 Q1363 362 1289 453 Q1161 486 1060 413Z" fill="#69726d" opacity=".16" stroke="#a9b3aa" stroke-width="2"/>
+  <text x="1111" y="237" class="district">RECORDS &amp; REMEDIES</text>
+  <path d="M1099 603 Q1247 565 1360 644 Q1387 742 1287 834 Q1167 848 1093 779Z" fill="#3f7c7f" opacity=".14" stroke="#7da9a9" stroke-width="2"/>
+  <text x="1193" y="630" class="district">WRIT WARD</text>
+
+  <!-- Central civic square: important landmark, optional detour, not a route bottleneck. -->
+  <g>
+    <path d="M633 474 Q717 429 832 457 Q902 503 861 596 Q783 650 676 616 Q616 560 633 474Z" fill="#514337" stroke="#d0aa6e" stroke-width="4"/>
+    <path d="M659 506 Q725 469 811 488 Q857 522 828 575 Q766 611 692 588 Q652 554 659 506Z" fill="#6b5541" stroke="#b68e60" stroke-width="3"/>
+    <circle cx="747" cy="538" r="33" fill="#2b2521" stroke="#e18a37" stroke-width="4"/>
+    <path d="M747 509l-10 25 10-7 11 7zM724 535l19 7-7 8zM770 535l-19 7 7 8z" fill="#ffbd59"/>
+    <path d="M637 620 Q738 673 862 609" class="callout"/>
+    <text x="704" y="548" class="label">HEARTH</text>
+    <text x="650" y="649" class="small">civic square · optional detour</text>
+  </g>
+  <path d="M572 720 Q618 672 669 641" class="stairs"/>
+  <path d="M868 606 Q932 642 981 704" class="stairs"/>
+  <text x="579" y="689" class="tiny">STAIRS UP</text>
+  <text x="895" y="662" class="tiny">STAIRS DOWN</text>
+
+  <!-- Command Ridge. -->
+  <g>
+    <rect x="705" y="228" width="245" height="105" class="building"/>
+    <path d="M734 311h187M750 270l45-28 45 28 45-28 45 28" fill="none" stroke="#b98c60" stroke-width="5"/>
+    <text x="765" y="287" class="label">COMMAND TENT</text>
+    <text x="742" y="318" class="tiny">town hall / target / embark</text>
+  </g>
+  <g>
+    <path d="M975 191l-22 55h44z" fill="#b28b5a" stroke="#2b2520" stroke-width="5"/>
+    <path d="M975 246v42M953 266h44" stroke="#b28b5a" stroke-width="6"/>
+    <text x="931" y="310" class="small">RIDGE WATCH</text>
+  </g>
+
+  <!-- Drill Yard district. -->
+  <g>
+    <rect x="205" y="292" width="205" height="98" class="work"/>
+    <circle cx="244" cy="327" r="17" fill="none" stroke="#d0aa6e" stroke-width="4"/>
+    <circle cx="286" cy="327" r="17" fill="none" stroke="#d0aa6e" stroke-width="4"/>
+    <circle cx="328" cy="327" r="17" fill="none" stroke="#d0aa6e" stroke-width="4"/>
+    <text x="263" y="371" class="label">FORMATION YARD</text>
+  </g>
+  <g>
+    <rect x="145" y="408" width="165" height="92" class="work"/>
+    <path d="M174 474h108M180 447h26M218 447h26M256 447h26" stroke="#d18b55" stroke-width="5"/>
+    <text x="193" y="431" class="label">TRAINING</text>
+    <text x="173" y="489" class="tiny">targets / recreation</text>
+  </g>
+
+  <!-- Crafters' Hollow and Resting Row. -->
+  <g>
+    <rect x="298" y="774" width="180" height="100" class="work"/>
+    <path d="M321 846h132M339 804l22-22 22 22 22-22 22 22" fill="none" stroke="#df7f42" stroke-width="5"/>
+    <text x="352" y="828" class="label">SMITH</text>
+    <text x="323" y="858" class="tiny">forge / repair yard</text>
+  </g>
+  <g>
+    <rect x="495" y="843" width="185" height="87" class="building"/>
+    <path d="M518 898h140M529 864h34v22h-34zM578 864h34v22h-34zM627 864h34v22h-34z" fill="none" stroke="#bd9c6e" stroke-width="4"/>
+    <text x="550" y="892" class="label">QUARTERS</text>
+    <text x="522" y="915" class="tiny">reserve beds / social</text>
+  </g>
+  <g>
+    <rect x="525" y="692" width="155" height="87" class="building"/>
+    <path d="M551 754h102M558 718h34v22h-34zM611 718h34v22h-34z" fill="none" stroke="#bd9c6e" stroke-width="4"/>
+    <text x="555" y="746" class="label">REST ROW</text>
+    <text x="541" y="765" class="tiny">quiet rooms / shade</text>
+  </g>
+
+  <!-- Records & Remedies district. -->
+  <g>
+    <rect x="1040" y="258" width="205" height="94" class="records"/>
+    <path d="M1066 289h150M1066 311h150M1066 333h112" stroke="#aeb7aa" stroke-width="5"/>
+    <text x="1102" y="280" class="label">ARCHIVE</text>
+    <text x="1063" y="340" class="tiny">records / observations</text>
+  </g>
+  <g>
+    <rect x="1162" y="378" width="207" height="100" class="work"/>
+    <path d="M1184 448h163M1197 407h34v25h-34zM1244 407h34v25h-34zM1291 407h34v25h-34z" fill="none" stroke="#69a8a0" stroke-width="4"/>
+    <text x="1194" y="399" class="label">APOTHECARY</text>
+    <text x="1182" y="465" class="tiny">remedies / support</text>
+  </g>
+
+  <!-- Writ Ward: inside the wall, on a low connected street, never across the ravine. -->
+  <g>
+    <rect x="1203" y="671" width="223" height="112" class="liaison"/>
+    <path d="M1232 749h163M1246 703h37v27h-37zM1298 703h37v27h-37zM1350 703h37v27h-37z" fill="none" stroke="#7da9a9" stroke-width="4"/>
+    <path d="M1228 688v-69M1228 619l40 12-40 13z" fill="#a8554a" stroke="#d1a067" stroke-width="3"/>
+    <text x="1261" y="692" class="label">LIAISON POST</text>
+    <text x="1234" y="765" class="tiny">writs / regional roads / signal</text>
+  </g>
+  <g>
+    <rect x="1013" y="789" width="165" height="86" class="building"/>
+    <path d="M1037 842h116M1044 812h37v22h-37zM1097 812h37v22h-37z" fill="none" stroke="#b78a5c" stroke-width="5"/>
+    <text x="1040" y="837" class="label">SPOILS CACHE</text>
+    <text x="1035" y="858" class="tiny">goods / storage</text>
+  </g>
+
+  <!-- Civic buildings around the Hearth, not in a symmetrical ring. -->
+  <g>
+    <rect x="520" y="470" width="112" height="72" class="building"/>
+    <text x="538" y="512" class="small">MARKET</text>
+    <rect x="865" y="493" width="126" height="76" class="building"/>
+    <text x="891" y="537" class="small">NOTICE HALL</text>
+    <rect x="701" y="632" width="130" height="70" class="building"/>
+    <text x="730" y="673" class="small">COMMONS</text>
+  </g>
+
+  <!-- Town landmarks and purposeful edge walks. -->
+  <g>
+    <path d="M405 580v42M387 598l18-20 18 20M387 611l-18 20M405 611l18 20" stroke="#77614d" stroke-width="6" fill="none"/>
+    <path d="M360 639h90M373 646h64" stroke="#c7a16a" stroke-width="5"/>
+    <text x="327" y="672" class="small">BENCH ROW / TREE SHADE</text>
+  </g>
+  <g>
+    <path d="M700 934v33M686 947l14-16 14 16M686 960l-14 16M700 960l14 16" stroke="#77614d" stroke-width="6" fill="none"/>
+    <path d="M655 974h90M666 981h68" stroke="#c7a16a" stroke-width="5"/>
+    <text x="638" y="1015" class="small">VALLEY REST NOOK</text>
+  </g>
+  <g>
+    <path d="M1377 263l-22 55h44z" fill="#b28b5a" stroke="#2b2520" stroke-width="5"/>
+    <path d="M1377 318v42M1354 337h46" stroke="#b28b5a" stroke-width="6"/>
+    <path d="M1320 381h115" stroke="#c7a16a" stroke-width="5"/>
+    <text x="1303" y="408" class="small">FOG OVERLOOK</text>
+  </g>
+  <g>
+    <path d="M199 753l43-51 34 37 44-61 48 54" fill="none" stroke="#c5b18c" stroke-width="8"/>
+    <circle cx="270" cy="756" r="27" fill="#292320" stroke="#c7a16a" stroke-width="4"/>
+    <text x="193" y="811" class="small">BONE MEMORIAL</text>
+  </g>
+  <g>
+    <circle cx="1022" cy="176" r="27" fill="#312821" stroke="#b38e5e" stroke-width="4"/>
+    <path d="M1022 207V142M992 158h60M1005 142l17-23 17 23" stroke="#d0aa6e" stroke-width="7" fill="none"/>
+    <text x="968" y="229" class="small">TROPHY SPIKE</text>
+  </g>
+
+  <!-- Outer patrol and social walk, deliberately irregular. -->
+  <path d="M194 688 Q172 550 206 414 Q195 302 318 239 Q480 184 628 211 Q773 159 926 195 Q1100 167 1245 237 Q1357 309 1362 440 Q1388 574 1350 704 Q1322 828 1200 869 Q1031 911 887 880 Q720 918 557 883 Q380 913 253 836 Q188 777 194 688Z" class="patrol"/>
+  <text x="233" y="455" class="tiny" transform="rotate(-82 233 455)">OUTER WATCH / SOCIAL WALK</text>
+
+  <!-- One optional bridge to a scenic overlook; no important facility depends on it. -->
+  <g>
+    <path d="M1370 382 L1580 382" stroke="#211c1a" stroke-width="64"/>
+    <path d="M1370 382 L1580 382" stroke="#a6764f" stroke-width="47"/>
+    <path d="M1370 382 L1580 382" stroke="#d0a16d" stroke-width="4" stroke-dasharray="17 9"/>
+    <path d="M1390 357v50M1430 357v50M1470 357v50M1510 357v50M1550 357v50" stroke="#4b3027" stroke-width="5"/>
+    <text x="1420" y="347" class="tiny">OPTIONAL OVERLOOK BRIDGE</text>
+  </g>
+
+  <!-- Stairs and slopes: the map explains the verticality instead of hiding it. -->
+  <g fill="none" stroke="#d4ad72" stroke-width="3" marker-end="url(#downArrow)">
+    <path d="M821 428l23-39"/>
+    <path d="M796 551l-34 40"/>
+    <path d="M1166 547l30-35"/>
+    <path d="M1140 650l-33 34"/>
+    <path d="M522 718l-22-35"/>
+  </g>
+  <text x="842" y="398" class="tiny">UP TO COMMAND RIDGE</text>
+  <text x="702" y="604" class="tiny">DOWN TO VALLEY STREET</text>
+  <text x="1194" y="505" class="tiny">UP TO RECORDS</text>
+  <text x="1081" y="700" class="tiny">DOWN TO WRIT WARD</text>
+  <text x="454" y="688" class="tiny">UP TO REST ROW</text>
+
+  <!-- Design notes and travel hierarchy. -->
+  <g transform="translate(48 1010)">
+    <rect width="570" height="52" class="panel"/>
+    <text x="18" y="22" class="note">Design rule: the Hearth is the town landmark, not the mandatory route.</text>
+    <text x="18" y="41" class="tiny">Lower Valley Street carries traffic around the square; districts own their own streets.</text>
+  </g>
+  <g transform="translate(1260 46)">
+    <rect width="460" height="153" class="panel"/>
+    <text x="18" y="27" class="label">DISTRICT / WALK LOGIC</text>
+    <text x="18" y="52" class="tiny">Gate &amp; Crafters' Hollow — supplies and forge</text>
+    <text x="18" y="72" class="tiny">Hearth Ward — optional civic/social detour</text>
+    <text x="18" y="92" class="tiny">Command Ridge — high ground and defense</text>
+    <text x="18" y="112" class="tiny">Resting Row — quiet reserve life and shade</text>
+    <text x="18" y="132" class="tiny">Records / Writ Wards — long east-side walks</text>
+  </g>
+  <g transform="translate(1250 936)">
+    <rect width="470" height="126" class="panel"/>
+    <text x="18" y="26" class="label">TRAVEL TIERS</text>
+    <text x="18" y="50" class="tiny">0–4s: gate / valley street / immediate civic space</text>
+    <text x="18" y="70" class="tiny">4–8s: district facilities and town streets</text>
+    <text x="18" y="90" class="tiny">8–15s: ridge, writ ward, overlooks, quiet edges</text>
+    <text x="18" y="110" class="tiny">Every essential facility remains on a connected route.</text>
+  </g>
+</svg>

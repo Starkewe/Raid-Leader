@@ -2,7 +2,7 @@ extends Resource
 class_name CampTuning
 
 const KNOWN_INTERACTIVE_FACILITIES: Array[String] = [
-	"command_tent", "archive", "smith", "quarters", "formation_yard", "storage"
+	"command_tent", "archive", "smith", "quarters", "formation_yard", "training", "storage"
 ]
 
 @export var notable_event_record_limit: int
