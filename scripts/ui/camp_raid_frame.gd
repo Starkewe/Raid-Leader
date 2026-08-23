@@ -39,8 +39,6 @@ var family_compatible: bool = true
 var compatible_with_selected_family: bool = true
 var smith_drop_target_enabled: bool = false
 var smith_family_compatibility_state: String = "neutral"
-
-
 func _ready() -> void:
 	add_to_group("camp_raid_frames")
 	mouse_filter = Control.MOUSE_FILTER_STOP

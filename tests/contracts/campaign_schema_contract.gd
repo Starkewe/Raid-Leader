@@ -18,6 +18,7 @@ func _ready() -> void:
 
 	var persistence = PersistenceScript.new()
 	_validate_version_10_migration(persistence, failures)
+	_validate_additive_specialization_defaults(persistence, failures)
 	_validate_duplicate_assignment_reconciliation(persistence, failures)
 	_validate_current_round_trip(persistence, failures)
 	_validate_rejected_schemas(persistence, failures)
@@ -107,6 +108,56 @@ func _validate_version_10_migration(
 			if not state.has(field_name):
 				failures.append("Migration did not add raider field '%s'." % field_name)
 				break
+
+
+func _validate_additive_specialization_defaults(
+	persistence: CampaignPersistenceService, failures: Array[String]
+) -> void:
+	CampaignState.reset_campaign(false, 11111)
+	var legacy_current := CampaignState.get_campaign_snapshot()
+	var default_raider_id := ""
+	var advanced_raider_id := ""
+	for raider_id_value in legacy_current.get("raider_states", {}):
+		var raider_id := String(raider_id_value)
+		var state: Dictionary = legacy_current["raider_states"][raider_id]
+		for field_name in [
+			"specialization_unlocked", "lineage_token_spent", "secondary_lineage_id",
+			"advanced_class_completed_id", "lineage_progress_by_id",
+		]:
+			state.erase(field_name)
+		if default_raider_id.is_empty():
+			default_raider_id = raider_id
+		if advanced_raider_id.is_empty() and String(state.get("current_class", "")) == "Rogue":
+			advanced_raider_id = raider_id
+			state["advanced_class_id"] = "echo_butcher"
+			state["specialization_id"] = ""
+		legacy_current["raider_states"][raider_id] = state
+	if default_raider_id.is_empty() or advanced_raider_id.is_empty():
+		failures.append("Specialization migration fixture lacks required raiders.")
+		return
+	if not persistence.write_payload(TEST_PATH, legacy_current, {"kind": "additive_schema"}):
+		failures.append("Specialization migration fixture could not be written.")
+		return
+	if not CampaignState.load_campaign(TEST_PATH):
+		failures.append("Current save missing specialization fields could not be loaded.")
+		return
+	var default_state := CampaignState.get_raider_campaign_state(default_raider_id)
+	if (
+		not default_state.has("specialization_unlocked")
+		or not default_state.has("lineage_token_spent")
+		or not default_state.has("secondary_lineage_id")
+		or not default_state.has("advanced_class_completed_id")
+		or not default_state.has("lineage_progress_by_id")
+	):
+		failures.append("Missing specialization fields did not receive safe defaults.")
+	var advanced_state := CampaignState.get_raider_campaign_state(advanced_raider_id)
+	if (
+		not bool(advanced_state.get("specialization_unlocked", false))
+		or String(advanced_state.get("secondary_lineage_id", "")) != "echo_butcher"
+		or String(advanced_state.get("advanced_class_id", "")) != "echo_butcher"
+		or String(advanced_state.get("advanced_class_completed_id", "")) != "echo_butcher"
+	):
+		failures.append("Existing advanced-class state did not recover its lineage safely.")
 
 
 func _validate_current_round_trip(

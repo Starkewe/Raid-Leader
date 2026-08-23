@@ -23,10 +23,14 @@ func _ready() -> void:
 		failures.append("Camp Stores could not open its Journal presenter.")
 		_finish(camp, failures)
 		return
+	if journal.header_title == null or journal.header_title.text != "The Spoils Cache":
+		failures.append("Spoils Cache did not use its in-world Journal title.")
+	await _validate_storage_tabs(presenter, journal, failures)
 	_validate_empty_views(presenter, journal, failures)
 	_validate_live_inventory(presenter, journal, failures)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	await _validate_rendered_view_icons(presenter, journal, failures)
 	_validate_rendered_accessibility(journal, failures)
 	_validate_debug_boundary(journal, failures)
 	_finish(camp, failures)
@@ -37,6 +41,8 @@ func _validate_reachability(camp: Node, failures: Array[String]) -> void:
 	if storage == null:
 		failures.append("Camp Stores facility is missing from camp.")
 		return
+	if storage.display_name != "Spoils Cache":
+		failures.append("Camp Stores facility was not retitled to Spoils Cache.")
 	if not storage.interactive or storage.interaction_radius <= 0.0:
 		failures.append("Camp Stores is not an interactive positive-radius facility.")
 	var approach_id := String(camp.call("get_camp_route_approach_node_id", "storage"))
@@ -65,6 +71,73 @@ func _validate_empty_views(
 		failures.append("Empty Storage page did not render an empty-state label.")
 
 
+func _validate_storage_tabs(
+	presenter: StoragePagePresenter, journal: CampJournal, failures: Array[String]
+) -> void:
+	var page := journal.find_child("StoragePage", true, false) as VBoxContainer
+	var intro := journal.find_child("StorageReadOnlyNotice", true, false) as Label
+	var tabs := journal.find_child("StorageTabs", true, false) as HBoxContainer
+	if page == null or intro == null or tabs == null:
+		failures.append("Camp Stores did not render its compact category tabs below the intro.")
+		return
+	if tabs.get_parent() != page or tabs.get_index() != intro.get_index() + 1:
+		failures.append("Camp Stores tabs were not placed immediately below the intro.")
+	if tabs.get_child_count() != StoragePresenterScript.VIEW_IDS.size():
+		failures.append("Spoils Cache did not render exactly three category tabs.")
+	if journal.find_child("StorageRecipesTab", true, false) != null:
+		failures.append("Spoils Cache still rendered a Recipes tab.")
+	var expected_tab_order: Array[String] = ["materials", "weapons", "tokens"]
+	for tab_index in range(expected_tab_order.size()):
+		var ordered_tab := tabs.get_child(tab_index) as Button
+		if ordered_tab == null or String(ordered_tab.get_meta("storage_view_id", "")) != expected_tab_order[tab_index]:
+			failures.append("Spoils Cache tabs were not ordered Materials, Weapons, Tokens.")
+			break
+	if presenter.current_view_id != "materials":
+		failures.append("Spoils Cache did not default to the Materials tab.")
+
+	for view_id in StoragePresenterScript.VIEW_IDS:
+		var tab_name := "Storage" + view_id.capitalize() + "Tab"
+		var tab := tabs.find_child(tab_name, true, false) as Button
+		if tab == null:
+			failures.append("Camp Stores category tab was missing for %s." % view_id)
+			continue
+		if tab.text != view_id.capitalize():
+			failures.append("Camp Stores category tab label was incorrect for %s." % view_id)
+		if String(tab.get_meta("storage_view_id", "")) != view_id:
+			failures.append("Camp Stores category tab lost its view metadata for %s." % view_id)
+
+	for removed_control_name in [
+		"StorageFilters", "StorageViewSelector", "StorageNameFilter",
+		"StorageBossFilter", "StorageRarityFilter", "StorageFamilyFilter",
+	]:
+		if journal.find_child(removed_control_name, true, false) != null:
+			failures.append("Camp Stores still rendered removed filter control '%s'." % removed_control_name)
+
+	for view_id in StoragePresenterScript.VIEW_IDS:
+		var tab := journal.find_child(
+			"Storage" + view_id.capitalize() + "Tab", true, false
+		) as Button
+		if tab == null:
+			continue
+		tab.emit_signal("pressed")
+		await get_tree().process_frame
+		await get_tree().process_frame
+		if presenter.current_view_id != view_id:
+			failures.append("Selecting the %s Camp Stores tab did not refresh the view." % view_id)
+			continue
+		var heading := journal.find_child("StorageViewHeading", true, false) as Label
+		var expected_title := String(presenter.build_view_model(view_id).get("title", ""))
+		if heading == null or heading.text != expected_title:
+			failures.append("Camp Stores heading did not refresh for the %s tab." % view_id)
+		var refreshed_tabs := journal.find_child("StorageTabs", true, false) as HBoxContainer
+		for candidate_id in StoragePresenterScript.VIEW_IDS:
+			var candidate := refreshed_tabs.find_child(
+				"Storage" + candidate_id.capitalize() + "Tab", true, false
+			) as Button
+			if candidate != null and candidate.disabled != (candidate_id == view_id):
+				failures.append("Camp Stores active tab state was incorrect for %s." % view_id)
+
+
 func _validate_live_inventory(
 	presenter, _journal: CampJournal, failures: Array[String]
 ) -> void:
@@ -79,6 +152,8 @@ func _validate_live_inventory(
 		var token: Dictionary = tokens["entries"][0]
 		if not String(token.get("detail_text", "")).contains("Warrior") or not String(token.get("detail_text", "")).contains("Earthgnasher"):
 			failures.append("Token view omitted class or source boss.")
+		if not token.get("icon_resource") is Texture2D:
+			failures.append("Token view omitted its class icon.")
 
 	var materials: Dictionary = presenter.build_view_model("materials")
 	if Array(materials.get("entries", [])).is_empty():
@@ -89,6 +164,7 @@ func _validate_live_inventory(
 			int(entry.get("count", 0)) <= 0
 			or String(entry.get("rarity_text", "")).is_empty()
 			or not entry.get("rarity_color") is Color
+			or not entry.get("icon_resource") is Texture2D
 			or String(entry.get("description", "")).is_empty()
 		):
 			failures.append("Material view lacks count/rarity/color/description accessibility data.")
@@ -96,17 +172,34 @@ func _validate_live_inventory(
 	var boss_filtered: Dictionary = presenter.build_view_model("materials", {"boss_id": "ogre"})
 	if Array(boss_filtered.get("entries", [])).is_empty():
 		failures.append("Boss filter removed Earthgnasher's own material drops.")
+	var source_groups: Array = materials.get("source_groups", [])
+	if source_groups.is_empty() or String(Dictionary(source_groups[0]).get("label", "")) != "Earthgnasher":
+		failures.append("Boss Materials did not render single-source groups in catalog order.")
+	else:
+		var shared_index := -1
+		for group_index in range(source_groups.size()):
+			if String(Dictionary(source_groups[group_index]).get("label", "")) == "Shared Materials":
+				shared_index = group_index
+				break
+		if shared_index < 0:
+			failures.append("Boss Materials did not place multi-source entries in Shared Materials.")
+		elif Array(Dictionary(source_groups[shared_index]).get("entries", [])).is_empty():
+			failures.append("Shared Materials group was empty.")
 	var name_filtered: Dictionary = presenter.build_view_model("materials", {"name": "no such material"})
 	if not Array(name_filtered.get("entries", [])).is_empty():
 		failures.append("Name filter did not exclude unmatched materials.")
 
-	var recipes: Dictionary = presenter.build_view_model("recipes")
-	if Array(recipes.get("entries", [])).size() != 2:
-		failures.append("Recipe view did not show both first-clear unlocks.")
-	for recipe_value in recipes.get("entries", []):
+	var legacy_recipes: Dictionary = presenter.build_view_model("recipes")
+	if Array(legacy_recipes.get("entries", [])).size() != 2:
+		failures.append("Legacy recipe model lookup no longer retained both first-clear unlocks.")
+	for recipe_value in legacy_recipes.get("entries", []):
 		var recipe: Dictionary = recipe_value
-		if String(recipe.get("craft_status", "")).is_empty() or not String(recipe.get("detail_text", "")).contains("Ingredients:"):
-			failures.append("Recipe view omitted owned counts or craftability status.")
+		if (
+			String(recipe.get("craft_status", "")).is_empty()
+			or not String(recipe.get("detail_text", "")).contains("Ingredients:")
+			or not recipe.get("icon_resource") is Texture2D
+		):
+			failures.append("Legacy recipe model omitted owned counts or craftability status.")
 
 	CampaignState.debug_grant_progression_materials({
 		"earthgnasher_heartstone": 2,
@@ -138,6 +231,7 @@ func _validate_live_inventory(
 		if (
 			not String(weapon.get("detail_text", "")).contains("Power")
 			or not String(weapon.get("detail_text", "")).contains("Equipped:")
+			or not weapon.get("icon_resource") is Texture2D
 			or not String(weapon.get("description", "")).contains("inactive future hook")
 		):
 			failures.append("Weapon view omitted family/stats/trait/equipped-raider information.")
@@ -152,19 +246,61 @@ func _validate_rendered_accessibility(
 	var content := journal.find_child("StorageInventoryContent", true, false)
 	if content == null or content.get_child_count() == 0:
 		failures.append("Campaign state change did not live-refresh rendered Storage content.")
-	var found_rarity_text := false
+	var found_bracketed_rarity := false
 	for label in journal.find_children("*", "Label", true, false):
 		if String(label.text).begins_with("[") and String(label.text).contains("]"):
-			found_rarity_text = true
+			found_bracketed_rarity = true
 			break
-	if not found_rarity_text:
-		failures.append("Material rarity was conveyed by color without accessible text.")
+	if found_bracketed_rarity:
+		failures.append("Material rarity retained a visible bracketed rarity prefix.")
+	var presenter := journal.page_presenters.get("storage") as StoragePagePresenter
+	if presenter != null:
+		var materials := presenter.build_view_model("materials")
+		for entry_value in materials.get("entries", []):
+			var entry: Dictionary = entry_value
+			var card := journal.find_child("StorageEntry_" + String(entry.get("stable_id", "")), true, false)
+			var title := null if card == null else card.find_child("StorageEntryTitle", true, false) as Label
+			if (
+				title == null
+				or title.text != "%s ×%d" % [entry.get("display_name", ""), int(entry.get("count", 0))]
+				or title.get_theme_color("font_color") != entry.get("rarity_color", Color.WHITE)
+			):
+				failures.append("Material title did not retain the count and rarity color without a visible rarity label.")
+			var icon := null if card == null else card.find_child("StorageEntryIcon", true, false) as TextureRect
+			if icon == null or icon.texture != entry.get("icon_resource"):
+				failures.append("Material card omitted its icon.")
+
+
+func _validate_rendered_view_icons(
+	presenter: StoragePagePresenter, journal: CampJournal, failures: Array[String]
+) -> void:
+	for view_id in StoragePresenterScript.VIEW_IDS:
+		presenter.current_view_id = view_id
+		presenter._queue_refresh()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var model: Dictionary = presenter.build_view_model(view_id)
+		for entry_value in model.get("entries", []):
+			var entry: Dictionary = entry_value
+			var card := journal.find_child("StorageEntry_" + String(entry.get("stable_id", "")), true, false)
+			var icon := null if card == null else card.find_child("StorageEntryIcon", true, false) as TextureRect
+			var placeholder := null if card == null else card.find_child("StorageEntryIconPlaceholder", true, false) as Label
+			var icon_ok: bool = (
+				entry.get("icon_resource") is Texture2D
+				and icon != null
+				and icon.texture == entry.get("icon_resource")
+			) or (not entry.get("icon_resource") is Texture2D and placeholder != null)
+			if not icon_ok:
+				failures.append("Rendered %s entry omitted its icon or safe placeholder." % view_id)
+	presenter.current_view_id = "materials"
+	presenter._queue_refresh()
+	await get_tree().process_frame
 
 
 func _validate_debug_boundary(journal: CampJournal, failures: Array[String]) -> void:
 	var notice := journal.find_child("StorageReadOnlyNotice", true, false) as Label
-	if notice == null or not String(notice.text).contains("Rudimentary Smith"):
-		failures.append("Camp Stores did not direct crafting and equipment management to the Smith.")
+	if notice == null or notice.text != "Review the spoils of fallen foes and the weapons forged from them.":
+		failures.append("Camp Stores intro copy did not match the compact progression notice.")
 	var debug_panel := journal.find_child("StorageDebugControls", true, false)
 	if OS.is_debug_build() and debug_panel == null:
 		failures.append("Debug build omitted Camp Stores backend exercise controls.")

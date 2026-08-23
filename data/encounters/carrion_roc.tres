@@ -1,58 +1,23 @@
-[gd_resource type="Resource" script_class="CarrionRocDefinition" format=3]
+[gd_resource type="Resource" script_class="CarrionRocDefinition" format=3 uid="uid://chcc7d8qehivg"]
 
-[ext_resource type="Script" path="res://scripts/data/carrion_roc_definition.gd" id="1_roc_definition"]
-[ext_resource type="Script" path="res://scripts/encounters/carrion_roc_runtime.gd" id="2_roc_runtime"]
+[ext_resource type="Script" uid="uid://cmgswifol0baj" path="res://scripts/data/boss_ability_definition.gd" id="1_exaa2"]
+[ext_resource type="Script" uid="uid://w0qb4un7pxjb" path="res://scripts/data/carrion_roc_definition.gd" id="1_roc_definition"]
+[ext_resource type="Script" uid="uid://dhp7phpvbp0oi" path="res://scripts/data/boss_phase_definition.gd" id="2_bcp8a"]
+[ext_resource type="Script" uid="uid://cbj5tqxtps8c5" path="res://scripts/encounters/carrion_roc_runtime.gd" id="2_roc_runtime"]
 
 [resource]
 script = ExtResource("1_roc_definition")
 encounter_id = "carrion_roc"
 display_name = "The Carrion Roc"
 description = "A captured wild Roc conditioned and surgically altered by the Beast Crucible. Its crashes demand exact east and west mini-region soaks; failures leave volatile Carrion Growths that pulse until destroyed."
+runtime_script = ExtResource("2_roc_runtime")
 boss_display_name = "The Carrion Roc"
 max_health = 50000
 movement_mode = "anchored"
-attack_range_units = 5.0
-movement_stop_range_units = -1.0
-combat_radius = 128.0
 attack_damage = 0
 attack_cooldown = 2.0
 basic_attack_id = "carrion_roc_basic_peck"
 basic_attack_display_name = "Basic Peck"
-basic_attack_damage_type = "physical"
-abilities = []
-phases = []
 ability_base_gap = 0.0
 ability_cooldown_variance = 0.0
 initial_ability_delay = 0.0
-debug_logging_enabled = true
-show_debug_region_guides = true
-show_debug_range_rings = true
-debug_max_range_units = 50.0
-runtime_script = ExtResource("2_roc_runtime")
-stagger_threshold = 2800
-melee_stagger_weight = 1.0
-ranged_stagger_weight = 0.2
-grounded_duration = 16.0
-grounded_damage_multiplier = 2.25
-peck_damage = 18
-cadence_interval = 2.0
-cadence_special_every = 3
-peck_flurry_hit_damage = 10
-peck_flurry_hit_count = 3
-peck_flurry_duration = 1.2
-wing_swipe_damage = 8
-tail_swipe_damage = 8
-cyclone_damage = 6
-displacement_duration = 0.65
-rupture_delay_after_grounding = 2.5
-rupture_telegraph_duration = 6.5
-rupture_health_threshold = 350
-rupture_damage_pool = 320
-rupture_candidate_ranges = Array[String](["mid", "far"])
-east_rupture_regions = Array[String](["northeast", "east", "southeast"])
-west_rupture_regions = Array[String](["northwest", "west", "southwest"])
-growth_max_health = 1000
-growth_pulse_damage = 3
-growth_pulse_interval = 2.0
-initial_cadence_delay = 2.0
-random_seed = 7331

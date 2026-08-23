@@ -16,6 +16,7 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 [audio]
 
+buses/default_bus_layout="uid://bju8k0mnowriv"
 driver/enable_input=true
 driver/mix_rate=48000
 
@@ -35,9 +36,9 @@ window/size/borderless=true
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
-[gui/timers]
+[gui]
 
-tooltip_delay_sec=0.0
+timers/tooltip_delay_sec=0.0
 
 [input]
 

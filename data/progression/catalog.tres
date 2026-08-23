@@ -113,7 +113,7 @@ token_id = "earthgnasher_warrior_token"
 display_name = "Earthgnasher Warrior Token"
 archetype_class_id = "warrior"
 source_encounter_id = "ogre"
-description = "A permanent first-clear proof aligned with the Warrior archetype. Spending is not implemented."
+description = "A class-aligned first-clear token. Spend it on one Warrior raider to unlock lineage selection; future acquisition rules remain under evaluation."
 
 [sub_resource type="Resource" id="TokenChainmaster"]
 script = ExtResource("5_token")
@@ -121,7 +121,7 @@ token_id = "chainmaster_priest_token"
 display_name = "Chainmaster Priest Token"
 archetype_class_id = "priest"
 source_encounter_id = "chainmaster"
-description = "A permanent first-clear proof aligned with the Priest archetype. Spending is not implemented."
+description = "A class-aligned first-clear token. Spend it on one Priest raider to unlock lineage selection; future acquisition rules remain under evaluation."
 
 [sub_resource type="Resource" id="TokenCarrionRoc"]
 script = ExtResource("5_token")
@@ -129,7 +129,7 @@ token_id = "carrion_roc_mage_token"
 display_name = "Carrion Roc Mage Token"
 archetype_class_id = "mage"
 source_encounter_id = "carrion_roc"
-description = "A permanent first-clear proof aligned with the Mage archetype. Spending is not implemented."
+description = "A class-aligned first-clear token. Spend it on one Mage raider to unlock lineage selection; future acquisition rules remain under evaluation."
 
 [sub_resource type="Resource" id="TokenTwinMaulers"]
 script = ExtResource("5_token")
@@ -137,7 +137,7 @@ token_id = "twin_maulers_rogue_token"
 display_name = "Twin Maulers Rogue Token"
 archetype_class_id = "rogue"
 source_encounter_id = "twin_maulers"
-description = "A permanent first-clear proof aligned with the Rogue archetype. Spending is not implemented."
+description = "A class-aligned first-clear token. Spend it on one Rogue raider to unlock lineage selection; future acquisition rules remain under evaluation."
 
 [sub_resource type="Resource" id="MaterialBeastbone"]
 script = ExtResource("7_material")

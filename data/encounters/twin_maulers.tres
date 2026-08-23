@@ -1,65 +1,27 @@
-[gd_resource type="Resource" script_class="TwinMaulersDefinition" format=3]
+[gd_resource type="Resource" script_class="TwinMaulersDefinition" format=3 uid="uid://gy1q1w6ouwrg"]
 
-[ext_resource type="Script" path="res://scripts/data/twin_maulers_definition.gd" id="1_definition"]
-[ext_resource type="Script" path="res://scripts/encounters/twin_maulers_runtime.gd" id="2_runtime"]
+[ext_resource type="Script" uid="uid://cj63aclwqke80" path="res://scripts/data/twin_maulers_definition.gd" id="1_definition"]
+[ext_resource type="Script" uid="uid://cmgswifol0baj" path="res://scripts/data/boss_ability_definition.gd" id="1_jsj4n"]
+[ext_resource type="Script" uid="uid://dhp7phpvbp0oi" path="res://scripts/data/boss_phase_definition.gd" id="2_a6udg"]
+[ext_resource type="Script" uid="uid://47p8jct4tow1" path="res://scripts/encounters/twin_maulers_runtime.gd" id="2_runtime"]
 
 [resource]
 script = ExtResource("1_definition")
 encounter_id = "twin_maulers"
 display_name = "The Twin Maulers"
 description = "Two arena beasts share a volatile Rage system. Keep both manageable, then drive the selected Mauler into Exhaustion before its Rampage resolves."
-scene_path = "res://scenes/combat_scene.tscn"
+runtime_script = ExtResource("2_runtime")
+mauler_max_health = 30000
 boss_display_name = "The Twin Maulers"
 max_health = 60000
 movement_mode = "anchored"
-attack_range_units = 5.0
-movement_stop_range_units = -1.0
 combat_radius = 92.0
 attack_damage = 0
 attack_cooldown = 2.4
 basic_attack_id = "twin_mauler_bite"
 basic_attack_display_name = "Mauler Bite"
-basic_attack_damage_type = "physical"
-abilities = []
-phases = []
 ability_base_gap = 0.0
 ability_cooldown_variance = 0.0
 initial_ability_delay = 0.0
-debug_logging_enabled = true
 show_debug_region_guides = false
 show_debug_range_rings = false
-debug_max_range_units = 50.0
-runtime_script = ExtResource("2_runtime")
-mauler_max_health = 30000
-mauler_attack_damage = 14
-mauler_attack_cooldown = 2.4
-mauler_combat_radius = 92.0
-west_offset_pixels = -180.0
-east_offset_pixels = 180.0
-base_exhaustion_threshold = 100.0
-exhaustion_threshold_step = 50.0
-rage_attack_speed_percent_per_stack = 0.005
-rage_floor_max = 90.0
-rage_floor_exponent = 1.0
-rage_stable_min_attackers = 6
-rage_stable_max_attackers = 9
-rage_decay_per_missing_attacker = 3.0
-rage_gain_per_extra_attacker = 3.333333
-rage_max_gain_rate = 20.0
-exhaustion_duration = 10.0
-exhaustion_rage_decay_per_second = 40.0
-exhaustion_damage_multiplier = 2.0
-rampage_initial_delay_min = 28.0
-rampage_initial_delay_max = 34.0
-rampage_interval_min = 28.0
-rampage_interval_max = 34.0
-rampage_warning_duration = 10.0
-rampage_cast_duration = 2.0
-rampage_damage_max_health_percent = 0.8
-maximum_rampage_same_target_streak = 3
-survivor_threshold = 100.0
-survivor_floor_bonus = 40.0
-survivor_attack_damage_multiplier = 1.35
-survivor_rampage_interval_multiplier = 0.55
-telemetry_sample_interval = 0.5
-random_seed = 0

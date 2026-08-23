@@ -233,6 +233,27 @@ func _validate_lock_and_restore(
 		not drawer.is_open() and not drawer.is_locked_open(),
 		"Closing Formation Yard did not restore the drawer's prior retracted state."
 	)
+	journal.open_facility("training")
+	await _wait_frames(2)
+	var training_frame := _frame(drawer, member_id)
+	_expect(
+		not drawer.is_locked_open()
+		and not drawer.is_open()
+		and drawer.get_menu_context().is_empty(),
+		"Training still forced or claimed the contextual raid drawer."
+	)
+	if training_frame != null:
+		_expect(
+			training_frame.context.is_empty()
+			and training_frame.custom_minimum_size == CampRaidFrame.BASE_SIZE,
+			"Training still adds an accessory slot or context to raid frames."
+		)
+	_expect(
+		drawer.find_child("TrainingBenefitsPopout", true, false) == null,
+		"Training raid-frame benefits popout was not removed."
+	)
+	journal.close_journal()
+	await _wait_frames(2)
 	journal.open_facility("storage")
 	await _wait_frames(2)
 	_expect(

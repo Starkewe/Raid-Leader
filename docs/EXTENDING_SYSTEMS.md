@@ -88,10 +88,25 @@ drop targets on the camp raid drawer; reserve-held copies render as compact
 per-holder recovery sources below their stack. Weapon definitions own
 crafted-item icons, while `RaiderClassCatalog` maps every base or advanced class to
 one compatible primary weapon family and resolves its unarmed fallback from the
-shared set of eight 64x64 default-family icons. Camp Stores presents read-only progression through
+shared set of eight 64x64 default-family icons. The Spoils Cache presents read-only progression through
 `StoragePagePresenter`; any fixture grant, seeded reward, craft, equip, or trait
 inspection control there must remain inside `OS.is_debug_build()` and the
 `storage_debug_mutation` group.
+
+Training progression is authored by `TrainingProgressionCatalog`, with one entry
+node, three rows of three fixed kit nodes, and one capstone for every lineage in
+`RaiderClassCatalog`. `CampaignSpecializationService` owns token consumption,
+lineage-local progress, switching/reset rules, identity and capstone stages, and
+weapon-return reconciliation. Completed nodes remain dormant when another lineage
+is active; only unfinished objective state is cleared when a lineage is abandoned.
+
+Attempt summaries may carry normalized per-raider `training_quest_credit` counters.
+`CampaignState.record_attempt` applies those counters only to nodes that were open
+at the start of a victory and always counts the encounter as a unique-boss entry
+credit for active raiders. Defeats never bank training progress. Combat-specific
+predicate instrumentation is intentionally separate from this progression layer;
+new telemetry should emit stable credit keys defined by the Training catalog rather
+than mutate raider progression directly.
 
 Full-size painted class and weapon textures generate mipmaps and inherit the
 project-wide Linear With Mipmaps canvas filter. Compact 16x16 icons and deliberate

@@ -16,6 +16,7 @@ const ArchivePagePresenterScript := preload("res://scripts/ui/archive_page_prese
 const QuartersPagePresenterScript := preload("res://scripts/ui/quarters_page_presenter.gd")
 const StoragePagePresenterScript := preload("res://scripts/ui/storage_page_presenter.gd")
 const SmithPagePresenterScript := preload("res://scripts/ui/smith_page_presenter.gd")
+const TrainingPagePresenterScript := preload("res://scripts/ui/training_page_presenter.gd")
 
 const COMMAND_CLASS_COLUMN_WIDTH := 100.0
 const COMMAND_NAME_COLUMN_WIDTH := 205.0
@@ -47,6 +48,7 @@ func _ready() -> void:
 		"quarters": QuartersPagePresenterScript.new(),
 		"storage": StoragePagePresenterScript.new(),
 		"smith": SmithPagePresenterScript.new(),
+		"training": TrainingPagePresenterScript.new(),
 	}
 	add_to_group("escape_modal")
 	_build_shell()

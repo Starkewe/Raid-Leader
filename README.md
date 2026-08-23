@@ -136,10 +136,12 @@ Boss progression is authored in `data/progression/catalog.tres`. Victories produ
 replay-safe material receipts and one-time tokens/recipe unlocks. The Rudimentary
 Smith provides production weapon crafting and assignment: each crafted weapon is a
 fungible counted copy, and the same definition can be held by multiple raiders while
-copies remain available. Camp Stores remains a read-only
+copies remain available. The Spoils Cache remains a read-only
 inventory browser. In camp, the retractable raid drawer is the shared active-party
-surface for Smith equipment drops and Formation Yard placement drags, replacing
-duplicate raider lists inside those Journal pages.
+surface for Smith equipment drops, Formation Yard placement drags, and Training
+lineage-benefit inspection. Training uses a one-path-at-a-time quest tree: the first
+lineage consumes a matching class token, its entry milestone grants class identity,
+and its capstone completes the advanced class.
 
 ## Current Development Focus
 
